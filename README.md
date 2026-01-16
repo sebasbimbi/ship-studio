@@ -1,8 +1,8 @@
-# MarOS
+# Marketingstack
 
 Build AI-native marketing sites easily with SOTA technology.
 
-MarOS is a desktop application that combines Claude Code's AI capabilities with a streamlined development environment for creating Next.js marketing websites. It provides an integrated terminal, live preview, and seamless GitHub integration—all in one native app.
+Marketingstack is a desktop application that combines Claude Code's AI capabilities with a streamlined development environment for creating Next.js marketing websites. It provides an integrated terminal, live preview, and seamless GitHub integration—all in one native app.
 
 ## Features
 
@@ -14,7 +14,7 @@ MarOS is a desktop application that combines Claude Code's AI capabilities with 
 
 ## Prerequisites
 
-Before running MarOS, make sure you have the following installed:
+Before running Marketingstack, make sure you have the following installed:
 
 | Tool | Required | Installation |
 |------|----------|--------------|
@@ -31,8 +31,8 @@ Before running MarOS, make sure you have the following installed:
 
 ```bash
 # Clone the repository
-git clone https://github.com/Memberstack/maros-desktop.git
-cd maros-desktop
+git clone https://github.com/Memberstack/marketingstack.git
+cd marketingstack
 
 # Install dependencies
 pnpm install
@@ -76,7 +76,7 @@ This will start both the Vite dev server and the Tauri application.
 ## Project Structure
 
 ```
-maros-desktop/
+marketingstack/
 ├── src/                    # React frontend
 │   ├── components/         # UI components
 │   │   ├── Terminal.tsx    # Claude Code terminal
@@ -102,12 +102,12 @@ maros-desktop/
 
 1. Click **"+ New Project"** on the home screen
 2. Enter a project name
-3. MarOS clones the Next.js template and installs dependencies
+3. Marketingstack clones the Next.js template and installs dependencies
 4. You're dropped into the workspace with Claude Code ready to go
 
 ### GitHub Integration
 
-MarOS integrates with GitHub CLI for seamless version control:
+Marketingstack integrates with GitHub CLI for seamless version control:
 
 1. **No Repo** → Shows "Create Repo" button
 2. **Create Repo** → Opens modal to name your repo (public/private)
@@ -118,7 +118,7 @@ MarOS integrates with GitHub CLI for seamless version control:
 
 ### Project Thumbnails
 
-When you close a project, MarOS automatically captures a screenshot of your site at `localhost:3000` and saves it as a thumbnail for the project card.
+When you close a project, Marketingstack automatically captures a screenshot of your site at `localhost:3000` and saves it as a thumbnail for the project card.
 
 ## Tech Stack
 
@@ -141,7 +141,7 @@ Edit `src-tauri/tauri.conf.json` to modify:
 
 The Next.js template is cloned from:
 ```
-https://github.com/julianmemberstack/maros-boilerplate-next-1
+https://github.com/julianmemberstack/marketingstack-boilerplate-next-1
 ```
 
 To use a different template, update `TEMPLATE_REPO` in `src/components/CreateProject.tsx`.

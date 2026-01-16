@@ -86,8 +86,8 @@ export function VercelButton({
 
     try {
       // Get home directory for running vercel login
-      const homeDir = await invoke<string>("get_maros_dir");
-      const parentDir = homeDir.replace("/MarOS", "");
+      const homeDir = await invoke<string>("get_marketingstack_dir");
+      const parentDir = homeDir.replace("/Marketingstack", "");
 
       // Spawn PTY for vercel login
       const ptyId = await invoke<number>("spawn_pty", {

@@ -238,7 +238,7 @@ function App() {
     return (
       <div className="app loading">
         <div className="spinner" />
-        <p>Loading MarOS...</p>
+        <p>Loading Marketingstack...</p>
       </div>
     );
   }

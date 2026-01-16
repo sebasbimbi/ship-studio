@@ -1,8 +1,8 @@
 {
-  "name": "maros",
+  "name": "marketingstack",
   "private": true,
   "version": "0.1.0",
-  "description": "MarOS - Launch Claude Code for Webflow sites",
+  "description": "Marketingstack - Launch Claude Code for marketing sites",
   "type": "module",
   "scripts": {
     "dev": "vite",

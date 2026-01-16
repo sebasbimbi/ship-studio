@@ -21,12 +21,12 @@ export async function listProjects(): Promise<Project[]> {
   return invoke<Project[]>("list_projects");
 }
 
-export async function getMarosDir(): Promise<string> {
-  return invoke<string>("get_maros_dir");
+export async function getMarketingstackDir(): Promise<string> {
+  return invoke<string>("get_marketingstack_dir");
 }
 
-export async function ensureMarosDir(): Promise<string> {
-  return invoke<string>("ensure_maros_dir");
+export async function ensureMarketingstackDir(): Promise<string> {
+  return invoke<string>("ensure_marketingstack_dir");
 }
 
 export interface DevServerHandle {

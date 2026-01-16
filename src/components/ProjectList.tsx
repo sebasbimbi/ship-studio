@@ -146,8 +146,8 @@ export function ProjectList({
     setIsVercelLoggingIn(true);
 
     try {
-      const homeDir = await invoke<string>("get_maros_dir");
-      const parentDir = homeDir.replace("/MarOS", "");
+      const homeDir = await invoke<string>("get_marketingstack_dir");
+      const parentDir = homeDir.replace("/Marketingstack", "");
 
       const ptyId = await invoke<number>("spawn_pty", {
         cwd: parentDir,
@@ -212,7 +212,7 @@ export function ProjectList({
   return (
     <div className="project-list">
       <div className="project-list-header">
-        <h1>MarOS</h1>
+        <h1>Marketingstack</h1>
         <p>Build AI native marketing sites easily with SOTA technology.</p>
       </div>
 

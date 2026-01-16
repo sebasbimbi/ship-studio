@@ -1,12 +1,12 @@
 [package]
-name = "maros"
+name = "marketingstack"
 version = "0.1.0"
-description = "MarOS - Launch Claude Code for Webflow sites"
+description = "Marketingstack - Launch Claude Code for marketing sites"
 authors = ["Julian Galluzzo"]
 edition = "2021"
 
 [lib]
-name = "maros_lib"
+name = "marketingstack_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

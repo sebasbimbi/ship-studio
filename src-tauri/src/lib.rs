@@ -241,22 +241,22 @@ async fn check_prerequisites() -> Vec<PrerequisiteCheck> {
 }
 
 #[tauri::command]
-async fn get_maros_dir() -> Result<String, String> {
+async fn get_marketingstack_dir() -> Result<String, String> {
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
-    let maros_dir = home.join("MarOS");
-    Ok(maros_dir.to_string_lossy().to_string())
+    let marketingstack_dir = home.join("Marketingstack");
+    Ok(marketingstack_dir.to_string_lossy().to_string())
 }
 
 #[tauri::command]
-async fn ensure_maros_dir() -> Result<String, String> {
+async fn ensure_marketingstack_dir() -> Result<String, String> {
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
-    let maros_dir = home.join("MarOS");
+    let marketingstack_dir = home.join("Marketingstack");
 
-    if !maros_dir.exists() {
-        std::fs::create_dir_all(&maros_dir).map_err(|e| e.to_string())?;
+    if !marketingstack_dir.exists() {
+        std::fs::create_dir_all(&marketingstack_dir).map_err(|e| e.to_string())?;
     }
 
-    Ok(maros_dir.to_string_lossy().to_string())
+    Ok(marketingstack_dir.to_string_lossy().to_string())
 }
 
 #[derive(Serialize)]
@@ -270,12 +270,12 @@ struct ProjectInfo {
 async fn delete_project(path: String) -> Result<(), String> {
     let project_path = std::path::Path::new(&path);
 
-    // Safety check: only allow deleting from MarOS directory
+    // Safety check: only allow deleting from Marketingstack directory
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
-    let maros_dir = home.join("MarOS");
+    let marketingstack_dir = home.join("Marketingstack");
 
-    if !project_path.starts_with(&maros_dir) {
-        return Err("Can only delete projects from MarOS directory".to_string());
+    if !project_path.starts_with(&marketingstack_dir) {
+        return Err("Can only delete projects from Marketingstack directory".to_string());
     }
 
     if !project_path.exists() {
@@ -370,14 +370,14 @@ fn scan_pages(dir: &std::path::Path, base_dir: &std::path::Path) -> Result<Vec<P
 #[tauri::command]
 async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
-    let maros_dir = home.join("MarOS");
+    let marketingstack_dir = home.join("Marketingstack");
 
-    if !maros_dir.exists() {
+    if !marketingstack_dir.exists() {
         return Ok(Vec::new());
     }
 
     let mut projects = Vec::new();
-    let entries = std::fs::read_dir(&maros_dir).map_err(|e| e.to_string())?;
+    let entries = std::fs::read_dir(&marketingstack_dir).map_err(|e| e.to_string())?;
 
     for entry in entries {
         let entry = entry.map_err(|e| e.to_string())?;
@@ -386,7 +386,7 @@ async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
             // Check if it's a valid project (has package.json)
             if path.join("package.json").exists() {
                 // Check for thumbnail
-                let thumbnail_path = path.join(".maros").join("thumbnail.png");
+                let thumbnail_path = path.join(".marketingstack").join("thumbnail.png");
                 let thumbnail = if thumbnail_path.exists() {
                     Some(thumbnail_path.to_string_lossy().to_string())
                 } else {
@@ -408,14 +408,14 @@ async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
 #[tauri::command]
 async fn capture_project_thumbnail(project_path: String, url: String) -> Result<String, String> {
     let project = std::path::Path::new(&project_path);
-    let maros_dir = project.join(".maros");
+    let marketingstack_dir = project.join(".marketingstack");
 
-    // Ensure .maros directory exists
-    if !maros_dir.exists() {
-        std::fs::create_dir_all(&maros_dir).map_err(|e| e.to_string())?;
+    // Ensure .marketingstack directory exists
+    if !marketingstack_dir.exists() {
+        std::fs::create_dir_all(&marketingstack_dir).map_err(|e| e.to_string())?;
     }
 
-    let thumbnail_path = maros_dir.join("thumbnail.png");
+    let thumbnail_path = marketingstack_dir.join("thumbnail.png");
 
     // Launch headless browser and capture screenshot
     let launch_options = LaunchOptions::default_builder()
@@ -453,7 +453,7 @@ async fn capture_project_thumbnail(project_path: String, url: String) -> Result<
 #[tauri::command]
 async fn get_project_thumbnail(project_path: String) -> Result<Option<String>, String> {
     let project = std::path::Path::new(&project_path);
-    let thumbnail_path = project.join(".maros").join("thumbnail.png");
+    let thumbnail_path = project.join(".marketingstack").join("thumbnail.png");
 
     if thumbnail_path.exists() {
         // Return as base64 data URL for easy display
@@ -1265,7 +1265,7 @@ async fn init_git_repo(project_path: String) -> Result<(), String> {
 
     // Create initial commit
     let output = Command::new("git")
-        .args(["commit", "-m", "Initial commit from MarOS"])
+        .args(["commit", "-m", "Initial commit from Marketingstack"])
         .current_dir(&project_path)
         .output()
         .map_err(|e| e.to_string())?;
@@ -1358,7 +1358,7 @@ async fn push_to_github(options: PushToGitHubOptions) -> Result<String, String> 
 
         if !String::from_utf8_lossy(&status.stdout).trim().is_empty() {
             let _ = Command::new("git")
-                .args(["commit", "-m", "Update from MarOS"])
+                .args(["commit", "-m", "Update from Marketingstack"])
                 .current_dir(project_path)
                 .output();
         }
@@ -1388,7 +1388,7 @@ async fn push_to_github(options: PushToGitHubOptions) -> Result<String, String> 
 
 #[tauri::command]
 async fn publish_to_github(project_path: String, commit_message: Option<String>) -> Result<(), String> {
-    let message = commit_message.unwrap_or_else(|| "Update from MarOS".to_string());
+    let message = commit_message.unwrap_or_else(|| "Update from Marketingstack".to_string());
 
     // Get current branch name
     let branch_output = Command::new("git")
@@ -1482,8 +1482,8 @@ pub fn run() {
             resize_pty,
             kill_pty,
             check_prerequisites,
-            get_maros_dir,
-            ensure_maros_dir,
+            get_marketingstack_dir,
+            ensure_marketingstack_dir,
             list_projects,
             list_pages,
             delete_project,

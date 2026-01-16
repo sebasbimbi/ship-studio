@@ -90,9 +90,9 @@ export function CreateProject({ onComplete, onCancel }: CreateProjectProps) {
     let unlistenOutput: UnlistenFn | null = null;
 
     try {
-      // Ensure MarOS directory exists
-      const marosDir = await invoke<string>("ensure_maros_dir");
-      const projectPath = `${marosDir}/${safeName}`;
+      // Ensure Marketingstack directory exists
+      const marketingstackDir = await invoke<string>("ensure_marketingstack_dir");
+      const projectPath = `${marketingstackDir}/${safeName}`;
 
       writeLine(`Creating project: ${safeName}`);
       writeLine(`Location: ${projectPath}`);
@@ -109,7 +109,7 @@ export function CreateProject({ onComplete, onCancel }: CreateProjectProps) {
       );
 
       const cloneId = await invoke<number>("spawn_pty", {
-        cwd: marosDir,
+        cwd: marketingstackDir,
         command: "git",
         args: ["clone", TEMPLATE_REPO, safeName],
         rows: 10,
