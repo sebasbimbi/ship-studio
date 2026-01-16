@@ -1,0 +1,26 @@
+[package]
+name = "maros"
+version = "0.1.0"
+description = "MarOS - Launch Claude Code for Webflow sites"
+authors = ["Julian Galluzzo"]
+edition = "2021"
+
+[lib]
+name = "maros_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+portable-pty = "0.8"
+tokio = { version = "1", features = ["full"] }
+parking_lot = "0.12"
+dirs = "5"
+which = "6"
+
