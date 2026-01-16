@@ -138,7 +138,7 @@ function App() {
           }
           right={
             <div className="preview-pane">
-              <Preview port={3000} />
+              <Preview port={3000} projectPath={currentProject?.path || ""} />
             </div>
           }
         />

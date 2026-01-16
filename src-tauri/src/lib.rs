@@ -282,6 +282,87 @@ async fn delete_project(path: String) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Serialize)]
+struct PageInfo {
+    route: String,
+    file_path: String,
+}
+
+#[tauri::command]
+async fn list_pages(project_path: String) -> Result<Vec<PageInfo>, String> {
+    let project = std::path::Path::new(&project_path);
+    let app_dir = project.join("app");
+
+    if !app_dir.exists() {
+        // Try src/app for projects with src directory
+        let src_app_dir = project.join("src").join("app");
+        if !src_app_dir.exists() {
+            return Ok(Vec::new());
+        }
+        return scan_pages(&src_app_dir, &src_app_dir);
+    }
+
+    scan_pages(&app_dir, &app_dir)
+}
+
+fn scan_pages(dir: &std::path::Path, base_dir: &std::path::Path) -> Result<Vec<PageInfo>, String> {
+    let mut pages = Vec::new();
+
+    if !dir.exists() {
+        return Ok(pages);
+    }
+
+    let entries = std::fs::read_dir(dir).map_err(|e| e.to_string())?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            // Skip special Next.js directories
+            let dir_name = entry.file_name().to_string_lossy().to_string();
+            if dir_name.starts_with('_') || dir_name.starts_with('.') || dir_name == "api" {
+                continue;
+            }
+
+            // Recursively scan subdirectories
+            let mut sub_pages = scan_pages(&path, base_dir)?;
+            pages.append(&mut sub_pages);
+        } else {
+            let file_name = entry.file_name().to_string_lossy().to_string();
+            if file_name == "page.tsx" || file_name == "page.js" || file_name == "page.jsx" {
+                // Calculate route from path
+                let parent = path.parent().unwrap_or(&path);
+                let relative = parent.strip_prefix(base_dir).unwrap_or(parent);
+                let route = if relative.as_os_str().is_empty() {
+                    "/".to_string()
+                } else {
+                    format!("/{}", relative.to_string_lossy().replace('\\', "/"))
+                };
+
+                // Handle dynamic routes - convert [param] to :param for display
+                let display_route = route
+                    .replace('[', ":")
+                    .replace(']', "");
+
+                pages.push(PageInfo {
+                    route: display_route,
+                    file_path: path.to_string_lossy().to_string(),
+                });
+            }
+        }
+    }
+
+    // Sort pages alphabetically, with "/" first
+    pages.sort_by(|a, b| {
+        if a.route == "/" { return std::cmp::Ordering::Less; }
+        if b.route == "/" { return std::cmp::Ordering::Greater; }
+        a.route.cmp(&b.route)
+    });
+
+    Ok(pages)
+}
+
 #[tauri::command]
 async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
@@ -326,6 +407,7 @@ pub fn run() {
             get_maros_dir,
             ensure_maros_dir,
             list_projects,
+            list_pages,
             delete_project,
         ])
         .run(tauri::generate_context!())
