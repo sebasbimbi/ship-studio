@@ -287,6 +287,38 @@ async fn ensure_gitignore_has_marketingstack(project_path: String) -> Result<(),
     Ok(())
 }
 
+/// Sync helper for ensuring .marketingstack/ is in gitignore (used by get_dashboard_projects)
+fn ensure_gitignore_has_marketingstack_sync(project: &std::path::Path) -> Result<(), String> {
+    let gitignore_path = project.join(".gitignore");
+    let entry = ".marketingstack/";
+
+    let content = if gitignore_path.exists() {
+        std::fs::read_to_string(&gitignore_path).unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    let already_ignored = content.lines().any(|line| {
+        let trimmed = line.trim();
+        trimmed == entry || trimmed == ".marketingstack" || trimmed == "/.marketingstack/" || trimmed == "/.marketingstack"
+    });
+
+    if already_ignored {
+        return Ok(());
+    }
+
+    let new_content = if content.is_empty() {
+        format!("# Marketingstack metadata\n{}\n", entry)
+    } else if content.ends_with('\n') {
+        format!("{}\n# Marketingstack metadata\n{}\n", content, entry)
+    } else {
+        format!("{}\n\n# Marketingstack metadata\n{}\n", content, entry)
+    };
+
+    std::fs::write(&gitignore_path, new_content).ok();
+    Ok(())
+}
+
 /// Next.js page route information
 #[derive(Serialize)]
 struct PageInfo {
@@ -989,6 +1021,9 @@ async fn get_dashboard_projects() -> Result<Vec<DashboardProject>, String> {
                 } else {
                     None
                 };
+
+                // Ensure .marketingstack/ is gitignored (fixes ghost changes for existing projects)
+                let _ = ensure_gitignore_has_marketingstack_sync(&path);
 
                 // Get git info
                 let git_branch = get_git_branch(&path);
