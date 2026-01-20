@@ -2770,6 +2770,44 @@ async fn spawn_pty(app: tauri::AppHandle, options: SpawnPtyOptions) -> Result<u3
     Ok(id)
 }
 
+/// Kill any process listening on a specific port
+#[tauri::command]
+async fn kill_port(port: u32) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        // Use lsof to find the PID listening on the port, then kill it
+        let output = Command::new("lsof")
+            .args(["-ti", &format!(":{}", port)])
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        if output.status.success() {
+            let pids = String::from_utf8_lossy(&output.stdout);
+            for pid in pids.lines() {
+                if let Ok(pid_num) = pid.trim().parse::<i32>() {
+                    // Kill the process and its children
+                    let _ = Command::new("kill")
+                        .args(["-9", &pid_num.to_string()])
+                        .output();
+                }
+            }
+        }
+    }
+
+    #[cfg(not(unix))]
+    {
+        // Windows: use netstat and taskkill
+        let _ = Command::new("cmd")
+            .args(["/C", &format!("for /f \"tokens=5\" %a in ('netstat -aon ^| findstr :{} ^| findstr LISTENING') do taskkill /F /PID %a", port)])
+            .output();
+    }
+
+    // Give processes time to die
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    Ok(())
+}
+
 // Kill orphaned Claude processes spawned by this app
 fn cleanup_claude_processes() {
     #[cfg(unix)]
@@ -2883,6 +2921,7 @@ pub fn run() {
             get_branch_status,
             reset_to_branch,
             spawn_pty,
+            kill_port,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

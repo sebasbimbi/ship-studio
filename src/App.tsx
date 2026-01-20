@@ -338,6 +338,13 @@ function App() {
       devServerRef.current = null;
     }
 
+    // Kill any process still listening on dev server port (handles orphaned processes)
+    try {
+      await invoke("kill_port", { port: DEV_SERVER_PORT });
+    } catch {
+      // Ignore errors - port may already be free
+    }
+
     // Clear any existing screenshot interval
     if (screenshotIntervalRef.current) {
       clearInterval(screenshotIntervalRef.current);
