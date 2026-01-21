@@ -2042,6 +2042,66 @@ fn parse_github_repo(url: &str) -> Option<String> {
     None
 }
 
+// ============ Git Helper Functions ============
+
+/// Checks if there are uncommitted changes (staged or unstaged tracked files).
+/// Use `-uno` to ignore untracked files.
+fn git_has_uncommitted_changes(path: &std::path::Path) -> Result<bool, String> {
+    let status = Command::new("git")
+        .args(["status", "--porcelain", "-uno"])
+        .current_dir(path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    Ok(!String::from_utf8_lossy(&status.stdout).trim().is_empty())
+}
+
+/// Checks if there are any changes (including untracked) in the working directory.
+fn git_has_any_changes(path: &std::path::Path) -> Result<bool, String> {
+    let status = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    Ok(!String::from_utf8_lossy(&status.stdout).trim().is_empty())
+}
+
+/// Stages all changes and commits with the given message.
+/// Returns true if a commit was made, false if nothing to commit.
+fn git_stage_and_commit(path: &std::path::Path, message: &str) -> Result<bool, String> {
+    // Stage all changes
+    let add_output = Command::new("git")
+        .args(["add", "-A"])
+        .current_dir(path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !add_output.status.success() {
+        return Err(String::from_utf8_lossy(&add_output.stderr).to_string());
+    }
+
+    // Check if there are staged changes to commit
+    let has_changes = git_has_any_changes(path)?;
+
+    if !has_changes {
+        return Ok(false);
+    }
+
+    // Commit
+    let commit_output = Command::new("git")
+        .args(["commit", "-m", message])
+        .current_dir(path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !commit_output.status.success() {
+        return Err(String::from_utf8_lossy(&commit_output.stderr).to_string());
+    }
+
+    Ok(true)
+}
+
 #[tauri::command]
 async fn init_git_repo(project_path: String) -> Result<(), String> {
     let validated_path = validate_project_path(&project_path)?;
@@ -2057,27 +2117,8 @@ async fn init_git_repo(project_path: String) -> Result<(), String> {
         return Err(String::from_utf8_lossy(&output.stderr).to_string());
     }
 
-    // Stage all files
-    let output = Command::new("git")
-        .args(["add", "-A"])
-        .current_dir(&validated_path)
-        .output()
-        .map_err(|e| e.to_string())?;
-
-    if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr).to_string());
-    }
-
-    // Create initial commit
-    let output = Command::new("git")
-        .args(["commit", "-m", "Initial commit from Marketingstack"])
-        .current_dir(&validated_path)
-        .output()
-        .map_err(|e| e.to_string())?;
-
-    if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr).to_string());
-    }
+    // Stage and commit all files
+    git_stage_and_commit(&validated_path, "Initial commit from Marketingstack")?;
 
     Ok(())
 }
@@ -2093,16 +2134,7 @@ async fn check_git_has_changes(project_path: String) -> Result<bool, String> {
     }
 
     // Check for uncommitted changes (staged or unstaged tracked files only)
-    // Use -uno to ignore untracked files like .DS_Store
-    let status = Command::new("git")
-        .args(["status", "--porcelain", "-uno"])
-        .current_dir(&project)
-        .output()
-        .map_err(|e| e.to_string())?;
-
-    let has_uncommitted = !String::from_utf8_lossy(&status.stdout).trim().is_empty();
-
-    if has_uncommitted {
+    if git_has_uncommitted_changes(&project)? {
         return Ok(true);
     }
 
@@ -2151,23 +2183,7 @@ async fn push_to_github(options: PushToGitHubOptions) -> Result<String, String> 
         init_git_repo(options.project_path.clone()).await?;
     } else {
         // Make sure all changes are committed
-        let _ = Command::new("git")
-            .args(["add", "-A"])
-            .current_dir(&validated_path)
-            .output();
-
-        let status = Command::new("git")
-            .args(["status", "--porcelain"])
-            .current_dir(&validated_path)
-            .output()
-            .map_err(|e| e.to_string())?;
-
-        if !String::from_utf8_lossy(&status.stdout).trim().is_empty() {
-            let _ = Command::new("git")
-                .args(["commit", "-m", "Update from Marketingstack"])
-                .current_dir(&validated_path)
-                .output();
-        }
+        let _ = git_stage_and_commit(&validated_path, "Update from Marketingstack");
     }
 
     // Create GitHub repo and push
@@ -2287,38 +2303,10 @@ struct PublishResult {
 
 #[tauri::command]
 async fn publish_to_staging(project_path: String) -> Result<PublishResult, String> {
-    eprintln!("publish_to_staging called with path: {}", project_path);
     let validated_path = validate_project_path(&project_path)?;
-    let message = "Update from Marketingstack".to_string();
 
-    // Stage all changes
-    Command::new("git")
-        .args(["add", "-A"])
-        .current_dir(&validated_path)
-        .output()
-        .map_err(|e| e.to_string())?;
-
-    // Check if there are changes to commit
-    let status = Command::new("git")
-        .args(["status", "--porcelain"])
-        .current_dir(&validated_path)
-        .output()
-        .map_err(|e| e.to_string())?;
-
-    let has_changes = !String::from_utf8_lossy(&status.stdout).trim().is_empty();
-
-    if has_changes {
-        // Commit changes
-        let output = Command::new("git")
-            .args(["commit", "-m", &message])
-            .current_dir(&validated_path)
-            .output()
-            .map_err(|e| e.to_string())?;
-
-        if !output.status.success() {
-            return Err(String::from_utf8_lossy(&output.stderr).to_string());
-        }
-    }
+    // Stage and commit any changes
+    let _ = git_stage_and_commit(&validated_path, "Update from Marketingstack");
 
     // Push to staging branch - Vercel auto-deploys via GitHub integration
     let push_output = Command::new("git")
@@ -2343,38 +2331,10 @@ async fn publish_to_staging(project_path: String) -> Result<PublishResult, Strin
 
 #[tauri::command]
 async fn publish_to_production(project_path: String) -> Result<PublishResult, String> {
-    eprintln!("publish_to_production called with path: {}", project_path);
     let validated_path = validate_project_path(&project_path)?;
-    let message = "Update from Marketingstack".to_string();
 
-    // Stage all changes
-    Command::new("git")
-        .args(["add", "-A"])
-        .current_dir(&validated_path)
-        .output()
-        .map_err(|e| e.to_string())?;
-
-    // Check if there are changes to commit
-    let status = Command::new("git")
-        .args(["status", "--porcelain"])
-        .current_dir(&validated_path)
-        .output()
-        .map_err(|e| e.to_string())?;
-
-    let has_changes = !String::from_utf8_lossy(&status.stdout).trim().is_empty();
-
-    if has_changes {
-        // Commit changes
-        let output = Command::new("git")
-            .args(["commit", "-m", &message])
-            .current_dir(&validated_path)
-            .output()
-            .map_err(|e| e.to_string())?;
-
-        if !output.status.success() {
-            return Err(String::from_utf8_lossy(&output.stderr).to_string());
-        }
-    }
+    // Stage and commit any changes
+    let _ = git_stage_and_commit(&validated_path, "Update from Marketingstack");
 
     // Push to main branch - Vercel auto-deploys to production via GitHub integration
     let push_output = Command::new("git")
@@ -2553,15 +2513,8 @@ struct BranchStatus {
 async fn get_branch_status(project_path: String) -> Result<BranchStatus, String> {
     let validated_path = validate_project_path(&project_path)?;
 
-    // Check for local changes - only count modified/staged tracked files, not untracked
-    // Use -uno to ignore untracked files (those are not "changes" to publish)
-    let status = Command::new("git")
-        .args(["status", "--porcelain", "-uno"])
-        .current_dir(&validated_path)
-        .output()
-        .map_err(|e| e.to_string())?;
-
-    let local_changes = !String::from_utf8_lossy(&status.stdout).trim().is_empty();
+    // Check for local changes (tracked files only)
+    let local_changes = git_has_uncommitted_changes(&validated_path)?;
 
     // Fetch latest from origin (silently)
     let _ = Command::new("git")

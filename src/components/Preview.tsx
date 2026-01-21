@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useClickOutside } from "../hooks/useClickOutside";
 
 // Constants
 const PAGE_REFRESH_INTERVAL_MS = 5000;
@@ -162,16 +163,11 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   }, [projectPath]);
 
   // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setShowPageDropdown(false);
-        setPageSearch("");
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+  const closePageDropdown = useCallback(() => {
+    setShowPageDropdown(false);
+    setPageSearch("");
   }, []);
+  useClickOutside(dropdownRef, closePageDropdown, showPageDropdown);
 
   // Focus search input when dropdown opens
   useEffect(() => {
@@ -243,6 +239,23 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     }
   };
 
+  // Shared helper: capture the current window and return the temp file path
+  const captureWindowScreenshot = useCallback(async (): Promise<string | null> => {
+    const { getScreenshotableWindows, getWindowScreenshot } = await import("tauri-plugin-screenshots-api");
+
+    const windows = await getScreenshotableWindows();
+    const ourWindow = windows.find(w =>
+      w.title?.toLowerCase().includes("marketingstack") ||
+      w.title?.toLowerCase().includes("tauri")
+    );
+
+    if (!ourWindow) {
+      return null;
+    }
+
+    return await getWindowScreenshot(ourWindow.id);
+  }, []);
+
   // Capture preview screenshot using Tauri window capture + crop
   const captureForClaude = useCallback(async (): Promise<string | null> => {
     if (!iframeWrapperRef.current) {
@@ -250,20 +263,8 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     }
 
     try {
-      const { getScreenshotableWindows, getWindowScreenshot } = await import("tauri-plugin-screenshots-api");
-
-      const windows = await getScreenshotableWindows();
-      const ourWindow = windows.find(w =>
-        w.title?.toLowerCase().includes("marketingstack") ||
-        w.title?.toLowerCase().includes("tauri")
-      );
-
-      if (!ourWindow) {
-        return null;
-      }
-
-      // Capture the full window
-      const tempPath = await getWindowScreenshot(ourWindow.id);
+      const tempPath = await captureWindowScreenshot();
+      if (!tempPath) return null;
 
       // Get the iframe's bounding rect and account for device pixel ratio
       const rect = iframeWrapperRef.current.getBoundingClientRect();
@@ -284,7 +285,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
       console.error("[Preview] Capture failed:", error);
       return null;
     }
-  }, [projectPath]);
+  }, [projectPath, captureWindowScreenshot]);
 
   // Capture a specific region of the preview
   const captureRegion = useCallback(async (
@@ -298,20 +299,8 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     }
 
     try {
-      const { getScreenshotableWindows, getWindowScreenshot } = await import("tauri-plugin-screenshots-api");
-
-      const windows = await getScreenshotableWindows();
-      const ourWindow = windows.find(w =>
-        w.title?.toLowerCase().includes("marketingstack") ||
-        w.title?.toLowerCase().includes("tauri")
-      );
-
-      if (!ourWindow) {
-        return null;
-      }
-
-      // Capture the full window
-      const tempPath = await getWindowScreenshot(ourWindow.id);
+      const tempPath = await captureWindowScreenshot();
+      if (!tempPath) return null;
 
       // Get the iframe's position relative to the window
       const iframeRect = iframeWrapperRef.current.getBoundingClientRect();
@@ -338,7 +327,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
       console.error("[Preview] Region capture failed:", error);
       return null;
     }
-  }, [projectPath]);
+  }, [projectPath, captureWindowScreenshot]);
 
   // Handle crop selection mouse events
   const handleCropMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {

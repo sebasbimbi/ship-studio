@@ -30,14 +30,6 @@ export async function getProjectGitHubStatus(projectPath: string): Promise<Proje
   return invoke<ProjectGitHubStatus>("get_project_github_status", { projectPath });
 }
 
-export async function checkGitHasChanges(projectPath: string): Promise<boolean> {
-  return invoke<boolean>("check_git_has_changes", { projectPath });
-}
-
-export async function initGitRepo(projectPath: string): Promise<void> {
-  return invoke("init_git_repo", { projectPath });
-}
-
 export interface PushToGitHubOptions {
   projectPath: string;
   repoName: string;
@@ -48,11 +40,7 @@ export async function pushToGitHub(options: PushToGitHubOptions): Promise<string
   return invoke<string>("push_to_github", { options });
 }
 
-export async function publishToGitHub(projectPath: string, commitMessage?: string): Promise<void> {
-  return invoke("publish_to_github", { projectPath, commitMessage });
-}
-
-export interface PublishResult {
+interface PublishResult {
   url: string;
   state: string;
 }

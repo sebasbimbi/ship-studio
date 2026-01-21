@@ -9,6 +9,17 @@ import {
   resetToBranch,
 } from "../lib/github";
 import { ProjectVercelStatus } from "../lib/vercel";
+import {
+  ChevronIcon,
+  ExternalLinkIcon,
+  SuccessIcon,
+  ErrorIcon,
+  SpinnerIcon,
+  VercelIcon,
+  CopyIcon,
+  ResetIcon,
+} from "./icons";
+import { useClickOutside } from "../hooks/useClickOutside";
 
 interface PublishDropdownProps {
   projectGithubStatus: ProjectGitHubStatus | null;
@@ -75,18 +86,11 @@ export function PublishDropdown({
   }, [isOpen, hasGitHubRepo, fetchBranchStatus]);
 
   // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-        onModalClose?.();
-      }
-    };
-    if (isOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isOpen, onModalClose]);
+  const closeDropdown = useCallback(() => {
+    setIsOpen(false);
+    onModalClose?.();
+  }, [onModalClose]);
+  useClickOutside(dropdownRef, closeDropdown, isOpen);
 
   const handlePublish = async () => {
     if (!stagingChecked && !productionChecked) return;
@@ -516,81 +520,6 @@ export function PublishDropdown({
   );
 }
 
-function ChevronIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <polyline points="6 9 12 15 18 9" />
-    </svg>
-  );
-}
-
-function ExternalLinkIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-      <polyline points="15 3 21 3 21 9" />
-      <line x1="10" y1="14" x2="21" y2="3" />
-    </svg>
-  );
-}
-
-function SuccessIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-      <polyline points="22 4 12 14.01 9 11.01" />
-    </svg>
-  );
-}
-
-function ErrorIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="12" cy="12" r="10" />
-      <line x1="15" y1="9" x2="9" y2="15" />
-      <line x1="9" y1="9" x2="15" y2="15" />
-    </svg>
-  );
-}
-
-function SpinnerIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="spinner-icon">
-      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-    </svg>
-  );
-}
-
-function VercelIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 116 100" fill="currentColor">
-      <path d="M57.5 0L115 100H0L57.5 0z" />
-    </svg>
-  );
-}
-
-function CopyIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-    </svg>
-  );
-}
-
 function SmallSpinnerIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="spinner-icon">
-      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-    </svg>
-  );
-}
-
-function ResetIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-      <path d="M3 3v5h5" />
-    </svg>
-  );
+  return <SpinnerIcon size={12} />;
 }

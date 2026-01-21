@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -9,6 +9,8 @@ import { DashboardProject, getDashboardProjects } from "../lib/project";
 import { DashboardHeader } from "./DashboardHeader";
 import { ProjectCard } from "./ProjectCard";
 import { IntegrationBar } from "./IntegrationBar";
+import { ChevronIcon, CheckIcon } from "./icons";
+import { useClickOutside } from "../hooks/useClickOutside";
 
 interface Project {
   name: string;
@@ -82,15 +84,8 @@ export function ProjectList({
   }, []);
 
   // Close sort dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (sortDropdownRef.current && !sortDropdownRef.current.contains(e.target as Node)) {
-        setShowSortDropdown(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  const closeSortDropdown = useCallback(() => setShowSortDropdown(false), []);
+  useClickOutside(sortDropdownRef, closeSortDropdown, showSortDropdown);
 
   const loadProjects = async () => {
     try {
@@ -453,38 +448,4 @@ function parseRelativeTime(timeStr: string): number {
     case "d": return value * 60 * 24;
     default: return Infinity;
   }
-}
-
-function ChevronIcon() {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <polyline points="6 9 12 15 18 9" />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <polyline points="20 6 9 17 4 12" />
-    </svg>
-  );
 }
