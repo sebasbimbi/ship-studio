@@ -3121,13 +3121,19 @@ async fn get_full_setup_status() -> FullSetupStatus {
     });
 
     // 7. Claude Auth - check if claude is authenticated
-    let claude_auth = claude_path.as_ref().map(|p| {
-        Command::new(p)
-            .args(["auth", "status"])
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
-    }).unwrap_or(false);
+    // Claude Code stores session data in ~/.claude after OAuth login
+    // If the directory exists with content, user has authenticated
+    let claude_auth = if claude_path.is_some() {
+        if let Some(home) = dirs::home_dir() {
+            let claude_dir = home.join(".claude");
+            // Check if .claude dir exists and has settings.json (created after first auth)
+            claude_dir.exists() && claude_dir.join("settings.json").exists()
+        } else {
+            false
+        }
+    } else {
+        false
+    };
     items.push(SetupItemInfo {
         id: "claude_auth".to_string(),
         friendly_name: "Claude Account".to_string(),
@@ -3346,18 +3352,21 @@ async fn start_claude_auth(app: tauri::AppHandle) -> Result<u32, String> {
 }
 
 /// Check if Claude is authenticated
+/// Claude Code stores session data in ~/.claude after OAuth login
 #[tauri::command]
 async fn check_claude_auth_status() -> bool {
-    let claude_path = match find_claude_binary() {
-        Some(p) => p,
-        None => return false,
-    };
+    // First check if Claude is installed
+    if find_claude_binary().is_none() {
+        return false;
+    }
 
-    Command::new(&claude_path)
-        .args(["auth", "status"])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    // Check if ~/.claude/settings.json exists (created after first auth)
+    if let Some(home) = dirs::home_dir() {
+        let settings_path = home.join(".claude").join("settings.json");
+        return settings_path.exists();
+    }
+
+    false
 }
 
 /// Start Vercel authentication (opens browser)
