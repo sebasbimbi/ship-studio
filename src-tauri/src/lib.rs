@@ -3364,9 +3364,9 @@ struct DeploymentStatus {
 async fn get_deployment_status(project_path: String) -> Result<Option<DeploymentStatus>, String> {
     let validated_path = validate_project_path(&project_path)?;
 
-    // Run vercel ls --json to get recent deployments
+    // Run vercel ls to get recent deployments (no --json flag available)
     let output = Command::new("vercel")
-        .args(["ls", "--json", "-n", "1"])
+        .args(["ls"])
         .current_dir(&validated_path)
         .output()
         .map_err(|e| format!("Failed to run vercel ls: {}", e))?;
@@ -3378,32 +3378,41 @@ async fn get_deployment_status(project_path: String) -> Result<Option<Deployment
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // Parse JSON output - it's an array of deployments
-    let deployments: Vec<serde_json::Value> = serde_json::from_str(&stdout)
-        .map_err(|e| format!("Failed to parse vercel output: {}", e))?;
+    // Parse text output - find first deployment line with URL
+    // Format: "  Age     https://project-xxx.vercel.app     ● Ready     Environment     Duration     Username"
+    for line in stdout.lines() {
+        let line = line.trim();
 
-    // Get the most recent deployment
-    if let Some(deployment) = deployments.first() {
-        let state = deployment.get("state")
-            .and_then(|v| v.as_str())
-            .unwrap_or("UNKNOWN")
-            .to_string();
+        // Skip header and non-deployment lines
+        if !line.contains("https://") || !line.contains(".vercel.app") {
+            continue;
+        }
 
-        let url = deployment.get("url")
-            .and_then(|v| v.as_str())
-            .map(|s| format!("https://{}", s));
+        // Extract URL (starts with https://)
+        let url = line.split_whitespace()
+            .find(|s| s.starts_with("https://"))
+            .map(|s| s.to_string());
 
-        let created_at = deployment.get("createdAt")
-            .and_then(|v| v.as_u64());
-
-        let ready_at = deployment.get("ready")
-            .and_then(|v| v.as_u64());
+        // Extract status (● Ready, ● Error, ○ Building, ◌ Queued, etc.)
+        let state = if line.contains("● Ready") {
+            "READY"
+        } else if line.contains("● Error") {
+            "ERROR"
+        } else if line.contains("○ Building") {
+            "BUILDING"
+        } else if line.contains("◌ Queued") || line.contains("○ Queued") {
+            "QUEUED"
+        } else if line.contains("● Canceled") {
+            "CANCELED"
+        } else {
+            "UNKNOWN"
+        };
 
         return Ok(Some(DeploymentStatus {
-            state,
+            state: state.to_string(),
             url,
-            created_at,
-            ready_at,
+            created_at: None,
+            ready_at: None,
         }));
     }
 
