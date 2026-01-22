@@ -18,6 +18,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { spawn, IPty } from "tauri-pty";
 import { listen } from "@tauri-apps/api/event";
+import { homeDir } from "@tauri-apps/api/path";
 import { loadNerdFonts } from "../lib/fonts";
 import "@xterm/xterm/css/xterm.css";
 
@@ -214,11 +215,31 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
         // Fit again to ensure correct size
         fitAddon.fit();
 
+        // Build PATH with user-local and system paths for freshly installed tools
+        const home = await homeDir();
+        const homeNormalized = home.endsWith("/") ? home : `${home}/`;
+        const userPaths = [
+          `${homeNormalized}.npm-global/bin`,
+          `${homeNormalized}.local/bin`,
+          `${homeNormalized}.cargo/bin`,
+        ].join(":");
+        const systemPaths = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
+        const fullPath = `${userPaths}:${systemPaths}`;
+
         // Spawn PTY using tauri-pty
+        // Must pass all essential env vars since env replaces (not merges with) parent environment
         const pty = await spawn("claude", [], {
           cwd: projectPath,
           cols: term.cols,
           rows: term.rows,
+          env: {
+            PATH: fullPath,
+            HOME: homeNormalized.slice(0, -1),
+            USER: homeNormalized.split("/").filter(Boolean).pop() || "user",
+            TERM: "xterm-256color",
+            LANG: "en_US.UTF-8",
+            SHELL: "/bin/zsh",
+          },
         });
 
         // Check again after async operation

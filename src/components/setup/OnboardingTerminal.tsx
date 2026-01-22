@@ -148,14 +148,34 @@ export function OnboardingTerminal({
         // Fit again to ensure correct size
         fitAddon.fit();
 
-        // Get home directory for default cwd
-        const homePath = cwd || await homeDir();
+        // Get home directory for default cwd and PATH building
+        const home = await homeDir();
+        const homeNormalized = home.endsWith("/") ? home : `${home}/`;
+        const homePath = cwd || homeNormalized;
+
+        // Build PATH with user-local and system paths for freshly installed tools
+        const userPaths = [
+          `${homeNormalized}.npm-global/bin`,
+          `${homeNormalized}.local/bin`,
+          `${homeNormalized}.cargo/bin`,
+        ].join(":");
+        const systemPaths = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
+        const fullPath = `${userPaths}:${systemPaths}`;
 
         // Spawn PTY using tauri-pty
+        // Must pass all essential env vars since env replaces (not merges with) parent environment
         const pty = await spawn(command, args, {
           cwd: homePath,
           cols: term.cols,
           rows: term.rows,
+          env: {
+            PATH: fullPath,
+            HOME: homeNormalized.slice(0, -1),
+            USER: homeNormalized.split("/").filter(Boolean).pop() || "user",
+            TERM: "xterm-256color",
+            LANG: "en_US.UTF-8",
+            SHELL: "/bin/zsh",
+          },
         });
 
         // Check again after async operation

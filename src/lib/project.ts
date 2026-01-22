@@ -11,6 +11,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { spawn, IPty } from "tauri-pty";
+import { homeDir } from "@tauri-apps/api/path";
 
 /** Basic project information */
 export interface Project {
@@ -96,10 +97,30 @@ export async function startDevServer(
 ): Promise<DevServerHandle> {
   const decoder = new TextDecoder();
 
+  // Build PATH with user-local and system paths for freshly installed tools
+  const home = await homeDir();
+  const homeNormalized = home.endsWith("/") ? home : `${home}/`;
+  const userPaths = [
+    `${homeNormalized}.npm-global/bin`,
+    `${homeNormalized}.local/bin`,
+    `${homeNormalized}.cargo/bin`,
+  ].join(":");
+  const systemPaths = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
+  const fullPath = `${userPaths}:${systemPaths}`;
+
+  // Must pass all essential env vars since env replaces (not merges with) parent environment
   const pty = await spawn("npm", ["run", "dev"], {
     cwd: projectPath,
     cols: 80,
     rows: 24,
+    env: {
+      PATH: fullPath,
+      HOME: homeNormalized.slice(0, -1),
+      USER: homeNormalized.split("/").filter(Boolean).pop() || "user",
+      TERM: "xterm-256color",
+      LANG: "en_US.UTF-8",
+      SHELL: "/bin/zsh",
+    },
   });
 
   if (onOutput) {
