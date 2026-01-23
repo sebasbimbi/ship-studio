@@ -308,7 +308,7 @@ Edit `src-tauri/tauri.conf.json` to modify:
 
 The Next.js template is cloned from:
 ```
-https://github.com/ship-studio/ship-studio-boilerplate
+https://github.com/ship-studio/static-marketing-site-starter
 ```
 
 To use a different template, update `TEMPLATE_REPO` in `src/components/CreateProject.tsx`.

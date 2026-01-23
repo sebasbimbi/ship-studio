@@ -41,7 +41,7 @@ const TEMPLATES: Template[] = [
     id: "nextjs-basic",
     name: "Next.js Basic",
     description: "A minimal Next.js starter with Tailwind CSS",
-    repo: "https://github.com/ship-studio/ship-studio-boilerplate",
+    repo: "https://github.com/ship-studio/static-marketing-site-starter",
   },
 ];
 
