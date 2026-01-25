@@ -42,3 +42,18 @@
 - GitHub: Check via `gh auth status`
 - Vercel: Check via `vercel whoami`
 - Claude: Check via `claude --version`
+
+## Releasing New Versions
+
+**CRITICAL: When releasing a new version, you MUST update `RELEASE_NOTES.md` BEFORE creating the tag.**
+
+The release notes in this file are shown to users in the update dialog. They need to know what's new.
+
+### Release Checklist
+1. **Update `RELEASE_NOTES.md`** - Write user-friendly notes about what changed
+2. Update version in: `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`
+3. Commit all changes
+4. Create and push tag: `git tag -a vX.Y.Z -m "message" && git push origin main && git push origin vX.Y.Z`
+5. Wait for GitHub Actions, then publish the draft release
+
+See `RELEASING.md` for full details.

@@ -123,6 +123,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout repo for release notes
+        uses: actions/checkout@v4
+
       - name: Download all updater artifacts
         uses: actions/download-artifact@v4
         with:
@@ -136,6 +139,16 @@ jobs:
       - name: Get version from tag
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Read release notes
+        id: release_notes
+        run: |
+          # Read RELEASE_NOTES.md and extract the content (skip the HTML comment)
+          # Use a delimiter for multiline output
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          # Extract everything after "## What's New" line, strip markdown headers
+          sed -n '/^## What/,$ p' RELEASE_NOTES.md | tail -n +2 | sed 's/^- /• /' >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create latest.json
         run: |
@@ -151,11 +164,19 @@ jobs:
           echo "aarch64 signature: $AARCH64_SIG"
           echo "x86_64 signature: $X86_64_SIG"
 
+          # Read release notes (escape for JSON)
+          NOTES=$(cat << 'NOTES_EOF'
+          ${{ steps.release_notes.outputs.notes }}
+          NOTES_EOF
+          )
+          # Escape newlines and quotes for JSON
+          NOTES_JSON=$(echo "$NOTES" | sed 's/"/\\"/g' | tr '\n' ' ' | sed 's/  */ /g' | xargs)
+
           # Create the manifest using printf to avoid YAML parsing issues
           # URLs point to the PUBLIC releases repo so auto-updater can download
           printf '%s\n' '{' \
             "  \"version\": \"${VERSION}\"," \
-            '  "notes": "See the release notes on GitHub for details.",' \
+            "  \"notes\": \"${NOTES_JSON}\"," \
             "  \"pub_date\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"," \
             '  "platforms": {' \
             '    "darwin-aarch64": {' \
@@ -194,12 +215,11 @@ jobs:
           TAG="${{ github.ref_name }}"
           VERSION="${{ steps.version.outputs.version }}"
 
-          # Create the release in the public repo
+          # Create the release in the public repo (auto-published, no draft)
           gh release create "$TAG" \
             --repo ship-studio/releases \
             --title "Ship Studio v${VERSION}" \
             --notes "Auto-updater release for Ship Studio v${VERSION}. See the main repository for full release notes." \
-            --draft \
             artifacts/updater-darwin-aarch64/ShipStudio_darwin-aarch64.app.tar.gz \
             artifacts/updater-darwin-x86_64/ShipStudio_darwin-x86_64.app.tar.gz \
             latest.json
