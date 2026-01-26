@@ -24,12 +24,56 @@ pub fn get_extended_path() -> String {
         paths.push(format!("{}/.local/bin", home_str)); // Official Claude installer location
         paths.push(format!("{}/n/bin", home_str));
 
-        // Add NVM current version if it exists
-        let nvm_base = home.join(".nvm/versions/node");
-        if nvm_base.exists() {
-            if let Ok(entries) = std::fs::read_dir(&nvm_base) {
-                for entry in entries.flatten() {
-                    paths.push(format!("{}/bin", entry.path().to_string_lossy()));
+        // Add NVM current/default version if it exists
+        // First try the default alias, then fall back to finding the latest version
+        let nvm_dir = home.join(".nvm");
+        let nvm_default = nvm_dir.join("alias/default");
+        let nvm_versions = nvm_dir.join("versions/node");
+
+        if nvm_versions.exists() {
+            // Check if there's a default alias
+            let default_version = std::fs::read_to_string(&nvm_default)
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+
+            if let Some(version) = default_version {
+                // Default alias might be "lts/iron" or a version like "v20.10.0"
+                // Try to resolve it to an actual path
+                let version_path = if version.starts_with("lts/") || version.starts_with("node") {
+                    // For lts aliases, we'd need to read more files - just use latest version
+                    None
+                } else {
+                    // Direct version reference
+                    let path = nvm_versions.join(&version);
+                    if path.exists() { Some(path) } else { None }
+                };
+
+                if let Some(path) = version_path {
+                    paths.push(format!("{}/bin", path.to_string_lossy()));
+                }
+            }
+
+            // If no default found or couldn't resolve, find the latest installed version
+            if paths.iter().all(|p| !p.contains(".nvm/versions/node")) {
+                if let Ok(entries) = std::fs::read_dir(&nvm_versions) {
+                    // Get all version directories and sort to find the latest
+                    let mut versions: Vec<_> = entries
+                        .filter_map(|e| e.ok())
+                        .filter(|e| e.path().is_dir())
+                        .collect();
+
+                    // Sort by version (descending) - versions are like "v20.10.0"
+                    versions.sort_by(|a, b| {
+                        let a_name = a.file_name().to_string_lossy().to_string();
+                        let b_name = b.file_name().to_string_lossy().to_string();
+                        b_name.cmp(&a_name) // Reverse order for descending
+                    });
+
+                    // Use the latest version only
+                    if let Some(latest) = versions.first() {
+                        paths.push(format!("{}/bin", latest.path().to_string_lossy()));
+                    }
                 }
             }
         }

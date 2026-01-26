@@ -15,6 +15,9 @@ use crate::commands::github::get_gh_command;
 // Mock state for testing - tracks which items have been "installed" in debug mode
 lazy_static::lazy_static! {
     static ref MOCK_INSTALLED: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
+    /// Global registry of spawned auth process PIDs for cleanup
+    /// Maps auth type (e.g., "github", "claude", "vercel") -> OS process ID (PID)
+    static ref AUTH_PIDS: Mutex<std::collections::HashMap<String, u32>> = Mutex::new(std::collections::HashMap::new());
 }
 
 /// Check if we're in mock/debug mode
@@ -446,7 +449,18 @@ pub async fn start_github_auth(app: tauri::AppHandle) -> Result<String, String> 
         .spawn()
         .map_err(|e| format!("Failed to start GitHub auth: {}", e))?;
 
-    std::mem::forget(child);
+    // Store the process PID for potential cleanup instead of forgetting it
+    let pid = child.id();
+    if let Ok(mut pids) = AUTH_PIDS.lock() {
+        pids.insert("github".to_string(), pid);
+    }
+    // Spawn a thread to wait for the process and clean up the registry when it exits
+    std::thread::spawn(move || {
+        let _ = child.wait_with_output();
+        if let Ok(mut pids) = AUTH_PIDS.lock() {
+            pids.remove("github");
+        }
+    });
 
     Ok("A code has been copied to your clipboard. Paste it in the browser to connect.".to_string())
 }
@@ -472,7 +486,18 @@ pub async fn start_claude_auth(app: tauri::AppHandle) -> Result<String, String> 
         .spawn()
         .map_err(|e| format!("Failed to start Claude auth: {}", e))?;
 
-    std::mem::forget(child);
+    // Store the process PID for potential cleanup instead of forgetting it
+    let pid = child.id();
+    if let Ok(mut pids) = AUTH_PIDS.lock() {
+        pids.insert("claude".to_string(), pid);
+    }
+    // Spawn a thread to wait for the process and clean up the registry when it exits
+    std::thread::spawn(move || {
+        let _ = child.wait_with_output();
+        if let Ok(mut pids) = AUTH_PIDS.lock() {
+            pids.remove("claude");
+        }
+    });
 
     Ok("Browser opened. Log in to your Anthropic account to continue.".to_string())
 }
@@ -523,7 +548,66 @@ pub async fn start_vercel_auth(app: tauri::AppHandle) -> Result<String, String> 
         .spawn()
         .map_err(|e| format!("Failed to start Vercel auth: {}", e))?;
 
-    std::mem::forget(child);
+    // Store the process PID for potential cleanup instead of forgetting it
+    let pid = child.id();
+    if let Ok(mut pids) = AUTH_PIDS.lock() {
+        pids.insert("vercel".to_string(), pid);
+    }
+    // Spawn a thread to wait for the process and clean up the registry when it exits
+    std::thread::spawn(move || {
+        let _ = child.wait_with_output();
+        if let Ok(mut pids) = AUTH_PIDS.lock() {
+            pids.remove("vercel");
+        }
+    });
 
     Ok("Browser opened. Log in to your Vercel account to continue.".to_string())
+}
+
+/// Kill all tracked auth processes (synchronous helper).
+///
+/// This is useful for cleanup when closing the app to prevent orphaned processes.
+/// Returns the number of processes that were killed.
+pub fn cleanup_auth_processes_sync() -> u32 {
+    let pids: Vec<(String, u32)> = {
+        match AUTH_PIDS.lock() {
+            Ok(pids) => pids.iter().map(|(k, &v)| (k.clone(), v)).collect(),
+            Err(_) => return 0,
+        }
+    };
+
+    let count = pids.len() as u32;
+
+    for (_auth_type, pid) in pids {
+        #[cfg(unix)]
+        {
+            // Send SIGTERM for graceful shutdown
+            let _ = Command::new("kill")
+                .args(["-TERM", &pid.to_string()])
+                .output();
+        }
+
+        #[cfg(windows)]
+        {
+            let _ = Command::new("taskkill")
+                .args(["/F", "/PID", &pid.to_string()])
+                .output();
+        }
+    }
+
+    // Clear the registry
+    if let Ok(mut pids) = AUTH_PIDS.lock() {
+        pids.clear();
+    }
+
+    count
+}
+
+/// Kill all tracked auth processes (Tauri command wrapper).
+///
+/// This is useful for cleanup when closing the app to prevent orphaned processes.
+/// Returns the number of processes that were killed.
+#[tauri::command]
+pub async fn cleanup_auth_processes() -> Result<u32, String> {
+    Ok(cleanup_auth_processes_sync())
 }

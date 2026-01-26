@@ -74,16 +74,15 @@ pub fn find_claude_binary() -> Option<std::path::PathBuf> {
 #[tauri::command]
 pub async fn check_claude_cli_status() -> ClaudeCliStatus {
     // Check if claude CLI is installed
-    let claude_path = find_claude_binary();
-
-    if claude_path.is_none() {
-        return ClaudeCliStatus {
-            installed: false,
-            version: None,
-        };
-    }
-
-    let claude_path = claude_path.unwrap();
+    let claude_path = match find_claude_binary() {
+        Some(path) => path,
+        None => {
+            return ClaudeCliStatus {
+                installed: false,
+                version: None,
+            };
+        }
+    };
 
     // Get version
     let version = Command::new(&claude_path)

@@ -69,6 +69,7 @@ pub fn run() {
         .on_window_event(|_window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 cleanup_claude_processes();
+                commands::setup::cleanup_auth_processes_sync();
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -84,6 +85,9 @@ pub fn run() {
             commands::git::list_branches,
             commands::git::get_current_branch,
             commands::git::switch_branch,
+            commands::git::get_stash_info,
+            commands::git::apply_stash,
+            commands::git::drop_stash,
             commands::git::discard_changes,
             commands::git::create_branch,
             commands::git::fetch_all_branches,
@@ -175,6 +179,7 @@ pub fn run() {
             commands::setup::start_claude_auth,
             commands::setup::check_claude_auth_status,
             commands::setup::start_vercel_auth,
+            commands::setup::cleanup_auth_processes,
             // Assets
             commands::assets::list_assets,
             commands::assets::upload_asset,

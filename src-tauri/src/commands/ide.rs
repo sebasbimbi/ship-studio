@@ -85,7 +85,8 @@ pub async fn create_preview_webview(
     let window = webview_ref.window();
 
     // Check if webview already exists
-    let mut exists = PREVIEW_WEBVIEW_EXISTS.lock().unwrap();
+    let mut exists = PREVIEW_WEBVIEW_EXISTS.lock()
+        .map_err(|e| format!("Failed to acquire webview lock: {}", e))?;
     if *exists {
         // Just navigate the existing webview
         if let Some(webview) = app.get_webview("preview") {
@@ -139,7 +140,8 @@ pub async fn resize_preview_webview(
 
 #[tauri::command]
 pub async fn destroy_preview_webview(app: tauri::AppHandle) -> Result<(), String> {
-    let mut exists = PREVIEW_WEBVIEW_EXISTS.lock().unwrap();
+    let mut exists = PREVIEW_WEBVIEW_EXISTS.lock()
+        .map_err(|e| format!("Failed to acquire webview lock: {}", e))?;
     if let Some(webview) = app.get_webview("preview") {
         webview.close().map_err(|e| e.to_string())?;
         *exists = false;

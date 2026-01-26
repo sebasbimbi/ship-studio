@@ -28,16 +28,25 @@ pub async fn publish_to_github(project_path: String, commit_message: Option<Stri
         .current_dir(&validated_path)
         .output();
 
-    // Ignore pull errors (might be first push, or no tracking branch yet)
-    if let Ok(output) = pull_output {
-        if !output.status.success() {
+    // Handle pull errors - log unexpected ones but don't fail
+    match pull_output {
+        Ok(output) if !output.status.success() => {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            if !stderr.contains("no tracking")
-                && !stderr.contains("Couldn't find remote ref")
-                && !stderr.contains("There is no tracking information") {
-                // Log but don't fail - we'll try to push anyway
+            // These errors are expected for new repos/branches
+            let is_expected_error = stderr.contains("no tracking")
+                || stderr.contains("Couldn't find remote ref")
+                || stderr.contains("There is no tracking information")
+                || stderr.contains("fatal: couldn't find remote ref");
+
+            if !is_expected_error {
+                // Log unexpected pull errors for debugging
+                eprintln!("[publish_to_github] Unexpected pull error (continuing anyway): {}", stderr);
             }
         }
+        Err(e) => {
+            eprintln!("[publish_to_github] Failed to execute git pull: {}", e);
+        }
+        _ => {}
     }
 
     // Stage all changes
@@ -91,21 +100,26 @@ pub async fn publish_to_github(project_path: String, commit_message: Option<Stri
 }
 
 #[tauri::command]
-pub async fn publish_to_staging(project_path: String) -> Result<PublishResult, String> {
+pub async fn publish_to_staging(project_path: String, commit_message: Option<String>) -> Result<PublishResult, String> {
     let validated_path = validate_project_path(&project_path)?;
+    let message = commit_message.unwrap_or_else(|| "Update from Ship Studio".to_string());
 
     // Stage and commit any changes
-    let _ = git_stage_and_commit(&validated_path, "Update from Ship Studio");
+    let _ = git_stage_and_commit(&validated_path, &message);
 
     // Push to staging branch - Vercel auto-deploys via GitHub integration
+    // Note: Using regular push instead of force push to avoid overwriting others' work
     let push_output = Command::new("git")
-        .args(["push", "-f", "origin", "HEAD:staging"])
+        .args(["push", "-u", "origin", "HEAD:staging"])
         .current_dir(&validated_path)
         .output()
         .map_err(|e| e.to_string())?;
 
     if !push_output.status.success() {
         let stderr = String::from_utf8_lossy(&push_output.stderr);
+        if stderr.contains("rejected") || stderr.contains("non-fast-forward") {
+            return Err(format!("PUSH_REJECTED: Staging branch has diverged. Pull changes first or resolve conflicts.\n{}", stderr));
+        }
         if !stderr.contains("Everything up-to-date") {
             return Err(stderr.to_string());
         }
@@ -118,11 +132,12 @@ pub async fn publish_to_staging(project_path: String) -> Result<PublishResult, S
 }
 
 #[tauri::command]
-pub async fn publish_to_production(project_path: String) -> Result<PublishResult, String> {
+pub async fn publish_to_production(project_path: String, commit_message: Option<String>) -> Result<PublishResult, String> {
     let validated_path = validate_project_path(&project_path)?;
+    let message = commit_message.unwrap_or_else(|| "Update from Ship Studio".to_string());
 
     // Stage and commit any changes
-    let _ = git_stage_and_commit(&validated_path, "Update from Ship Studio");
+    let _ = git_stage_and_commit(&validated_path, &message);
 
     // Push to main branch - Vercel auto-deploys to production via GitHub integration
     let push_output = Command::new("git")

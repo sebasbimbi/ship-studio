@@ -122,10 +122,23 @@ pub async fn spawn_pty(app: tauri::AppHandle, options: SpawnPtyOptions) -> Resul
     Ok(id)
 }
 
+/// Check if a process with the given PID is still running
+#[cfg(unix)]
+fn is_process_running(pid: u32) -> bool {
+    // kill -0 checks if process exists without actually sending a signal
+    Command::new("kill")
+        .args(["-0", &pid.to_string()])
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
 /// Kill a PTY process by its ID.
 ///
 /// This terminates a process spawned by `spawn_pty`. Returns Ok(true) if the process
 /// was found and killed, Ok(false) if no process with that ID was found.
+///
+/// Uses SIGTERM first to allow graceful shutdown, then SIGKILL after a timeout.
 #[tauri::command]
 pub async fn kill_pty(id: u32) -> Result<bool, String> {
     let pid = {
@@ -136,18 +149,32 @@ pub async fn kill_pty(id: u32) -> Result<bool, String> {
     if let Some(pid) = pid {
         #[cfg(unix)]
         {
-            // Kill the process and its children using SIGTERM first, then SIGKILL
+            // Send SIGTERM first for graceful shutdown
             let _ = Command::new("kill")
                 .args(["-TERM", &pid.to_string()])
                 .output();
 
-            // Give it a moment to terminate gracefully
-            std::thread::sleep(std::time::Duration::from_millis(100));
+            // Wait up to 2 seconds for graceful termination, checking every 100ms
+            let max_wait_ms = 2000;
+            let check_interval_ms = 100;
+            let mut waited_ms = 0;
 
-            // Force kill if still running
-            let _ = Command::new("kill")
-                .args(["-9", &pid.to_string()])
-                .output();
+            while waited_ms < max_wait_ms {
+                std::thread::sleep(std::time::Duration::from_millis(check_interval_ms));
+                waited_ms += check_interval_ms;
+
+                if !is_process_running(pid) {
+                    // Process terminated gracefully
+                    break;
+                }
+            }
+
+            // Force kill if still running after grace period
+            if is_process_running(pid) {
+                let _ = Command::new("kill")
+                    .args(["-9", &pid.to_string()])
+                    .output();
+            }
         }
 
         #[cfg(windows)]

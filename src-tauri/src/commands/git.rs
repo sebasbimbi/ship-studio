@@ -65,6 +65,26 @@ pub fn git_stage_and_commit(path: &std::path::Path, message: &str) -> Result<boo
     Ok(true)
 }
 
+/// Get the current branch name synchronously (for internal use)
+pub fn get_current_branch_sync(path: &std::path::Path) -> Option<String> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(path)
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if branch == "HEAD" || branch.is_empty() {
+        return None;
+    }
+
+    Some(branch)
+}
+
 /// Calculates how many commits `branch` is ahead/behind compared to `compare_to`.
 pub fn get_ahead_behind(path: &std::path::Path, branch: &str, compare_to: &str) -> (i32, i32) {
     let output = Command::new("git")
@@ -257,11 +277,24 @@ pub async fn get_branch_status(project_path: String) -> Result<BranchStatus, Str
     // Check for local changes (tracked files only)
     let local_changes = git_has_uncommitted_changes(&validated_path)?;
 
-    // Fetch latest from origin (silently)
-    let _ = Command::new("git")
+    // Fetch latest from origin (log errors but don't fail)
+    match Command::new("git")
         .args(["fetch", "origin"])
         .current_dir(&validated_path)
-        .output();
+        .output()
+    {
+        Ok(output) if !output.status.success() => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            // Don't log if it's just a network issue or no remote
+            if !stderr.contains("Could not resolve host") && !stderr.contains("Could not read from remote") {
+                eprintln!("[get_branch_status] git fetch failed: {}", stderr);
+            }
+        }
+        Err(e) => {
+            eprintln!("[get_branch_status] Failed to execute git fetch: {}", e);
+        }
+        _ => {}
+    }
 
     // Check if staging branch exists on remote
     let staging_check = Command::new("git")
@@ -481,18 +514,53 @@ pub async fn get_current_branch(project_path: String) -> Result<String, String> 
     Ok(branch)
 }
 
+/// Helper to load project metadata with automatic schema migration
+fn load_project_metadata(project_path: &std::path::Path) -> crate::types::ProjectMetadata {
+    let metadata_path = project_path.join(".shipstudio/project.json");
+    let mut metadata: crate::types::ProjectMetadata = std::fs::read_to_string(&metadata_path)
+        .ok()
+        .and_then(|contents| serde_json::from_str(&contents).ok())
+        .unwrap_or_default();
+
+    // Apply migrations if needed and save the updated metadata
+    if metadata.migrate() {
+        let _ = save_project_metadata(project_path, &metadata);
+    }
+
+    metadata
+}
+
+/// Helper to save project metadata
+fn save_project_metadata(project_path: &std::path::Path, metadata: &crate::types::ProjectMetadata) -> Result<(), String> {
+    let shipstudio_dir = project_path.join(".shipstudio");
+    if !shipstudio_dir.exists() {
+        std::fs::create_dir_all(&shipstudio_dir).map_err(|e| e.to_string())?;
+    }
+    let metadata_path = shipstudio_dir.join("project.json");
+    let json = serde_json::to_string_pretty(metadata).map_err(|e| e.to_string())?;
+    std::fs::write(&metadata_path, json).map_err(|e| e.to_string())
+}
+
 /// Switch to a different branch
 #[tauri::command]
 pub async fn switch_branch(project_path: String, branch_name: String, auto_stash: bool) -> Result<SwitchResult, String> {
     let validated_path = validate_project_path(&project_path)?;
     let mut stashed = false;
+    let mut stash_applied = false;
+    let mut pending_stash_from: Option<String> = None;
+
+    // Get current branch name before switching
+    let current_branch = get_current_branch_sync(&validated_path).unwrap_or_default();
+
+    // Load project metadata to check for existing stash info
+    let mut metadata = load_project_metadata(&validated_path);
 
     // Check for uncommitted changes
     let has_changes = git_has_any_changes(&validated_path)?;
 
     if has_changes && auto_stash {
         let stash_output = Command::new("git")
-            .args(["stash", "push", "-m", "Auto-stash by Ship Studio"])
+            .args(["stash", "push", "-m", &format!("Auto-stash by Ship Studio (from {})", current_branch)])
             .current_dir(&validated_path)
             .output()
             .map_err(|e| e.to_string())?;
@@ -500,11 +568,27 @@ pub async fn switch_branch(project_path: String, branch_name: String, auto_stash
         if stash_output.status.success() {
             let stdout = String::from_utf8_lossy(&stash_output.stdout);
             stashed = !stdout.contains("No local changes");
+
+            // Save stash info to project metadata
+            if stashed {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+
+                metadata.stash_info = Some(crate::types::StashInfo {
+                    from_branch: current_branch.clone(),
+                    stashed_at: now,
+                });
+                let _ = save_project_metadata(&validated_path, &metadata);
+            }
         }
     } else if has_changes && !auto_stash {
         return Ok(SwitchResult {
             success: false,
             stashed_changes: false,
+            pending_stash_from: None,
+            stash_applied: false,
             error: Some("Uncommitted changes. Please stash or commit them first.".to_string()),
         });
     }
@@ -517,19 +601,56 @@ pub async fn switch_branch(project_path: String, branch_name: String, auto_stash
         .map_err(|e| e.to_string())?;
 
     if !checkout_output.status.success() {
+        // Checkout failed - restore the stash if we made one
         if stashed {
             let _ = Command::new("git")
                 .args(["stash", "pop"])
                 .current_dir(&validated_path)
                 .output();
+
+            // Clear stash info since we popped it
+            metadata.stash_info = None;
+            let _ = save_project_metadata(&validated_path, &metadata);
         }
 
         let stderr = String::from_utf8_lossy(&checkout_output.stderr);
         return Ok(SwitchResult {
             success: false,
             stashed_changes: false,
+            pending_stash_from: None,
+            stash_applied: false,
             error: Some(stderr.to_string()),
         });
+    }
+
+    // Checkout succeeded - check if we should auto-apply a stash
+    // Reload metadata in case it was updated
+    metadata = load_project_metadata(&validated_path);
+
+    if let Some(ref stash_info) = metadata.stash_info {
+        // If we're switching back to the branch where we stashed from, offer to apply
+        if stash_info.from_branch == branch_name {
+            // Try to auto-apply the stash
+            let pop_output = Command::new("git")
+                .args(["stash", "pop"])
+                .current_dir(&validated_path)
+                .output();
+
+            if let Ok(output) = pop_output {
+                if output.status.success() {
+                    stash_applied = true;
+                    // Clear stash info
+                    metadata.stash_info = None;
+                    let _ = save_project_metadata(&validated_path, &metadata);
+                } else {
+                    // Stash pop failed (maybe conflicts) - let user know there's a pending stash
+                    pending_stash_from = Some(stash_info.from_branch.clone());
+                }
+            }
+        } else {
+            // We have a stash but it's for a different branch - just note it
+            pending_stash_from = Some(stash_info.from_branch.clone());
+        }
     }
 
     // Pull latest changes from remote
@@ -553,8 +674,65 @@ pub async fn switch_branch(project_path: String, branch_name: String, auto_stash
     Ok(SwitchResult {
         success: true,
         stashed_changes: stashed,
+        pending_stash_from,
+        stash_applied,
         error: None,
     })
+}
+
+/// Get stash info for a project (if any auto-stash exists)
+#[tauri::command]
+pub async fn get_stash_info(project_path: String) -> Result<Option<crate::types::StashInfo>, String> {
+    let validated_path = validate_project_path(&project_path)?;
+    let metadata = load_project_metadata(&validated_path);
+    Ok(metadata.stash_info)
+}
+
+/// Manually apply and clear the auto-stash
+#[tauri::command]
+pub async fn apply_stash(project_path: String) -> Result<bool, String> {
+    let validated_path = validate_project_path(&project_path)?;
+
+    let pop_output = Command::new("git")
+        .args(["stash", "pop"])
+        .current_dir(&validated_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if pop_output.status.success() {
+        // Clear stash info from metadata
+        let mut metadata = load_project_metadata(&validated_path);
+        metadata.stash_info = None;
+        let _ = save_project_metadata(&validated_path, &metadata);
+        Ok(true)
+    } else {
+        let stderr = String::from_utf8_lossy(&pop_output.stderr);
+        Err(format!("Failed to apply stash: {}", stderr))
+    }
+}
+
+/// Drop the auto-stash without applying
+#[tauri::command]
+pub async fn drop_stash(project_path: String) -> Result<bool, String> {
+    let validated_path = validate_project_path(&project_path)?;
+
+    let drop_output = Command::new("git")
+        .args(["stash", "drop"])
+        .current_dir(&validated_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    // Clear stash info from metadata regardless of drop success
+    let mut metadata = load_project_metadata(&validated_path);
+    metadata.stash_info = None;
+    let _ = save_project_metadata(&validated_path, &metadata);
+
+    if drop_output.status.success() {
+        Ok(true)
+    } else {
+        // Stash might already be gone, still clear metadata
+        Ok(false)
+    }
 }
 
 /// Discard all uncommitted changes in the working directory

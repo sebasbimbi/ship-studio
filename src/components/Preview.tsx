@@ -118,7 +118,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   const [pageSearch, setPageSearch] = useState("");
   const [showCmsModal, setShowCmsModal] = useState(false);
   const [cmsWebviewReady, setCmsWebviewReady] = useState(false);
-  const [isCapturing] = useState(false); // Capture disabled for now
+  const [isCapturing, setIsCapturing] = useState(false);
 
   // Crop selection state
   const [selectionStart, setSelectionStart] = useState<{ x: number; y: number } | null>(null);
@@ -161,9 +161,6 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     const timer = setTimeout(() => setRetryCount(0), 1500);
     return () => clearTimeout(timer);
   }, [projectPath, port]);
-
-  // Proxy disabled for now - using dev server directly
-  // TODO: Implement capture using Tauri webview script injection instead
 
   // Load pages
   const loadPages = async () => {
@@ -267,6 +264,35 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     checkServer();
   }, [devServerUrl, retryCount]);
 
+  // Periodic health check after server is ready - detect if it crashes
+  useEffect(() => {
+    if (!serverReady) return;
+
+    const healthCheck = async () => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), SERVER_CHECK_TIMEOUT_MS);
+
+        await fetch(devServerUrl, {
+          mode: "no-cors",
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+      } catch {
+        // Server stopped responding - show error state
+        console.warn("[Preview] Dev server health check failed - server may have crashed");
+        setServerReady(false);
+        setHasError(true);
+        setIsLoading(false);
+      }
+    };
+
+    // Check every 10 seconds while server is ready
+    const interval = setInterval(healthCheck, 10000);
+    return () => clearInterval(interval);
+  }, [serverReady, devServerUrl]);
+
   const handleRefresh = () => {
     setCacheBuster(Date.now());
   };
@@ -298,10 +324,11 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
 
   // Capture preview screenshot using Tauri window capture + crop
   const captureForClaude = useCallback(async (): Promise<string | null> => {
-    if (!iframeWrapperRef.current) {
+    if (!iframeWrapperRef.current || isCapturing) {
       return null;
     }
 
+    setIsCapturing(true);
     try {
       const tempPath = await captureWindowScreenshot();
       if (!tempPath) return null;
@@ -324,8 +351,10 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     } catch (error) {
       console.error("[Preview] Capture failed:", error);
       return null;
+    } finally {
+      setIsCapturing(false);
     }
-  }, [projectPath, captureWindowScreenshot]);
+  }, [projectPath, captureWindowScreenshot, isCapturing]);
 
   // Capture a specific region of the preview
   const captureRegion = useCallback(async (

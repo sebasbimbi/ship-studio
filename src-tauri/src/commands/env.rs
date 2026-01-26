@@ -69,6 +69,11 @@ pub async fn read_env_file(file_path: String) -> Result<Vec<EnvVar>, String> {
     Ok(vars)
 }
 
+/// Maximum length for env variable names (bytes)
+const MAX_ENV_KEY_LENGTH: usize = 256;
+/// Maximum length for env variable values (bytes) - 64KB should be plenty
+const MAX_ENV_VALUE_LENGTH: usize = 65536;
+
 /// Writes environment variables to a .env file with validation.
 /// Validates that variable names are alphanumeric/underscore and don't start with numbers.
 /// Auto-quotes values containing spaces or special characters.
@@ -81,11 +86,19 @@ pub async fn write_env_file(file_path: String, vars: Vec<EnvVar>) -> Result<(), 
         if var.key.is_empty() {
             return Err("Environment variable name cannot be empty".to_string());
         }
+        if var.key.len() > MAX_ENV_KEY_LENGTH {
+            return Err(format!("Environment variable name too long: {} (max {} characters)", var.key, MAX_ENV_KEY_LENGTH));
+        }
         if !var.key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
             return Err(format!("Invalid environment variable name: {}. Only letters, numbers, and underscores allowed.", var.key));
         }
         if var.key.chars().next().map_or(false, |c| c.is_ascii_digit()) {
             return Err(format!("Environment variable name cannot start with a number: {}", var.key));
+        }
+
+        // Validate value length
+        if var.value.len() > MAX_ENV_VALUE_LENGTH {
+            return Err(format!("Environment variable value for {} too long (max {} bytes)", var.key, MAX_ENV_VALUE_LENGTH));
         }
 
         // Quote values that contain spaces or special characters

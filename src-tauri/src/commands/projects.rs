@@ -3,7 +3,7 @@
 //! Commands for managing projects and project metadata.
 
 use std::process::Command;
-use crate::types::{DashboardProject, PageInfo, ProjectInfo, ProjectMetadata};
+use crate::types::{DashboardProject, PageInfo, ProjectInfo, ProjectMetadata, PROJECT_METADATA_SCHEMA_VERSION};
 use crate::utils::validate_project_path;
 use crate::commands::vercel::get_vercel_deployment_info;
 
@@ -305,7 +305,7 @@ pub async fn check_sanity_installed(project_path: String) -> Result<bool, String
     Ok(false)
 }
 
-/// Reads project metadata from .shipstudio/project.json
+/// Reads project metadata from .shipstudio/project.json with automatic schema migration
 #[tauri::command]
 pub async fn read_project_metadata(project_path: String) -> Result<Option<ProjectMetadata>, String> {
     let project = validate_project_path(&project_path)?;
@@ -318,15 +318,24 @@ pub async fn read_project_metadata(project_path: String) -> Result<Option<Projec
     let contents = std::fs::read_to_string(&metadata_path)
         .map_err(|e| format!("Failed to read project metadata: {}", e))?;
 
-    let metadata: ProjectMetadata = serde_json::from_str(&contents)
+    let mut metadata: ProjectMetadata = serde_json::from_str(&contents)
         .map_err(|e| format!("Failed to parse project metadata: {}", e))?;
+
+    // Apply migrations if needed and save the updated metadata
+    if metadata.migrate() {
+        let updated_contents = serde_json::to_string_pretty(&metadata)
+            .map_err(|e| format!("Failed to serialize migrated metadata: {}", e))?;
+        std::fs::write(&metadata_path, updated_contents)
+            .map_err(|e| format!("Failed to save migrated metadata: {}", e))?;
+    }
 
     Ok(Some(metadata))
 }
 
 /// Writes project metadata to .shipstudio/project.json
+/// Always ensures the schema_version is set to the current version.
 #[tauri::command]
-pub async fn write_project_metadata(project_path: String, metadata: ProjectMetadata) -> Result<(), String> {
+pub async fn write_project_metadata(project_path: String, mut metadata: ProjectMetadata) -> Result<(), String> {
     let project = validate_project_path(&project_path)?;
     let shipstudio_dir = project.join(".shipstudio");
 
@@ -334,6 +343,9 @@ pub async fn write_project_metadata(project_path: String, metadata: ProjectMetad
         std::fs::create_dir_all(&shipstudio_dir)
             .map_err(|e| format!("Failed to create .shipstudio directory: {}", e))?;
     }
+
+    // Ensure schema_version is current when writing
+    metadata.schema_version = PROJECT_METADATA_SCHEMA_VERSION;
 
     let metadata_path = shipstudio_dir.join("project.json");
     let contents = serde_json::to_string_pretty(&metadata)

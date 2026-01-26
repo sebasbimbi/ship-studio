@@ -11,6 +11,34 @@ use crate::types::{
 use crate::utils::{get_extended_path, validate_project_path, format_relative_time};
 use crate::commands::setup::is_mock_mode;
 
+/// Default timeout for Vercel CLI commands (30 seconds)
+const VERCEL_CLI_TIMEOUT_SECS: u64 = 30;
+
+/// Maximum timeout for deployment operations (5 minutes)
+#[allow(dead_code)]
+const VERCEL_DEPLOY_TIMEOUT_SECS: u64 = 300;
+
+/// Run a command with a timeout. Returns the output if successful, or an error if timed out.
+async fn run_command_with_timeout(
+    cmd: Command,
+    timeout_secs: u64,
+) -> Result<std::process::Output, String> {
+    // Convert std::process::Command to tokio::process::Command
+    let mut tokio_cmd = tokio::process::Command::from(cmd);
+
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(timeout_secs),
+        tokio_cmd.output(),
+    )
+    .await;
+
+    match result {
+        Ok(Ok(output)) => Ok(output),
+        Ok(Err(e)) => Err(format!("Command failed: {}", e)),
+        Err(_) => Err(format!("Command timed out after {} seconds", timeout_secs)),
+    }
+}
+
 /// Finds the Vercel CLI binary by checking common installation paths.
 pub fn find_vercel_binary() -> Option<std::path::PathBuf> {
     // First try which
@@ -311,7 +339,9 @@ pub async fn write_vercel_project_json(
         "orgId": org_id
     });
 
-    std::fs::write(&project_json, serde_json::to_string_pretty(&content).unwrap())
+    let json_content = serde_json::to_string_pretty(&content)
+        .map_err(|e| format!("Failed to serialize project.json: {}", e))?;
+    std::fs::write(&project_json, json_content)
         .map_err(|e| format!("Failed to write project.json: {}", e))?;
 
     Ok(())
@@ -816,15 +846,27 @@ fn parse_deployment_line(line: &str) -> Option<(String, String, Option<String>)>
     Some((url, state, branch))
 }
 
+/// Get Vercel deployments with a 30-second timeout to prevent hanging.
 #[tauri::command]
 pub async fn get_vercel_deployments(project_path: String) -> Result<VercelDeploymentStatus, String> {
     let validated_path = validate_project_path(&project_path)?;
 
-    let output = get_vercel_command()
-        .args(["list", "--limit", "10"])
-        .current_dir(&validated_path)
-        .output()
-        .map_err(|e| format!("Failed to run vercel list: {}", e))?;
+    let mut cmd = get_vercel_command();
+    cmd.args(["list", "--limit", "10"]);
+    cmd.current_dir(&validated_path);
+
+    let output = match run_command_with_timeout(cmd, VERCEL_CLI_TIMEOUT_SECS).await {
+        Ok(output) => output,
+        Err(e) => {
+            eprintln!("vercel list timeout/error: {}", e);
+            return Ok(VercelDeploymentStatus {
+                staging: None,
+                production: None,
+                preview_url: None,
+                production_url: None,
+            });
+        }
+    };
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -898,6 +940,7 @@ pub async fn get_vercel_deployments(project_path: String) -> Result<VercelDeploy
 }
 
 /// Get the latest deployment status for a project from Vercel.
+/// This command has a 30-second timeout to prevent hanging during polling.
 #[tauri::command]
 pub async fn get_deployment_status(project_path: String, _since_timestamp: Option<u64>) -> Result<Option<DeploymentStatus>, String> {
     let validated_path = validate_project_path(&project_path)?;
@@ -909,16 +952,15 @@ pub async fn get_deployment_status(project_path: String, _since_timestamp: Optio
         .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
         .and_then(|json| json.get("orgId").and_then(|v| v.as_str()).map(|s| s.to_string()));
 
-    // Run vercel ls to get deployments
+    // Run vercel ls to get deployments with timeout
     let mut cmd = get_vercel_command();
     cmd.args(["ls", "--no-color"]);
     if let Some(ref org) = org_id {
         cmd.args(["--scope", org]);
     }
-    let output = cmd
-        .current_dir(&validated_path)
-        .output()
-        .map_err(|e| format!("Failed to run vercel ls: {}", e))?;
+    cmd.current_dir(&validated_path);
+
+    let output = run_command_with_timeout(cmd, VERCEL_CLI_TIMEOUT_SECS).await?;
 
     // URLs are in stdout, status table is in stderr
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -963,8 +1005,30 @@ pub async fn get_deployment_status(project_path: String, _since_timestamp: Optio
     }))
 }
 
-/// Helper to get Vercel deployment info for a project (used by get_dashboard_projects)
+/// Helper to get Vercel deployment info for a project (used by get_dashboard_projects).
+/// Prefers `.vercel/project.json` as the source of truth for connection status.
+/// Only returns deployment info if the project is actually linked to Vercel.
 pub fn get_vercel_deployment_info(project_path: &std::path::Path) -> (Option<String>, Option<String>, Option<String>) {
+    // First check if the project is actually linked to Vercel
+    // .vercel/project.json is the source of truth (managed by Vercel CLI)
+    let vercel_config = project_path.join(".vercel").join("project.json");
+    if !vercel_config.exists() {
+        // Not linked to Vercel - ignore any cached deployment info
+        return (None, None, None);
+    }
+
+    // Verify the vercel config has a valid projectId
+    let is_valid_vercel_link = std::fs::read_to_string(&vercel_config)
+        .ok()
+        .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
+        .and_then(|json| json.get("projectId").and_then(|v| v.as_str()).map(|s| !s.is_empty()))
+        .unwrap_or(false);
+
+    if !is_valid_vercel_link {
+        return (None, None, None);
+    }
+
+    // Project is linked - now read deployment info from .shipstudio/project.json
     let metadata_path = project_path.join(".shipstudio").join("project.json");
     if metadata_path.exists() {
         if let Ok(contents) = std::fs::read_to_string(&metadata_path) {

@@ -66,6 +66,7 @@ export function GitHubButton({
   const [orgs, setOrgs] = useState<string[]>([]);
   const [selectedOwner, setSelectedOwner] = useState<string | null>(null);
   const authPollCancelledRef = useRef(false);
+  const authPollRunningRef = useRef(false);
 
   const { cliStatus, username } = githubState;
 
@@ -73,9 +74,11 @@ export function GitHubButton({
   useEffect(() => {
     if (cliStatus.authenticated) {
       authPollCancelledRef.current = true;
+      authPollRunningRef.current = false;
     }
     return () => {
       authPollCancelledRef.current = true;
+      authPollRunningRef.current = false;
     };
   }, [cliStatus.authenticated]);
 
@@ -107,21 +110,32 @@ export function GitHubButton({
       <button
         className="github-button github-connect"
         onClick={async () => {
+          // Don't start another poll if one is already running
+          if (authPollRunningRef.current) return;
+
           try {
             await openUrl("https://github.com/login/device");
             // Poll for auth completion (with cancellation support)
             authPollCancelledRef.current = false;
+            authPollRunningRef.current = true;
+
             const pollAuth = async () => {
-              for (let i = 0; i < 60; i++) {
-                if (authPollCancelledRef.current) break;
-                await new Promise((r) => setTimeout(r, 2000));
-                if (authPollCancelledRef.current) break;
-                onGitHubConnect();
+              try {
+                for (let i = 0; i < 60; i++) {
+                  if (authPollCancelledRef.current) break;
+                  await new Promise((r) => setTimeout(r, 2000));
+                  if (authPollCancelledRef.current) break;
+                  onGitHubConnect();
+                }
+              } finally {
+                authPollRunningRef.current = false;
               }
             };
-            pollAuth();
+            // Fire and forget, but properly tracked
+            void pollAuth();
           } catch (e) {
             console.error("Failed to start GitHub auth:", e);
+            authPollRunningRef.current = false;
           }
         }}
         title="Connect your GitHub account"

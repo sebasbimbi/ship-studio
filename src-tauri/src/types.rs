@@ -73,11 +73,27 @@ pub struct PublishMetadata {
     pub production: Option<PublishRecord>,
 }
 
+/// Information about stashed changes from a branch switch
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct StashInfo {
+    /// The branch that was active when changes were stashed
+    pub from_branch: String,
+    /// Unix timestamp (ms) when the stash was created
+    pub stashed_at: u64,
+}
+
+/// Current schema version for project metadata.
+/// Increment this when making breaking changes to the schema.
+pub const PROJECT_METADATA_SCHEMA_VERSION: u32 = 1;
+
 /// Project metadata stored in .shipstudio/project.json
 #[derive(Serialize, Deserialize)]
 pub struct ProjectMetadata {
     #[serde(rename = "_description")]
     pub description: String,
+    /// Schema version for migration support. Defaults to 1 if not present (legacy files).
+    #[serde(default = "default_schema_version")]
+    pub schema_version: u32,
     pub publish: PublishMetadata,
     /// Unix timestamp (ms) when project was last opened
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -85,16 +101,45 @@ pub struct ProjectMetadata {
     /// Whether to prefix branch names with username (default true)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub branch_prefix_username: Option<bool>,
+    /// Information about auto-stashed changes from branch switching
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stash_info: Option<StashInfo>,
+}
+
+fn default_schema_version() -> u32 {
+    1
 }
 
 impl Default for ProjectMetadata {
     fn default() -> Self {
         ProjectMetadata {
             description: "Ship Studio project metadata. Auto-generated - safe to delete if needed, will be recreated.".to_string(),
+            schema_version: PROJECT_METADATA_SCHEMA_VERSION,
             publish: PublishMetadata::default(),
             last_opened: None,
             branch_prefix_username: None,
+            stash_info: None,
         }
+    }
+}
+
+impl ProjectMetadata {
+    /// Migrate metadata from an older schema version to the current version.
+    /// Returns true if migration was performed, false if already current.
+    pub fn migrate(&mut self) -> bool {
+        if self.schema_version >= PROJECT_METADATA_SCHEMA_VERSION {
+            return false;
+        }
+
+        // Future migrations go here:
+        // if self.schema_version < 2 {
+        //     // Migrate from v1 to v2
+        //     self.schema_version = 2;
+        // }
+
+        // Update to current version
+        self.schema_version = PROJECT_METADATA_SCHEMA_VERSION;
+        true
     }
 }
 
@@ -304,7 +349,12 @@ pub struct BranchInfo {
 #[derive(Serialize)]
 pub struct SwitchResult {
     pub success: bool,
+    /// True if changes were stashed during this switch
     pub stashed_changes: bool,
+    /// If switching to a branch that has a pending stash, this contains the source branch name
+    pub pending_stash_from: Option<String>,
+    /// True if a stash was automatically applied
+    pub stash_applied: bool,
     pub error: Option<String>,
 }
 
