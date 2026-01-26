@@ -847,6 +847,7 @@ function App() {
   if (view === "onboarding") {
     return (
       <div className="app">
+        <UpdateBanner />
         <OnboardingScreen onComplete={checkSetup} />
       </div>
     );
