@@ -6,7 +6,7 @@ use std::process::Command;
 use crate::types::{
     DeployToVercelOptions, DeploymentStatus, LinkToVercelOptions, ProjectMetadata,
     ProjectVercelStatus, PublishRecord, VercelCliStatus, VercelDeployment,
-    VercelDeploymentStatus, VercelTeam,
+    VercelDeploymentStatus, VercelProject, VercelTeam,
 };
 use crate::utils::{get_extended_path, validate_project_path, format_relative_time};
 use crate::commands::setup::is_mock_mode;
@@ -204,6 +204,117 @@ pub async fn get_vercel_teams() -> Result<Vec<VercelTeam>, String> {
     }
 
     Ok(teams)
+}
+
+/// List Vercel projects for a given scope (team/user).
+/// If scope is empty, lists projects for the personal account.
+#[tauri::command]
+pub async fn list_vercel_projects(scope: String) -> Result<Vec<VercelProject>, String> {
+    let mut cmd = get_vercel_command();
+    cmd.args(["project", "ls"]);
+
+    // Add scope if provided
+    if !scope.is_empty() {
+        cmd.args(["--scope", &scope]);
+    }
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to run vercel project ls: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to list projects: {}", stderr));
+    }
+
+    // Parse the output - Vercel CLI outputs a table format to stderr
+    // Format:  Project Name    Latest Production URL    Updated
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let full_output = format!("{}{}", stdout, stderr);
+
+    let mut projects = Vec::new();
+    let mut in_table = false;
+
+    // Determine the org_id - use scope if provided, otherwise get from whoami
+    let org_id = if scope.is_empty() {
+        // For personal account, org_id is the user's ID
+        // We'll use "personal" as a placeholder - the actual linking will work
+        "personal".to_string()
+    } else {
+        scope.clone()
+    };
+
+    for line in full_output.lines() {
+        // Skip empty lines and header lines
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        // Detect start of table (after "Fetching projects" line)
+        if trimmed.starts_with("Fetching") || trimmed.contains("──") {
+            in_table = true;
+            continue;
+        }
+
+        // Skip header row
+        if trimmed.starts_with("Project Name") || trimmed.starts_with("Name") {
+            continue;
+        }
+
+        if in_table {
+            // Parse project line - first column is the project name
+            // Split by multiple spaces to get columns
+            let parts: Vec<&str> = trimmed.split_whitespace().collect();
+            if !parts.is_empty() {
+                let name = parts[0].to_string();
+                // Skip if it looks like a header or separator
+                if !name.is_empty()
+                    && !name.contains("─")
+                    && name != "Name"
+                    && name != "Project"
+                {
+                    projects.push(VercelProject {
+                        id: name.clone(), // Project name is used as ID for linking
+                        name,
+                        org_id: org_id.clone(),
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(projects)
+}
+
+/// Write .vercel/project.json to link a project to Vercel
+#[tauri::command]
+pub async fn write_vercel_project_json(
+    project_path: String,
+    project_id: String,
+    org_id: String,
+) -> Result<(), String> {
+    let path = std::path::Path::new(&project_path);
+    let vercel_dir = path.join(".vercel");
+
+    // Create .vercel directory if it doesn't exist
+    std::fs::create_dir_all(&vercel_dir)
+        .map_err(|e| format!("Failed to create .vercel directory: {}", e))?;
+
+    // Write project.json
+    // Include both projectId and projectName (same value) for compatibility
+    let project_json = vercel_dir.join("project.json");
+    let content = serde_json::json!({
+        "projectId": project_id,
+        "projectName": project_id,
+        "orgId": org_id
+    });
+
+    std::fs::write(&project_json, serde_json::to_string_pretty(&content).unwrap())
+        .map_err(|e| format!("Failed to write project.json: {}", e))?;
+
+    Ok(())
 }
 
 #[tauri::command]

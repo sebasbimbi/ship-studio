@@ -144,6 +144,15 @@ pub struct VercelTeam {
     pub is_current: bool,
 }
 
+/// A Vercel project
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct VercelProject {
+    pub id: String,
+    pub name: String,
+    pub org_id: String,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeployToVercelOptions {
@@ -297,6 +306,15 @@ pub struct SwitchResult {
     pub success: bool,
     pub stashed_changes: bool,
     pub error: Option<String>,
+}
+
+/// A file with uncommitted changes
+#[derive(Serialize)]
+pub struct ChangedFile {
+    /// Relative file path from project root
+    pub path: String,
+    /// Change type: "modified", "added", "deleted"
+    pub status: String,
 }
 
 // ============ Pull Requests ============

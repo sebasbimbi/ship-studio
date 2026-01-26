@@ -3,7 +3,7 @@
 //! Commands for Git operations, branch management, and repository management.
 
 use std::process::Command;
-use crate::types::{BranchInfo, BranchStatus, PrerequisiteCheck, SwitchResult};
+use crate::types::{BranchInfo, BranchStatus, ChangedFile, PrerequisiteCheck, SwitchResult};
 use crate::utils::{find_executable, validate_project_path};
 
 // ============ Git Helper Functions ============
@@ -191,6 +191,63 @@ pub async fn check_git_has_changes(project_path: String) -> Result<bool, String>
             Ok(!String::from_utf8_lossy(&commits.stdout).trim().is_empty())
         }
     }
+}
+
+/// Get list of files with uncommitted changes (staged and unstaged, tracked files only)
+#[tauri::command]
+pub async fn get_changed_files(project_path: String) -> Result<Vec<ChangedFile>, String> {
+    let project = validate_project_path(&project_path)?;
+    let git_dir = project.join(".git");
+
+    // Not a git repo = no changed files
+    if !git_dir.exists() {
+        return Ok(vec![]);
+    }
+
+    // Run git status --porcelain -uno (exclude untracked files)
+    let output = Command::new("git")
+        .args(["status", "--porcelain", "-uno"])
+        .current_dir(&project)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err("Failed to get git status".to_string());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut files: Vec<ChangedFile> = Vec::new();
+
+    for line in stdout.lines() {
+        if line.len() < 3 {
+            continue;
+        }
+
+        // Git status --porcelain format: XY filename
+        // X = status in staging area, Y = status in working tree
+        let status_chars = &line[0..2];
+        let path = line[3..].trim().to_string();
+
+        // Skip empty paths
+        if path.is_empty() {
+            continue;
+        }
+
+        // Determine the status based on git status codes
+        let status = match status_chars.chars().collect::<Vec<char>>().as_slice() {
+            ['D', _] | [_, 'D'] => "deleted",
+            ['A', _] | [_, 'A'] => "added",
+            ['R', _] | [_, 'R'] => "renamed",
+            _ => "modified",
+        };
+
+        files.push(ChangedFile {
+            path,
+            status: status.to_string(),
+        });
+    }
+
+    Ok(files)
 }
 
 #[tauri::command]

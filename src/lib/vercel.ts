@@ -71,6 +71,39 @@ export async function getVercelTeams(): Promise<VercelTeam[]> {
   return invoke<VercelTeam[]>("get_vercel_teams");
 }
 
+/** A Vercel project */
+export interface VercelProject {
+  /** Project ID/name */
+  id: string;
+  /** Project display name */
+  name: string;
+  /** Organization/team ID */
+  orgId: string;
+}
+
+/**
+ * List Vercel projects for a given scope (team/user).
+ * @param scope - Team ID or empty string for personal account
+ * @returns Array of projects
+ */
+export async function listVercelProjects(scope: string): Promise<VercelProject[]> {
+  return invoke<VercelProject[]>("list_vercel_projects", { scope });
+}
+
+/**
+ * Write .vercel/project.json to link a project to Vercel.
+ * @param projectPath - Absolute path to the project directory
+ * @param projectId - Vercel project ID/name
+ * @param orgId - Vercel organization/team ID
+ */
+export async function writeVercelProjectJson(
+  projectPath: string,
+  projectId: string,
+  orgId: string
+): Promise<void> {
+  return invoke("write_vercel_project_json", { projectPath, projectId, orgId });
+}
+
 /**
  * Get a project's Vercel connection status.
  * @param projectPath - Absolute path to the project directory

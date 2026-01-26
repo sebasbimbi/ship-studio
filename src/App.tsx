@@ -65,6 +65,7 @@ import {
   GitHubCliStatus,
   ProjectGitHubStatus,
 } from "./lib/github";
+import { getChangedFiles, ChangedFile } from "./lib/git";
 import {
   checkVercelCliStatus,
   getVercelUsername,
@@ -226,6 +227,7 @@ function App() {
   const [currentBranch, setCurrentBranch] = useState<string | null>(null);
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [hasUncommittedChanges, setHasUncommittedChanges] = useState(false);
+  const [changedFiles, setChangedFiles] = useState<ChangedFile[]>([]);
   const [showSubmitReview, setShowSubmitReview] = useState<string | null>(null);
   const [isBranchSwitching, setIsBranchSwitching] = useState(false);
   const [gitError, setGitError] = useState<{
@@ -435,9 +437,10 @@ function App() {
   // Check git status (called periodically to sync with CLI changes)
   const checkGitStatus = useCallback(async (projectPath: string) => {
     try {
-      const [branch, hasChanges] = await Promise.all([
+      const [branch, hasChanges, files] = await Promise.all([
         getCurrentBranch(projectPath).catch(() => null),
         invoke<boolean>("check_git_has_changes", { projectPath }).catch(() => false),
+        getChangedFiles(projectPath).catch(() => []),
       ]);
 
       // Update branch if changed (e.g., user switched via CLI)
@@ -450,6 +453,7 @@ function App() {
       }
 
       setHasUncommittedChanges(hasChanges);
+      setChangedFiles(files);
     } catch {
       // Silently ignore errors during periodic checks
     }
@@ -759,6 +763,7 @@ function App() {
     setCurrentBranch(null);
     setBranches([]);
     setHasUncommittedChanges(false);
+    setChangedFiles([]);
 
     // Kill all terminals and reset tabs
     killAllTerminals();
@@ -1088,10 +1093,18 @@ function App() {
                     <BranchIndicator
                       currentBranch={currentBranch}
                       hasUncommittedChanges={hasUncommittedChanges}
+                      changedFiles={changedFiles}
+                      projectPath={currentProject?.path || ""}
                       isOnBranchesTab={workspaceTab === "branches" || workspaceTab === "prs"}
                       onClick={() => setWorkspaceTab(
                         workspaceTab === "branches" || workspaceTab === "prs" ? "preview" : "branches"
                       )}
+                      onDiscard={() => {
+                        if (currentProject) {
+                          checkGitStatus(currentProject.path);
+                        }
+                      }}
+                      onToast={showToast}
                     />
                   )}
                   <div className="workspace-tabs">

@@ -68,6 +68,139 @@
   transform: rotate(90deg);
 }
 
+/* Branch Changes Hover Dropdown */
+.branch-changes-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 280px;
+  max-width: 400px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  z-index: 1000;
+}
+
+.branch-changes-header {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.branch-changes-list {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.branch-changes-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  transition: background 0.1s;
+}
+
+.branch-changes-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.branch-changes-item svg {
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.change-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.change-modified {
+  background: rgba(234, 179, 8, 0.2);
+  color: var(--warning);
+}
+
+.change-added {
+  background: rgba(34, 197, 94, 0.2);
+  color: var(--success);
+}
+
+.change-deleted {
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--error);
+}
+
+.change-renamed {
+  background: rgba(168, 85, 247, 0.2);
+  color: #a855f7;
+}
+
+.branch-changes-path {
+  display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.branch-changes-dir {
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.branch-changes-filename {
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.branch-changes-footer {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.branch-changes-discard-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--error);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.branch-changes-discard-btn:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: var(--error);
+}
+
+.branch-changes-discard-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.branch-changes-discard-btn svg {
+  flex-shrink: 0;
+}
+
 /* Branch Indicator Dropdown */
 .branch-indicator-dropdown {
   position: absolute;

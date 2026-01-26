@@ -6,6 +6,11 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.2.4
+
+- **View unsaved changes on hover** - Hover over the branch indicator to see a list of all unsaved files with their change status (modified/added/deleted)
+- **Quick discard option** - Discard all changes directly from the branch indicator dropdown
+
 ## What's New in v0.2.3
 
 - **Import projects from GitHub** - Import existing repositories directly from your GitHub account or organizations
