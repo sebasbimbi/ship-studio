@@ -6,6 +6,10 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.3.0
+
+- **Fixed terminal font rendering** - Terminal now correctly displays JetBrains Mono Nerd Font in production builds (was falling back to system font)
+
 ## What's New in v0.2.9
 
 - **Hide/Show Preview panel** - Collapse the preview to focus on the terminal, with quick access buttons to restore it

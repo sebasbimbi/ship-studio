@@ -64,6 +64,15 @@ Unit tests are colocated in source files using `#[cfg(test)]` modules.
 - Vercel: Check via `vercel whoami`
 - Claude: Check via `claude --version`
 
+## Known Gotchas
+
+### CSP Must Be Null for Terminal Fonts
+The Content Security Policy in `src-tauri/tauri.conf.json` MUST be set to `null`.
+
+**Why:** xterm.js dynamically injects `<style>` elements for font rendering. Even with `style-src 'unsafe-inline'` in the CSP, WebKit/Tauri blocks these styles in production builds. This causes the terminal to fall back to system fonts instead of JetBrains Mono Nerd Font.
+
+**If you change CSP:** Always test terminal font rendering in a production build (`pnpm tauri build`), not just dev mode. Dev mode works fine but production builds will break.
+
 ## Releasing New Versions
 
 **CRITICAL: When releasing a new version, you MUST update `RELEASE_NOTES.md` BEFORE creating the tag.**
