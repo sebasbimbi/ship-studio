@@ -6,6 +6,15 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.2.9
+
+- **Hide/Show Preview panel** - Collapse the preview to focus on the terminal, with quick access buttons to restore it
+- **Dev Server Logs tab** - View your Next.js dev server output in a dedicated Logs tab
+- **Open in Browser button** - Quickly open your preview in a full browser window
+- **Improved preview panel layout** - Tabs and actions are now grouped on the right for a cleaner look
+- **Claude Desktop app support** - Now detects Claude Code installed via the Claude desktop app
+- **Performance improvements** - Better memory management and cleanup of background processes
+
 ## What's New in v0.2.8
 
 - **Fixed Claude Account detection** - Now correctly detects Claude authentication for newer Claude Code versions (fixed all code paths)
