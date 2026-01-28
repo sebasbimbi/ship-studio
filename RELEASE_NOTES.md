@@ -6,6 +6,10 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.3.8
+
+- **Cache test 2** - Testing CI cache hit
+
 ## What's New in v0.3.7
 
 - **Test release** - Verifying CI caching improvements
