@@ -6,6 +6,10 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.3.12
+
+- **sccache test** - Verifying Rust compilation cache
+
 ## What's New in v0.3.11
 
 - **Added sccache** - Rust compilation caching for faster builds
