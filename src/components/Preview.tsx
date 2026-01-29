@@ -335,7 +335,9 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
 
         // Only show error after consecutive failures (tolerates temporary slowdowns)
         if (healthCheckFailuresRef.current >= HEALTH_CHECK_MAX_FAILURES) {
-          console.warn('[Preview] Dev server appears to have crashed after multiple failed health checks');
+          console.warn(
+            '[Preview] Dev server appears to have crashed after multiple failed health checks'
+          );
           setServerReady(false);
           setHasError(true);
           setIsLoading(false);

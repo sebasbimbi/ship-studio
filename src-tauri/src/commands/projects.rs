@@ -518,10 +518,10 @@ pub async fn clear_project_cache(project_path: String) -> Result<(), String> {
 
     // List of cache directories to clear
     let cache_dirs = [
-        ".next",                      // Next.js build cache
-        "node_modules/.cache",        // Various build tool caches (babel, eslint, etc.)
-        ".turbo",                     // Turborepo cache
-        ".swc",                       // SWC compiler cache
+        ".next",               // Next.js build cache
+        "node_modules/.cache", // Various build tool caches (babel, eslint, etc.)
+        ".turbo",              // Turborepo cache
+        ".swc",                // SWC compiler cache
     ];
 
     let mut errors = Vec::new();
