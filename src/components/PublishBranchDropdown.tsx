@@ -51,6 +51,10 @@ interface PublishBranchDropdownProps {
     error: string,
     errorType: 'push_rejected' | 'auth_error' | 'merge_conflict' | 'generic'
   ) => void;
+  /** Force the dropdown to open (controlled from parent) */
+  forceOpen?: boolean;
+  /** Callback when forceOpen has been handled */
+  onForceOpenHandled?: () => void;
 }
 
 type PublishState =
@@ -78,6 +82,8 @@ export function PublishBranchDropdown({
   isPublishing,
   setIsPublishing,
   onPublishError,
+  forceOpen,
+  onForceOpenHandled,
 }: PublishBranchDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [publishState, setPublishState] = useState<PublishState>({ status: 'idle' });
@@ -99,6 +105,14 @@ export function PublishBranchDropdown({
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
+
+  // Handle forceOpen from parent (e.g., when Save button is clicked in BranchIndicator)
+  useEffect(() => {
+    if (forceOpen && hasGitHubRepo) {
+      setIsOpen(true);
+      onForceOpenHandled?.();
+    }
+  }, [forceOpen, hasGitHubRepo, onForceOpenHandled]);
 
   // Poll deployment status when in deploying state (with exponential backoff)
   useEffect(() => {

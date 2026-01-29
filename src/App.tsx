@@ -270,6 +270,8 @@ function App() {
 
   // Publishing state (lifted from PublishDropdown so button shows "Publishing..." even when dropdown closed)
   const [isPublishing, setIsPublishing] = useState(false);
+  // Force publish dropdown to open (triggered by Save button in BranchIndicator)
+  const [forcePublishOpen, setForcePublishOpen] = useState(false);
 
   // Vercel auto-connecting state (when linking after GitHub repo creation)
   const [isVercelAutoConnecting, setIsVercelAutoConnecting] = useState(false);
@@ -1200,6 +1202,8 @@ function App() {
               isPublishing={isPublishing}
               setIsPublishing={setIsPublishing}
               onPublishError={handlePublishError}
+              forceOpen={forcePublishOpen}
+              onForceOpenHandled={() => setForcePublishOpen(false)}
             />
           </div>
         </header>
@@ -1414,6 +1418,7 @@ function App() {
                           }
                         }}
                         onToast={showToast}
+                        onSave={() => setForcePublishOpen(true)}
                       />
                     )}
                     <div className="workspace-tabs">

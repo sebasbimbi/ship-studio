@@ -37,6 +37,8 @@ interface BranchIndicatorProps {
   onDiscard?: () => void;
   /** Callback for toast notifications */
   onToast?: (message: string, type?: 'success' | 'error') => void;
+  /** Callback when Save button is clicked - should open publish dropdown */
+  onSave?: () => void;
 }
 
 export function BranchIndicator({
@@ -48,6 +50,7 @@ export function BranchIndicator({
   onClick,
   onDiscard,
   onToast,
+  onSave,
 }: BranchIndicatorProps) {
   const [showDropdown, setShowDropdown] = useState(false);
   const [isDiscarding, setIsDiscarding] = useState(false);
@@ -91,6 +94,12 @@ export function BranchIndicator({
     } finally {
       setIsDiscarding(false);
     }
+  };
+
+  const handleSave = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowDropdown(false);
+    onSave?.();
   };
 
   // Get status icon based on change type
@@ -167,6 +176,12 @@ export function BranchIndicator({
             ))}
           </div>
           <div className="branch-changes-footer">
+            <button
+              className="branch-changes-save-btn"
+              onClick={handleSave}
+            >
+              Save
+            </button>
             <button
               className="branch-changes-discard-btn"
               onClick={(e) => void handleDiscardAll(e)}
