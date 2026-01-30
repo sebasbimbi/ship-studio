@@ -226,6 +226,11 @@
   border-top: 1px solid var(--border);
 }
 
+.env-actions-left {
+  display: flex;
+  gap: 8px;
+}
+
 .env-actions-right {
   display: flex;
   gap: 8px;
@@ -441,4 +446,140 @@
 .env-sync-btn:hover {
   background: rgba(251, 191, 36, 0.3);
   border-color: #fbbf24;
+}
+
+/* Paste .env Button */
+.env-paste-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.env-paste-btn:hover {
+  background: var(--border);
+  color: var(--text-primary);
+}
+
+.env-paste-btn svg {
+  flex-shrink: 0;
+}
+
+/* Paste Modal */
+.env-paste-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  border-radius: 12px;
+}
+
+.env-paste-modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  width: 90%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.env-paste-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.env-paste-header h4 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.env-paste-hint {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.env-paste-textarea {
+  width: 100%;
+  min-height: 180px;
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: monospace;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.env-paste-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.env-paste-textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.env-paste-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.env-paste-cancel {
+  padding: 8px 16px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.env-paste-cancel:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.env-paste-confirm {
+  padding: 8px 16px;
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  color: #1e1e1e;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.env-paste-confirm:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.env-paste-confirm:disabled {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  cursor: not-allowed;
 }

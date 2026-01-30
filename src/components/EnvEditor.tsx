@@ -54,6 +54,8 @@ export function EnvEditor({ projectPath, isOpen, onClose, onToast }: EnvEditorPr
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [visibleValues, setVisibleValues] = useState<Set<number>>(new Set());
+  const [showPasteModal, setShowPasteModal] = useState(false);
+  const [pasteContent, setPasteContent] = useState('');
   const [syncStatus, setSyncStatus] = useState<{
     missingInExample: string[];
     missingInLocal: string[];
@@ -167,6 +169,62 @@ export function EnvEditor({ projectPath, isOpen, onClose, onToast }: EnvEditorPr
     setVars([...vars, { key: newKey, value: '' }]);
     setEditingKey(newKey);
     setHasChanges(true);
+  };
+
+  /** Parse .env content string into key-value pairs */
+  const parseEnvContent = (content: string): EnvVar[] => {
+    const parsed: EnvVar[] = [];
+    const lines = content.split('\n');
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      // Skip empty lines and comments
+      if (!trimmed || trimmed.startsWith('#')) continue;
+
+      // Match KEY=value pattern (value can be empty)
+      const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+      if (match) {
+        let value = match[2];
+        // Remove surrounding quotes if present
+        if ((value.startsWith('"') && value.endsWith('"')) ||
+            (value.startsWith("'") && value.endsWith("'"))) {
+          value = value.slice(1, -1);
+        }
+        parsed.push({ key: match[1], value });
+      }
+    }
+    return parsed;
+  };
+
+  /** Handle pasting .env content - merges with existing vars */
+  const handlePasteEnv = () => {
+    const parsed = parseEnvContent(pasteContent);
+    if (parsed.length === 0) {
+      setShowPasteModal(false);
+      setPasteContent('');
+      return;
+    }
+
+    // Merge with existing vars (update existing keys, add new ones)
+    const existingKeys = new Map(vars.map((v, i) => [v.key, i]));
+    const updatedVars = [...vars];
+
+    for (const newVar of parsed) {
+      const existingIndex = existingKeys.get(newVar.key);
+      if (existingIndex !== undefined) {
+        // Update existing variable
+        updatedVars[existingIndex] = newVar;
+      } else {
+        // Add new variable
+        updatedVars.push(newVar);
+      }
+    }
+
+    setVars(updatedVars);
+    setHasChanges(true);
+    setShowPasteModal(false);
+    setPasteContent('');
+    onToast?.(`Added ${parsed.length} variable${parsed.length > 1 ? 's' : ''}`, 'success');
   };
 
   const handleUpdateVar = (index: number, field: 'key' | 'value', newValue: string) => {
@@ -319,8 +377,8 @@ export function EnvEditor({ projectPath, isOpen, onClose, onToast }: EnvEditorPr
   if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal env-editor-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onMouseDown={onClose}>
+      <div className="modal env-editor-modal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="env-editor-header">
           <h3>Environment Variables</h3>
           <button className="env-close-btn" onClick={onClose}>
@@ -557,9 +615,25 @@ export function EnvEditor({ projectPath, isOpen, onClose, onToast }: EnvEditorPr
               </div>
 
               <div className="env-actions">
-                <button className="env-add-btn" onClick={handleAddVar}>
-                  + Add Variable
-                </button>
+                <div className="env-actions-left">
+                  <button className="env-add-btn" onClick={handleAddVar}>
+                    + Add Variable
+                  </button>
+                  <button className="env-paste-btn" onClick={() => setShowPasteModal(true)}>
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                      <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+                    </svg>
+                    Paste .env
+                  </button>
+                </div>
                 <div className="env-actions-right">
                   {selectedFile && (
                     <button
@@ -593,6 +667,65 @@ export function EnvEditor({ projectPath, isOpen, onClose, onToast }: EnvEditorPr
 
           {error && <div className="env-error">{error}</div>}
         </div>
+
+        {/* Paste Modal */}
+        {showPasteModal && (
+          <div className="env-paste-overlay" onMouseDown={() => setShowPasteModal(false)}>
+            <div className="env-paste-modal" onMouseDown={(e) => e.stopPropagation()}>
+              <div className="env-paste-header">
+                <h4>Paste .env Contents</h4>
+                <button
+                  className="env-close-btn"
+                  onClick={() => {
+                    setShowPasteModal(false);
+                    setPasteContent('');
+                  }}
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+              <p className="env-paste-hint">
+                Paste your .env file contents below. Variables will be merged with existing ones.
+              </p>
+              <textarea
+                className="env-paste-textarea"
+                value={pasteContent}
+                onChange={(e) => setPasteContent(e.target.value)}
+                placeholder={`DATABASE_URL=postgres://...\nAPI_KEY=sk-...\nNODE_ENV=development`}
+                autoFocus
+                spellCheck={false}
+              />
+              <div className="env-paste-actions">
+                <button
+                  className="env-paste-cancel"
+                  onClick={() => {
+                    setShowPasteModal(false);
+                    setPasteContent('');
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="env-paste-confirm"
+                  onClick={handlePasteEnv}
+                  disabled={!pasteContent.trim()}
+                >
+                  Add Variables
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
