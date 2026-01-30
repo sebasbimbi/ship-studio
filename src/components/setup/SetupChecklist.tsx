@@ -9,6 +9,7 @@ import { SetupItem } from './SetupItem';
 import {
   SetupItem as SetupItemType,
   SETUP_ITEM_ORDER,
+  OPTIONAL_ITEMS,
   getBlockingDependencies,
 } from '../../lib/setup';
 
@@ -16,6 +17,8 @@ interface SetupChecklistProps {
   items: SetupItemType[];
   /** Called when user clicks an action button */
   onItemAction: (itemId: string) => void;
+  /** Called when user clicks skip for an optional item */
+  onItemSkip?: (itemId: string) => void;
   /** ID of item currently being processed */
   activeItemId?: string | null;
   /** Whether a terminal is currently active */
@@ -25,6 +28,7 @@ interface SetupChecklistProps {
 export function SetupChecklist({
   items,
   onItemAction,
+  onItemSkip,
   activeItemId,
   terminalActive,
 }: SetupChecklistProps) {
@@ -43,6 +47,7 @@ export function SetupChecklist({
       {sortedItems.map((item) => {
         const blockedBy = getBlockingDependencies(item.id, items);
         const isBlocked = blockedBy.length > 0 && item.status !== 'ready';
+        const isOptional = OPTIONAL_ITEMS.has(item.id);
 
         // Override status to blocked if dependencies aren't ready
         const displayItem: SetupItemType = isBlocked ? { ...item, status: 'blocked' } : item;
@@ -53,8 +58,10 @@ export function SetupChecklist({
             item={displayItem}
             blockedBy={blockedBy}
             onAction={() => onItemAction(item.id)}
+            onSkip={isOptional && onItemSkip ? () => onItemSkip(item.id) : undefined}
             isActionInProgress={activeItemId === item.id}
             isAnyActionInProgress={isAnyActionInProgress}
+            isOptional={isOptional}
           />
         );
       })}

@@ -25,6 +25,7 @@ import {
   TERMINAL_COMMANDS,
   USES_TERMINAL,
   SETUP_FRIENDLY_NAMES,
+  OPTIONAL_ITEMS,
 } from '../../lib/setup';
 import { checkGitHubCliStatus } from '../../lib/github';
 import { checkVercelCliStatus } from '../../lib/vercel';
@@ -237,15 +238,24 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
     [activeItemId, terminalConfig, updateItemStatus, fetchStatus]
   );
 
-  // Check if all items are ready
+  // Check if all required items are ready (optional items can be skipped)
   useEffect(() => {
-    if (items.length > 0 && items.every((item) => item.status === 'ready')) {
-      // Valid pattern: conditional state update based on derived state
-      // This is a computed state transition, not a cascading render
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setState('complete');
+    if (items.length > 0) {
+      const requiredItems = items.filter((item) => !OPTIONAL_ITEMS.has(item.id));
+      if (requiredItems.every((item) => item.status === 'ready')) {
+        // Valid pattern: conditional state update based on derived state
+        // This is a computed state transition, not a cascading render
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setState('complete');
+      }
     }
   }, [items]);
+
+  // Handle skipping an optional item - check if we can proceed
+  const handleItemSkip = useCallback(() => {
+    // Refresh status to check if required items are ready
+    void fetchStatus();
+  }, [fetchStatus]);
 
   if (state === 'loading') {
     return (
@@ -260,9 +270,10 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
     return <CelebrationScreen onContinue={onComplete} />;
   }
 
-  // Calculate progress
-  const readyCount = items.filter((item) => item.status === 'ready').length;
-  const totalCount = items.length;
+  // Calculate progress (only count required items)
+  const requiredItems = items.filter((item) => !OPTIONAL_ITEMS.has(item.id));
+  const readyCount = requiredItems.filter((item) => item.status === 'ready').length;
+  const totalCount = requiredItems.length;
 
   return (
     <div className="onboarding-screen">
@@ -287,6 +298,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
         <SetupChecklist
           items={items}
           onItemAction={(itemId) => void handleItemAction(itemId)}
+          onItemSkip={handleItemSkip}
           activeItemId={activeItemId}
           terminalActive={terminalConfig !== null}
         />

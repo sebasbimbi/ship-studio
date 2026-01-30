@@ -22,7 +22,7 @@ import { Preview, PreviewHandle } from './components/Preview';
 import { ProjectList } from './components/ProjectList';
 import { CreateProject } from './components/CreateProject';
 import { ImportProject } from './components/ImportProject';
-import { OnboardingScreen } from './components/setup';
+import { OnboardingScreen, OnboardingTerminal } from './components/setup';
 import { SplitPane } from './components/SplitPane';
 import { GitHubButton } from './components/GitHubButton';
 import { VercelButton } from './components/VercelButton';
@@ -38,6 +38,7 @@ import { ConflictResolutionModal } from './components/ConflictResolutionModal';
 import { BugReportButton } from './components/BugReportButton';
 import { MainBranchBanner } from './components/MainBranchBanner';
 import { BrowserDropdown } from './components/BrowserDropdown';
+import { ConnectOverlay } from './components/ConnectOverlay';
 import { CodeHealthPanel, CodeHealthPanelRef } from './components/CodeHealthPanel';
 import { ScreenshotToast, ScreenshotPreviewModal } from './components/ScreenshotPreview';
 import {
@@ -249,6 +250,13 @@ function App() {
 
   // Env editor modal
   const [showEnvEditor, setShowEnvEditor] = useState(false);
+
+  // Auth terminal modal (for GitHub/Vercel connect from workspace)
+  const [authTerminalConfig, setAuthTerminalConfig] = useState<{
+    service: 'github' | 'vercel';
+    command: string;
+    args: string[];
+  } | null>(null);
 
   // Assets panel modal
   const [showAssetsPanel, setShowAssetsPanel] = useState(false);
@@ -503,6 +511,42 @@ function App() {
 
   const refreshVercelStatus = () =>
     refreshAuthenticatedIntegration(checkVercelCliStatus, getVercelUsername, 'SET_VERCEL');
+
+  // Handle GitHub connect from overlay - opens terminal for gh auth login
+  const handleGitHubConnectFromOverlay = useCallback(() => {
+    setAuthTerminalConfig({
+      service: 'github',
+      command: 'gh',
+      args: ['auth', 'login', '--web', '--git-protocol', 'https'],
+    });
+  }, []);
+
+  // Handle auth terminal exit
+  const handleAuthTerminalExit = useCallback(
+    async (exitCode: number | null) => {
+      const service = authTerminalConfig?.service;
+      setAuthTerminalConfig(null);
+
+      if (exitCode === 0 || exitCode === null) {
+        // Success - refresh the appropriate status
+        if (service === 'github') {
+          await refreshGitHubStatus();
+          // Also refresh project GitHub status if we have a project open
+          if (currentProject) {
+            const projectStatus = await getProjectGitHubStatus(currentProject.path);
+            dispatch({ type: 'SET_PROJECT_GITHUB', payload: projectStatus });
+          }
+        } else if (service === 'vercel') {
+          await refreshVercelStatus();
+          if (currentProject) {
+            const projectStatus = await getProjectVercelStatus(currentProject.path);
+            dispatch({ type: 'SET_PROJECT_VERCEL', payload: projectStatus });
+          }
+        }
+      }
+    },
+    [authTerminalConfig, currentProject]
+  );
 
   // Focus terminal (called after modals close)
   const focusTerminal = useCallback(() => {
@@ -1220,6 +1264,8 @@ function App() {
             onSelectProject={(project) => void handleSelectProject(project)}
             onCreateProject={handleCreateProject}
             onImportProject={handleImportProject}
+            isGitHubAuthenticated={integrations.github.cliStatus.authenticated}
+            onGitHubConnectForImport={() => void handleGitHubConnectFromOverlay()}
           />
           {showCreateModal && (
             <CreateProject
@@ -1323,7 +1369,7 @@ function App() {
               projectPath={currentProject?.path || ''}
               projectName={currentProject?.name || ''}
               onStatusChange={handleGitHubStatusChange}
-              onGitHubConnect={() => void refreshGitHubStatus()}
+              onGitHubConnect={handleGitHubConnectFromOverlay}
               onModalClose={focusTerminal}
               onToast={showToast}
               onVercelAutoConnectStart={() => setIsVercelAutoConnecting(true)}
@@ -1573,92 +1619,71 @@ function App() {
             }
             right={
               <div className="preview-pane">
-                {/* Preview/Branches/PRs Tabs - only show branch tabs when GitHub repo exists */}
-                {integrations.projectGithub?.status === 'connected' ? (
-                  <div className="preview-tabs-bar">
-                    {/* Branch Indicator - click to toggle between Branches tab and Preview */}
-                    {currentBranch && (
-                      <BranchIndicator
-                        currentBranch={currentBranch}
-                        hasUncommittedChanges={hasUncommittedChanges}
-                        changedFiles={changedFiles}
-                        projectPath={currentProject?.path || ''}
-                        isOnBranchesTab={workspaceTab === 'branches' || workspaceTab === 'prs'}
-                        onClick={() =>
-                          setWorkspaceTab(
-                            workspaceTab === 'branches' || workspaceTab === 'prs'
-                              ? 'preview'
-                              : 'branches'
-                          )
+                {/* Preview/Branches/PRs Tabs - always show all tabs */}
+                <div className="preview-tabs-bar">
+                  {/* Branch Indicator - only show when GitHub is connected and we have branch info */}
+                  {integrations.projectGithub?.status === 'connected' && currentBranch && (
+                    <BranchIndicator
+                      currentBranch={currentBranch}
+                      hasUncommittedChanges={hasUncommittedChanges}
+                      changedFiles={changedFiles}
+                      projectPath={currentProject?.path || ''}
+                      isOnBranchesTab={workspaceTab === 'branches' || workspaceTab === 'prs'}
+                      onClick={() =>
+                        setWorkspaceTab(
+                          workspaceTab === 'branches' || workspaceTab === 'prs'
+                            ? 'preview'
+                            : 'branches'
+                        )
+                      }
+                      onDiscard={() => {
+                        if (currentProject) {
+                          void checkGitStatus(currentProject.path);
                         }
-                        onDiscard={() => {
-                          if (currentProject) {
-                            void checkGitStatus(currentProject.path);
-                          }
-                        }}
-                        onToast={showToast}
-                        onSave={() => setForcePublishOpen(true)}
-                      />
-                    )}
-                    <div className="workspace-tabs">
-                      <button
-                        className={`workspace-tab ${workspaceTab === 'preview' ? 'active' : ''}`}
-                        onClick={() => setWorkspaceTab('preview')}
-                      >
-                        <EyeIcon size={14} />
-                        <span>Preview</span>
-                      </button>
-                      <button
-                        className={`workspace-tab ${workspaceTab === 'branches' ? 'active' : ''}`}
-                        onClick={() => setWorkspaceTab('branches')}
-                      >
-                        <BranchIcon size={14} />
-                        <span>Branches</span>
-                      </button>
-                      <button
-                        className={`workspace-tab ${workspaceTab === 'prs' ? 'active' : ''}`}
-                        onClick={() => setWorkspaceTab('prs')}
-                      >
-                        <PullRequestIcon size={14} />
-                        <span>PRs</span>
-                      </button>
-                    </div>
-                    <div className="preview-tabs-divider" />
-                    <div className="preview-actions">
-                      <BrowserDropdown
-                        url={`http://localhost:${devServerPort}`}
-                        buttonClassName="preview-action-btn"
-                      />
-                      <button
-                        className="preview-action-btn"
-                        onClick={() => setIsPreviewHidden(true)}
-                        title="Hide Preview"
-                      >
-                        <PanelRightIcon size={14} />
-                        <span>Hide Preview</span>
-                      </button>
-                    </div>
+                      }}
+                      onToast={showToast}
+                      onSave={() => setForcePublishOpen(true)}
+                    />
+                  )}
+                  <div className="workspace-tabs">
+                    <button
+                      className={`workspace-tab ${workspaceTab === 'preview' ? 'active' : ''}`}
+                      onClick={() => setWorkspaceTab('preview')}
+                    >
+                      <EyeIcon size={14} />
+                      <span>Preview</span>
+                    </button>
+                    <button
+                      className={`workspace-tab ${workspaceTab === 'branches' ? 'active' : ''}`}
+                      onClick={() => setWorkspaceTab('branches')}
+                    >
+                      <BranchIcon size={14} />
+                      <span>Branches</span>
+                    </button>
+                    <button
+                      className={`workspace-tab ${workspaceTab === 'prs' ? 'active' : ''}`}
+                      onClick={() => setWorkspaceTab('prs')}
+                    >
+                      <PullRequestIcon size={14} />
+                      <span>PRs</span>
+                    </button>
                   </div>
-                ) : (
-                  <div className="preview-tabs-bar preview-tabs-bar-simple">
-                    <span className="preview-label">Preview</span>
-                    <div className="preview-tabs-divider" />
-                    <div className="preview-actions">
-                      <BrowserDropdown
-                        url={`http://localhost:${devServerPort}`}
-                        buttonClassName="preview-action-btn"
-                      />
-                      <button
-                        className="preview-action-btn"
-                        onClick={() => setIsPreviewHidden(true)}
-                        title="Hide Preview"
-                      >
-                        <PanelRightIcon size={14} />
-                        <span>Hide Preview</span>
-                      </button>
-                    </div>
+                  <div className="preview-tabs-divider" />
+                  <div className="preview-actions">
+                    <BrowserDropdown
+                      url={`http://localhost:${devServerPort}`}
+                      buttonClassName="preview-action-btn"
+                    />
+                    <button
+                      className="preview-action-btn"
+                      onClick={() => setIsPreviewHidden(true)}
+                      title="Hide Preview"
+                    >
+                      <PanelRightIcon size={14} />
+                      <span>Hide Preview</span>
+                    </button>
                   </div>
-                )}
+                </div>
 
                 {/* Tab content */}
                 {workspaceTab === 'preview' && (
@@ -1678,30 +1703,54 @@ function App() {
                   />
                 )}
                 {workspaceTab === 'branches' && currentProject && (
-                  <BranchesTab
-                    branches={branches}
-                    currentBranch={currentBranch || ''}
-                    projectPath={currentProject.path}
-                    githubUsername={integrations.github.username}
-                    openPRs={openPRs}
-                    onBranchSwitch={(branchName) => void handleBranchSwitch(branchName)}
-                    onSubmitForReview={(branchName) => setShowSubmitReview(branchName)}
-                    onRefresh={() => void fetchBranchInfo(currentProject.path)}
-                    onToast={showToast}
-                  />
+                  integrations.github.cliStatus.authenticated &&
+                  integrations.projectGithub?.status === 'connected' ? (
+                    <BranchesTab
+                      branches={branches}
+                      currentBranch={currentBranch || ''}
+                      projectPath={currentProject.path}
+                      githubUsername={integrations.github.username}
+                      openPRs={openPRs}
+                      onBranchSwitch={(branchName) => void handleBranchSwitch(branchName)}
+                      onSubmitForReview={(branchName) => setShowSubmitReview(branchName)}
+                      onRefresh={() => void fetchBranchInfo(currentProject.path)}
+                      onToast={showToast}
+                    />
+                  ) : (
+                    <div style={{ position: 'relative', flex: 1 }}>
+                      <ConnectOverlay
+                        service="github"
+                        title="Connect GitHub to manage branches"
+                        description="Create branches, switch between versions, and collaborate with your team."
+                        onConnect={() => void handleGitHubConnectFromOverlay()}
+                      />
+                    </div>
+                  )
                 )}
                 {workspaceTab === 'prs' && currentProject && (
-                  <PullRequestsTab
-                    projectPath={currentProject.path}
-                    githubUsername={integrations.github.username}
-                    onRefresh={() => void fetchBranchInfo(currentProject.path)}
-                    onToast={showToast}
-                    onBranchSwitch={(branchName) => void handleBranchSwitch(branchName)}
-                    onNavigateToBranches={() => setWorkspaceTab('branches')}
-                    onResolveConflicts={(headBranch, baseBranch) =>
-                      void handleResolveConflicts(headBranch, baseBranch)
-                    }
-                  />
+                  integrations.github.cliStatus.authenticated &&
+                  integrations.projectGithub?.status === 'connected' ? (
+                    <PullRequestsTab
+                      projectPath={currentProject.path}
+                      githubUsername={integrations.github.username}
+                      onRefresh={() => void fetchBranchInfo(currentProject.path)}
+                      onToast={showToast}
+                      onBranchSwitch={(branchName) => void handleBranchSwitch(branchName)}
+                      onNavigateToBranches={() => setWorkspaceTab('branches')}
+                      onResolveConflicts={(headBranch, baseBranch) =>
+                        void handleResolveConflicts(headBranch, baseBranch)
+                      }
+                    />
+                  ) : (
+                    <div style={{ position: 'relative', flex: 1 }}>
+                      <ConnectOverlay
+                        service="github"
+                        title="Connect GitHub to view pull requests"
+                        description="Submit code for review, merge changes, and track your team's work."
+                        onConnect={() => void handleGitHubConnectFromOverlay()}
+                      />
+                    </div>
+                  )
                 )}
               </div>
             }
@@ -1810,6 +1859,30 @@ function App() {
             onResolved={handleConflictsResolved}
             onToast={showToast}
           />
+        )}
+
+        {/* Auth Terminal Modal (for GitHub/Vercel connect from workspace) */}
+        {authTerminalConfig && (
+          <div className="onboarding-terminal-overlay">
+            <div className="onboarding-terminal-modal">
+              <div className="onboarding-terminal-header">
+                <span className="onboarding-terminal-title">
+                  {authTerminalConfig.service === 'github' ? 'GitHub Account' : 'Vercel Account'}
+                </span>
+                <button
+                  className="onboarding-terminal-cancel"
+                  onClick={() => setAuthTerminalConfig(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+              <OnboardingTerminal
+                command={authTerminalConfig.command}
+                args={authTerminalConfig.args}
+                onExit={(exitCode) => void handleAuthTerminalExit(exitCode)}
+              />
+            </div>
+          </div>
         )}
       </div>
       <BugReportButton />

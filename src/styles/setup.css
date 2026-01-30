@@ -497,3 +497,33 @@
   height: 350px;
   background: #1e1e1e;
 }
+
+/* ============ Optional Items ============ */
+
+.setup-item-optional {
+  border-style: dashed;
+}
+
+.setup-item-optional-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.setup-item-btn-skip {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.setup-item-btn-skip:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}

@@ -5,7 +5,7 @@
 use crate::commands::claude::find_claude_binary;
 use crate::commands::github::get_gh_command;
 use crate::commands::vercel::{find_vercel_binary, get_vercel_command};
-use crate::types::{AppState, FullSetupStatus, QuickSetupCheck, SetupItemInfo, SetupItemStatus};
+use crate::types::{AppState, FullSetupStatus, OptionalAuths, QuickSetupCheck, SetupItemInfo, SetupItemStatus};
 use crate::utils::{check_homebrew, find_executable, get_brew_command};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -242,12 +242,34 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
             })
             .collect();
 
+        // In mock mode, check which items are ready for optional_auths
+        let github_authenticated = mock_items
+            .iter()
+            .find(|i| i.id == "gh_auth")
+            .map(|i| matches!(i.status, SetupItemStatus::Ready))
+            .unwrap_or(false);
+        let vercel_authenticated = mock_items
+            .iter()
+            .find(|i| i.id == "vercel_auth")
+            .map(|i| matches!(i.status, SetupItemStatus::Ready))
+            .unwrap_or(false);
+
+        // Required items for setup completion (GitHub and Vercel auth are optional)
+        const REQUIRED_ITEMS_MOCK: &[&str] = &[
+            "homebrew", "node", "git", "gh", "claude", "claude_auth", "vercel",
+        ];
+
         let all_ready = mock_items
             .iter()
+            .filter(|i| REQUIRED_ITEMS_MOCK.contains(&i.id.as_str()))
             .all(|i| matches!(i.status, SetupItemStatus::Ready));
         return FullSetupStatus {
             all_ready,
             items: mock_items,
+            optional_auths: OptionalAuths {
+                github_authenticated,
+                vercel_authenticated,
+            },
         };
     }
 
@@ -522,11 +544,37 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
         error_message: None,
     });
 
+    // Required items for setup completion (GitHub and Vercel auth are optional)
+    const REQUIRED_ITEMS: &[&str] = &[
+        "homebrew", "node", "git", "gh", "claude", "claude_auth", "vercel",
+    ];
+
     let all_ready = items
         .iter()
+        .filter(|i| REQUIRED_ITEMS.contains(&i.id.as_str()))
         .all(|i| matches!(i.status, SetupItemStatus::Ready));
 
-    FullSetupStatus { all_ready, items }
+    // Track optional auth status separately
+    let github_authenticated = items
+        .iter()
+        .find(|i| i.id == "gh_auth")
+        .map(|i| matches!(i.status, SetupItemStatus::Ready))
+        .unwrap_or(false);
+
+    let vercel_authenticated = items
+        .iter()
+        .find(|i| i.id == "vercel_auth")
+        .map(|i| matches!(i.status, SetupItemStatus::Ready))
+        .unwrap_or(false);
+
+    FullSetupStatus {
+        all_ready,
+        items,
+        optional_auths: OptionalAuths {
+            github_authenticated,
+            vercel_authenticated,
+        },
+    }
 }
 
 /// Quick setup check - only checks binary/file existence (no subprocess calls)

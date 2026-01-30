@@ -18,10 +18,14 @@ interface SetupItemProps {
   blockedBy?: string[];
   /** Called when user clicks Install or Connect */
   onAction?: () => void;
+  /** Called when user clicks Skip for optional items */
+  onSkip?: () => void;
   /** Whether this specific action is currently in progress */
   isActionInProgress?: boolean;
   /** Whether any action across all items is in progress (disables all buttons) */
   isAnyActionInProgress?: boolean;
+  /** Whether this item is optional and can be skipped */
+  isOptional?: boolean;
 }
 
 /** Checkmark icon for ready items */
@@ -124,7 +128,9 @@ function getActionButton(
   item: SetupItemType,
   blockedBy: string[] | undefined,
   onAction: (() => void) | undefined,
-  isAnyActionInProgress: boolean | undefined
+  onSkip: (() => void) | undefined,
+  isAnyActionInProgress: boolean | undefined,
+  isOptional: boolean | undefined
 ): React.ReactNode {
   // Ready items show version/username
   if (item.status === 'ready') {
@@ -182,12 +188,21 @@ function getActionButton(
     );
   }
 
-  // Not authenticated shows Connect button with time estimate
+  // Not authenticated shows Connect button with time estimate (and Skip for optional items)
   if (item.status === 'not_authenticated') {
     const timeEstimate = SETUP_TIME_ESTIMATES[item.id];
     return (
       <div className="setup-item-action-row">
         {timeEstimate && <span className="setup-item-time-estimate">{timeEstimate}</span>}
+        {isOptional && onSkip && (
+          <button
+            className="setup-item-btn setup-item-btn-skip"
+            onClick={onSkip}
+            disabled={isAnyActionInProgress}
+          >
+            Skip
+          </button>
+        )}
         <button
           className="setup-item-btn setup-item-btn-connect"
           onClick={onAction}
@@ -202,15 +217,28 @@ function getActionButton(
   return null;
 }
 
-export function SetupItem({ item, blockedBy, onAction, isAnyActionInProgress }: SetupItemProps) {
+export function SetupItem({
+  item,
+  blockedBy,
+  onAction,
+  onSkip,
+  isAnyActionInProgress,
+  isOptional,
+}: SetupItemProps) {
   const statusClass = `setup-item-status-${item.status.replace('_', '-')}`;
+  const optionalClass = isOptional ? 'setup-item-optional' : '';
 
   return (
-    <div className={`setup-item ${statusClass}`}>
+    <div className={`setup-item ${statusClass} ${optionalClass}`}>
       <div className="setup-item-icon-container">{getStatusIcon(item.status)}</div>
-      <div className="setup-item-name">{item.friendlyName}</div>
+      <div className="setup-item-name">
+        {item.friendlyName}
+        {isOptional && item.status !== 'ready' && (
+          <span className="setup-item-optional-badge">Optional</span>
+        )}
+      </div>
       <div className="setup-item-action">
-        {getActionButton(item, blockedBy, onAction, isAnyActionInProgress)}
+        {getActionButton(item, blockedBy, onAction, onSkip, isAnyActionInProgress, isOptional)}
       </div>
     </div>
   );

@@ -12,7 +12,7 @@
  * @module components/VercelButton
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { VercelState } from '../App';
 import {
   ProjectVercelStatus,
@@ -24,8 +24,7 @@ import {
 } from '../lib/vercel';
 import { ProjectGitHubStatus } from '../lib/github';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
+import { OnboardingTerminal } from './setup';
 
 /** Props for the VercelButton component */
 interface VercelButtonProps {
@@ -64,42 +63,19 @@ export function VercelButton({
   isAutoConnecting,
 }: VercelButtonProps) {
   const [isInstalling, setIsInstalling] = useState(false);
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showDeployModal, setShowDeployModal] = useState(false);
-  const [loginOutput, setLoginOutput] = useState<string[]>([]);
   const [deployName, setDeployName] = useState(projectName);
   const [isDeploying, setIsDeploying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [teams, setTeams] = useState<VercelTeam[]>([]);
   const [selectedScope, setSelectedScope] = useState<string | undefined>(undefined);
   const [isLoadingTeams, setIsLoadingTeams] = useState(false);
-  const ptyIdRef = useRef<number | null>(null);
-  const outputRef = useRef<HTMLDivElement>(null);
-  const ptyListenersRef = useRef<{ unlistenOutput?: () => void; unlistenExit?: () => void }>({});
+  const isLoggingInRef = useRef(false);
+  // Stable reference for terminal args to prevent effect re-runs
+  const vercelLoginArgs = useRef(['login']).current;
 
   const { cliStatus } = vercelState;
-
-  // Auto-scroll login output
-  useEffect(() => {
-    if (outputRef.current) {
-      outputRef.current.scrollTop = outputRef.current.scrollHeight;
-    }
-  }, [loginOutput]);
-
-  // Cleanup PTY and listeners on unmount
-  useEffect(() => {
-    return () => {
-      // Clean up any active listeners
-      ptyListenersRef.current.unlistenOutput?.();
-      ptyListenersRef.current.unlistenExit?.();
-      ptyListenersRef.current = {};
-
-      if (ptyIdRef.current !== null) {
-        void invoke('kill_pty', { id: ptyIdRef.current }).catch(() => {});
-      }
-    };
-  }, []);
 
   // Don't show Vercel options until GitHub repo is created
   if (projectGithubStatus?.status !== 'connected' || !projectGithubStatus?.github_repo) {
@@ -121,71 +97,32 @@ export function VercelButton({
     }
   };
 
-  const handleStartLogin = async () => {
+  const handleStartLogin = () => {
+    if (isLoggingInRef.current) return;
+    isLoggingInRef.current = true;
     setShowLoginModal(true);
-    setLoginOutput([]);
-    setIsLoggingIn(true);
     setError(null);
-
-    try {
-      const homeDir = await invoke<string>('get_shipstudio_dir');
-      const parentDir = homeDir.replace('/ShipStudio', '');
-
-      const ptyId = await invoke<number>('spawn_pty', {
-        cwd: parentDir,
-        command: 'vercel',
-        args: ['login'],
-        rows: 24,
-        cols: 80,
-      });
-      ptyIdRef.current = ptyId;
-
-      const unlistenOutput = await listen<{ id: number; data: string }>('pty-output', (event) => {
-        if (event.payload.id === ptyId) {
-          setLoginOutput((prev) => [...prev, event.payload.data]);
-        }
-      });
-
-      const unlistenExit = await listen<{ id: number; code: number | null }>(
-        'pty-exit',
-        (event) => {
-          if (event.payload.id === ptyId) {
-            ptyIdRef.current = null;
-            setIsLoggingIn(false);
-
-            // Clean up listeners
-            unlistenOutput();
-            unlistenExit();
-            ptyListenersRef.current = {};
-
-            void checkVercelCliStatus().then((status) => {
-              if (status.authenticated) {
-                setShowLoginModal(false);
-                onVercelConnect();
-                onToast?.('Connected to Vercel!', 'success');
-              }
-            });
-          }
-        }
-      );
-
-      // Store listeners for cleanup on unmount
-      ptyListenersRef.current = { unlistenOutput, unlistenExit };
-    } catch (e) {
-      setError(String(e));
-      setIsLoggingIn(false);
-    }
   };
 
-  const handleCloseLoginModal = async () => {
-    if (ptyIdRef.current !== null) {
-      await invoke('kill_pty', { id: ptyIdRef.current }).catch(() => {
-        // Ignore errors when killing PTY
-      });
-      ptyIdRef.current = null;
-    }
+  const handleLoginExit = async (exitCode: number | null) => {
+    isLoggingInRef.current = false;
     setShowLoginModal(false);
-    setIsLoggingIn(false);
+
+    if (exitCode === 0 || exitCode === null) {
+      // Check if auth succeeded
+      const status = await checkVercelCliStatus();
+      if (status.authenticated) {
+        onVercelConnect();
+        onToast?.('Connected to Vercel!', 'success');
+      }
+    }
+    onModalClose?.();
+  };
+
+  const handleCloseLoginModal = () => {
+    // OnboardingTerminal will handle killing the PTY when unmounted
+    isLoggingInRef.current = false;
+    setShowLoginModal(false);
     onVercelConnect();
     onModalClose?.();
   };
@@ -237,32 +174,28 @@ export function VercelButton({
       <>
         <button
           className="vercel-button vercel-connect"
-          onClick={() => void handleStartLogin()}
-          disabled={isLoggingIn}
+          onClick={handleStartLogin}
+          disabled={showLoginModal}
           title="Connect your Vercel account"
         >
           <VercelIcon />
-          {isLoggingIn ? 'Connecting...' : 'Connect Vercel'}
+          {showLoginModal ? 'Connecting...' : 'Connect Vercel'}
         </button>
 
         {showLoginModal && (
-          <div className="modal-overlay" onClick={() => void handleCloseLoginModal()}>
-            <div className="modal vercel-modal" onClick={(e) => e.stopPropagation()}>
-              <h3>Connect to Vercel</h3>
-              <p>Follow the prompts below to log in to your Vercel account.</p>
-
-              <div className="vercel-login-output" ref={outputRef}>
-                {loginOutput.map((line, i) => (
-                  <span key={i}>{line}</span>
-                ))}
-                {isLoggingIn && <span className="cursor">▋</span>}
-              </div>
-
-              <div className="modal-actions">
-                <button onClick={() => void handleCloseLoginModal()}>
-                  {isLoggingIn ? 'Cancel' : 'Close'}
+          <div className="onboarding-terminal-overlay">
+            <div className="onboarding-terminal-modal">
+              <div className="onboarding-terminal-header">
+                <span className="onboarding-terminal-title">Vercel Account</span>
+                <button className="onboarding-terminal-cancel" onClick={handleCloseLoginModal}>
+                  Cancel
                 </button>
               </div>
+              <OnboardingTerminal
+                command="vercel"
+                args={vercelLoginArgs}
+                onExit={(exitCode) => void handleLoginExit(exitCode)}
+              />
             </div>
           </div>
         )}

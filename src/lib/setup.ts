@@ -39,13 +39,26 @@ export interface SetupItem {
   errorMessage?: string;
 }
 
+/** Optional authentication status (GitHub and Vercel can be skipped during onboarding) */
+export interface OptionalAuths {
+  /** Whether GitHub is authenticated */
+  githubAuthenticated: boolean;
+  /** Whether Vercel is authenticated */
+  vercelAuthenticated: boolean;
+}
+
 /** Full setup status from backend */
 export interface FullSetupStatus {
-  /** All items are ready */
+  /** All required items are ready (excludes optional auth items) */
   allReady: boolean;
   /** Individual item statuses */
   items: SetupItem[];
+  /** Status of optional authentication items */
+  optionalAuths: OptionalAuths;
 }
+
+/** Items that are optional and can be skipped during onboarding */
+export const OPTIONAL_ITEMS = new Set(['gh_auth', 'vercel_auth']);
 
 /** Quick setup check result (fast Tier-1 check) */
 export interface QuickSetupCheck {

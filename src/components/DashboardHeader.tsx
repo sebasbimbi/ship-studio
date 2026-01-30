@@ -20,6 +20,10 @@ interface DashboardHeaderProps {
   onImportProject?: () => void;
   onOpenSettings?: () => void;
   onCreateFolder?: () => void;
+  /** Whether GitHub is authenticated (import requires GitHub) */
+  isGitHubAuthenticated?: boolean;
+  /** Callback when user tries to import without GitHub auth */
+  onGitHubConnectForImport?: () => void;
 }
 
 export function DashboardHeader({
@@ -29,6 +33,8 @@ export function DashboardHeader({
   onImportProject,
   onOpenSettings,
   onCreateFolder,
+  isGitHubAuthenticated = true,
+  onGitHubConnectForImport,
 }: DashboardHeaderProps) {
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -70,7 +76,17 @@ export function DashboardHeader({
           </button>
         )}
         {onImportProject && (
-          <button className="btn-secondary" onClick={onImportProject}>
+          <button
+            className="btn-secondary"
+            onClick={() => {
+              if (isGitHubAuthenticated) {
+                onImportProject();
+              } else if (onGitHubConnectForImport) {
+                onGitHubConnectForImport();
+              }
+            }}
+            title={!isGitHubAuthenticated ? 'Connect GitHub to import repositories' : undefined}
+          >
             Import
           </button>
         )}

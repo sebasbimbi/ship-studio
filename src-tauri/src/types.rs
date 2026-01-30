@@ -636,12 +636,21 @@ pub struct SetupItemInfo {
     pub error_message: Option<String>,
 }
 
+/// Optional authentication status (GitHub and Vercel can be skipped during onboarding)
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct OptionalAuths {
+    pub github_authenticated: bool,
+    pub vercel_authenticated: bool,
+}
+
 /// Full setup status response
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FullSetupStatus {
     pub all_ready: bool,
     pub items: Vec<SetupItemInfo>,
+    pub optional_auths: OptionalAuths,
 }
 
 /// Quick setup check result (fast binary/file existence only)

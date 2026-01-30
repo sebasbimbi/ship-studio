@@ -66,12 +66,18 @@ interface ProjectListProps {
   onCreateProject: () => void;
   /** Callback to open the import project wizard */
   onImportProject?: () => void;
+  /** Whether GitHub is authenticated (import requires GitHub) */
+  isGitHubAuthenticated?: boolean;
+  /** Callback when user tries to import without GitHub auth */
+  onGitHubConnectForImport?: () => void;
 }
 
 export function ProjectList({
   onSelectProject,
   onCreateProject,
   onImportProject,
+  isGitHubAuthenticated = true,
+  onGitHubConnectForImport,
 }: ProjectListProps) {
   const [projects, setProjects] = useState<ProjectWithThumbnail[]>([]);
   const [folders, setFolders] = useState<FolderInfo[]>([]);
@@ -345,6 +351,8 @@ export function ProjectList({
         onCreateProject={onCreateProject}
         onImportProject={onImportProject}
         onCreateFolder={() => setShowNewFolderModal(true)}
+        isGitHubAuthenticated={isGitHubAuthenticated}
+        onGitHubConnectForImport={onGitHubConnectForImport}
       />
 
       {/* Folder breadcrumb when inside a folder */}
