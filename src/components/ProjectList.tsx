@@ -140,19 +140,19 @@ export function ProjectList({
     }
   };
 
-  const loadAll = async () => {
+  const loadAll = useCallback(async () => {
     setLoading(true);
     await Promise.all([loadProjects(), loadFolders()]);
     setLoading(false);
-  };
+  }, []);
 
   // Load folder details when navigating into a folder
   useEffect(() => {
     if (currentFolderId) {
-      getFolder(currentFolderId).then((folder) => {
+      void getFolder(currentFolderId).then((folder) => {
         setCurrentFolder(folder);
       });
-      getFolderProjects(currentFolderId).then((paths) => {
+      void getFolderProjects(currentFolderId).then((paths) => {
         setFolderProjectPaths(paths);
       });
     } else {
@@ -163,7 +163,7 @@ export function ProjectList({
 
   useEffect(() => {
     void loadAll();
-  }, []);
+  }, [loadAll]);
 
   // Get projects to display based on current folder
   const displayedProjects = useMemo(() => {
@@ -416,7 +416,7 @@ export function ProjectList({
               onSelect={() => onSelectProject(project)}
               onDelete={() => setDeleteConfirm(project)}
               onToggleAutoAccept={(enabled) => void handleToggleAutoAccept(project.path, enabled)}
-              onMoveToFolder={() => handleOpenMoveModal(project)}
+              onMoveToFolder={() => void handleOpenMoveModal(project)}
               onOpenSite={
                 project.production_url
                   ? () => {

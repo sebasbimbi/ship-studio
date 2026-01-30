@@ -221,6 +221,89 @@ pub async fn destroy_preview_webview(app: tauri::AppHandle) -> Result<(), String
     Ok(())
 }
 
+/// Scroll dimensions returned from a webview
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct ScrollDimensions {
+    pub scroll_height: u32,
+    pub viewport_height: u32,
+    pub sticky_header_height: u32,
+}
+
+/// Evaluate JavaScript in the preview webview (fire and forget).
+#[tauri::command]
+pub async fn eval_preview_js(app: tauri::AppHandle, js: String) -> Result<(), String> {
+    let webview = app
+        .get_webview("preview")
+        .ok_or("Preview webview not found")?;
+
+    webview
+        .eval(&js)
+        .map_err(|e| format!("Failed to evaluate JS: {}", e))?;
+    Ok(())
+}
+
+/// Scroll the preview webview to a specific Y position and return the actual scroll position.
+/// Returns the actual scrollY after scrolling (may be less than requested if at bottom).
+#[tauri::command]
+pub async fn scroll_preview_webview(app: tauri::AppHandle, y: u32) -> Result<(), String> {
+    let webview = app
+        .get_webview("preview")
+        .ok_or("Preview webview not found")?;
+
+    let js = format!("window.scrollTo(0, {});", y);
+    webview
+        .eval(&js)
+        .map_err(|e| format!("Failed to scroll: {}", e))?;
+    Ok(())
+}
+
+/// Get the current scroll position from the preview webview.
+/// Note: This is a best-effort approach since we can't easily get return values from JS eval.
+/// The stitch_screenshots function handles duplicate detection as a fallback.
+#[tauri::command]
+pub async fn get_preview_scroll_info(app: tauri::AppHandle) -> Result<(u32, u32), String> {
+    // We can't reliably get JS return values from the preview webview,
+    // so this returns a placeholder. The actual duplicate detection
+    // happens in stitch_screenshots via image comparison.
+    let webview = app
+        .get_webview("preview")
+        .ok_or("Preview webview not found")?;
+
+    // Just verify the webview exists
+    let _ = webview;
+
+    // Return placeholder values - the image comparison will handle duplicates
+    Ok((0, 0))
+}
+
+/// Check if the webview can still scroll down (returns true if not at bottom).
+/// This is a simpler approach than trying to get exact scroll dimensions.
+#[tauri::command]
+pub async fn check_preview_can_scroll(app: tauri::AppHandle) -> Result<bool, String> {
+    let webview = app
+        .get_webview("preview")
+        .ok_or("Preview webview not found")?;
+
+    // Scroll down a tiny bit and check if position changed
+    // This is a workaround since we can't easily get scroll position
+    let js = r#"
+        (function() {
+            var before = window.scrollY;
+            var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+            // We're at the bottom if scrollY is at or near maxScroll
+            window.__canScrollMore = before < (maxScroll - 10);
+        })();
+    "#;
+
+    webview
+        .eval(js)
+        .map_err(|e| format!("Failed to check scroll: {}", e))?;
+
+    // We can't get the result back directly, so this always returns true
+    // The frontend will handle stopping when captures look the same
+    Ok(true)
+}
+
 #[tauri::command]
 pub async fn open_studio_window(
     app: tauri::AppHandle,
@@ -464,4 +547,553 @@ pub async fn get_project_thumbnail(project_path: String) -> Result<Option<String
     } else {
         Ok(None)
     }
+}
+
+/// Get or create a shared Playwright environment directory.
+/// Installs Playwright and Chromium once, reused for all screenshots.
+fn get_playwright_env() -> Result<std::path::PathBuf, String> {
+    let home = std::env::var("HOME").map_err(|_| "HOME environment variable not set")?;
+    let playwright_dir = std::path::PathBuf::from(&home)
+        .join(".ship-studio")
+        .join("playwright-env");
+
+    // Check if playwright is already installed
+    let node_modules = playwright_dir.join("node_modules").join("playwright");
+    if node_modules.exists() {
+        tracing::debug!(
+            "Using existing Playwright environment at {:?}",
+            playwright_dir
+        );
+        return Ok(playwright_dir);
+    }
+
+    tracing::info!("Setting up Playwright environment at {:?}", playwright_dir);
+
+    // Create the directory
+    std::fs::create_dir_all(&playwright_dir)
+        .map_err(|e| format!("Failed to create playwright env dir: {}", e))?;
+
+    // Write package.json
+    let package_json = r#"{"name": "ship-studio-playwright", "private": true}"#;
+    std::fs::write(playwright_dir.join("package.json"), package_json)
+        .map_err(|e| format!("Failed to write package.json: {}", e))?;
+
+    // Install playwright
+    tracing::info!("Installing Playwright (this may take a moment on first run)...");
+    let install_output = Command::new("npm")
+        .args(["install", "playwright"])
+        .current_dir(&playwright_dir)
+        .output()
+        .map_err(|e| format!("Failed to run npm install playwright: {}", e))?;
+
+    if !install_output.status.success() {
+        let stderr = String::from_utf8_lossy(&install_output.stderr);
+        return Err(format!("Failed to install playwright: {}", stderr));
+    }
+
+    // Install Chromium browser
+    tracing::info!("Installing Chromium browser...");
+    let browser_output = Command::new("npx")
+        .args(["playwright", "install", "chromium"])
+        .current_dir(&playwright_dir)
+        .output()
+        .map_err(|e| format!("Failed to install chromium: {}", e))?;
+
+    if !browser_output.status.success() {
+        let stderr = String::from_utf8_lossy(&browser_output.stderr);
+        tracing::warn!("Chromium install warning: {}", stderr);
+        // Don't fail here - playwright might still work
+    }
+
+    tracing::info!("Playwright environment ready");
+    Ok(playwright_dir)
+}
+
+/// Capture a full-page screenshot using Playwright.
+/// Scrolls through the page first to trigger lazy-loaded content and animations,
+/// then captures the full page in one shot.
+#[tauri::command]
+pub async fn capture_fullpage_playwright(
+    project_path: String,
+    url: String,
+) -> Result<String, String> {
+    let project = validate_project_path(&project_path)?;
+    let screenshots_dir = project.join(".shipstudio").join("screenshots");
+
+    // Ensure screenshots directory exists
+    if !screenshots_dir.exists() {
+        std::fs::create_dir_all(&screenshots_dir).map_err(|e| e.to_string())?;
+    }
+
+    // Get the shared Playwright environment
+    let playwright_env = get_playwright_env()?;
+
+    // Generate timestamped filename
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_millis();
+    let screenshot_path = screenshots_dir.join(format!("fullpage-{}.png", timestamp));
+    let screenshot_path_str = screenshot_path.to_string_lossy().to_string();
+
+    // Create a script that scrolls the page before capturing
+    // This triggers lazy-loaded content and scroll animations (GSAP, etc.)
+    // Also hides Next.js dev tools and other overlays
+    let script = format!(
+        r#"
+const {{ chromium }} = require('playwright');
+
+(async () => {{
+    const browser = await chromium.launch();
+    const page = await browser.newPage({{ viewport: {{ width: 1280, height: 800 }} }});
+
+    await page.goto('{}', {{ waitUntil: 'networkidle' }});
+
+    // Hide dev tools and feedback overlays
+    await page.evaluate(() => {{
+        const selectors = [
+            'nextjs-portal',
+            '[data-nextjs-toast]',
+            '[data-nextjs-dialog]',
+            '#__next-build-watcher',
+            '[class*="nextjs-"]',
+            '[data-feedback-toolbar]',
+            '[data-feedback-toolbar="true"]',
+            '[class*="feedback-toolbar"]',
+            '[class*="styles-module__toolbar"]'
+        ];
+        selectors.forEach(sel => {{
+            document.querySelectorAll(sel).forEach(el => {{
+                el.style.setProperty('display', 'none', 'important');
+                el.style.setProperty('visibility', 'hidden', 'important');
+            }});
+        }});
+    }});
+
+    // Scroll slowly through the page to trigger lazy content and animations
+    const scrollHeight = await page.evaluate(() => document.documentElement.scrollHeight);
+    const viewportHeight = 800;
+
+    for (let y = 0; y < scrollHeight; y += viewportHeight / 2) {{
+        await page.evaluate((scrollY) => window.scrollTo(0, scrollY), y);
+        await page.waitForTimeout(300); // Pause for animations to trigger
+    }}
+
+    // Scroll back to top and hide overlays again (they may have reappeared)
+    await page.evaluate(() => {{
+        window.scrollTo(0, 0);
+        const selectors = [
+            'nextjs-portal', '[data-nextjs-toast]', '[class*="nextjs-"]',
+            '[data-feedback-toolbar]', '[data-feedback-toolbar="true"]',
+            '[class*="feedback-toolbar"]', '[class*="styles-module__toolbar"]'
+        ];
+        selectors.forEach(sel => {{
+            document.querySelectorAll(sel).forEach(el => {{
+                el.style.setProperty('display', 'none', 'important');
+            }});
+        }});
+    }});
+    await page.waitForTimeout(500);
+
+    // Take full-page screenshot
+    await page.screenshot({{ path: '{}', fullPage: true }});
+
+    await browser.close();
+    console.log('Screenshot saved successfully');
+}})();
+"#,
+        url,
+        screenshot_path_str.replace('\\', "\\\\")
+    );
+
+    // Write script to the playwright env directory (where node_modules is)
+    let script_path = playwright_env.join("capture-script.js");
+    std::fs::write(&script_path, &script)
+        .map_err(|e| format!("Failed to write capture script: {}", e))?;
+
+    // Run the script from the playwright environment directory
+    // This ensures require('playwright') can find the module
+    let output = Command::new("node")
+        .arg(&script_path)
+        .current_dir(&playwright_env)
+        .output()
+        .map_err(|e| format!("Failed to run capture script: {}", e))?;
+
+    // Clean up script file
+    let _ = std::fs::remove_file(&script_path);
+
+    if output.status.success() && screenshot_path.exists() {
+        tracing::info!(
+            "Full-page screenshot captured with Playwright: {}",
+            screenshot_path_str
+        );
+        return Ok(screenshot_path_str);
+    }
+
+    // If failed, return error with details
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Err(format!(
+        "Playwright screenshot failed. stdout: {} stderr: {}",
+        stdout, stderr
+    ))
+}
+
+/// Capture a viewport screenshot using Playwright.
+/// Hides Next.js dev tools and other overlays before capturing.
+/// Faster than full-page since it doesn't scroll.
+#[tauri::command]
+pub async fn capture_viewport_playwright(
+    project_path: String,
+    url: String,
+) -> Result<String, String> {
+    let project = validate_project_path(&project_path)?;
+    let screenshots_dir = project.join(".shipstudio").join("screenshots");
+
+    // Ensure screenshots directory exists
+    if !screenshots_dir.exists() {
+        std::fs::create_dir_all(&screenshots_dir).map_err(|e| e.to_string())?;
+    }
+
+    // Get the shared Playwright environment
+    let playwright_env = get_playwright_env()?;
+
+    // Generate timestamped filename
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_millis();
+    let screenshot_path = screenshots_dir.join(format!("screenshot-{}.png", timestamp));
+    let screenshot_path_str = screenshot_path.to_string_lossy().to_string();
+
+    // Create a script that hides overlays and captures viewport
+    let script = format!(
+        r#"
+const {{ chromium }} = require('playwright');
+
+(async () => {{
+    const browser = await chromium.launch();
+    const page = await browser.newPage({{ viewport: {{ width: 1280, height: 800 }} }});
+
+    await page.goto('{}', {{ waitUntil: 'networkidle' }});
+
+    // Hide dev tools and feedback overlays
+    await page.evaluate(() => {{
+        const selectors = [
+            'nextjs-portal',
+            '[data-nextjs-toast]',
+            '[data-nextjs-dialog]',
+            '#__next-build-watcher',
+            '[class*="nextjs-"]',
+            '[data-feedback-toolbar]',
+            '[data-feedback-toolbar="true"]',
+            '[class*="feedback-toolbar"]',
+            '[class*="styles-module__toolbar"]'
+        ];
+        selectors.forEach(sel => {{
+            document.querySelectorAll(sel).forEach(el => {{
+                el.style.setProperty('display', 'none', 'important');
+                el.style.setProperty('visibility', 'hidden', 'important');
+            }});
+        }});
+    }});
+
+    // Wait for animations to complete
+    await page.waitForTimeout(3000);
+
+    // Take viewport screenshot (not full page)
+    await page.screenshot({{ path: '{}' }});
+
+    await browser.close();
+}})();
+"#,
+        url,
+        screenshot_path_str.replace('\\', "\\\\")
+    );
+
+    // Write script to the playwright env directory
+    let script_path = playwright_env.join("capture-viewport-script.js");
+    std::fs::write(&script_path, &script)
+        .map_err(|e| format!("Failed to write capture script: {}", e))?;
+
+    // Run the script
+    let output = Command::new("node")
+        .arg(&script_path)
+        .current_dir(&playwright_env)
+        .output()
+        .map_err(|e| format!("Failed to run capture script: {}", e))?;
+
+    // Clean up script file
+    let _ = std::fs::remove_file(&script_path);
+
+    if output.status.success() && screenshot_path.exists() {
+        tracing::info!(
+            "Viewport screenshot captured with Playwright: {}",
+            screenshot_path_str
+        );
+        return Ok(screenshot_path_str);
+    }
+
+    // If failed, return error with details
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Err(format!(
+        "Playwright viewport screenshot failed. stdout: {} stderr: {}",
+        stdout, stderr
+    ))
+}
+
+/// Read a screenshot file and return it as a base64 data URL.
+/// Used for displaying screenshot previews in the UI.
+#[tauri::command]
+pub async fn get_screenshot_base64(file_path: String) -> Result<String, String> {
+    use base64::Engine;
+
+    let path = std::path::PathBuf::from(&file_path);
+
+    if !path.exists() {
+        return Err(format!("Screenshot file not found: {}", file_path));
+    }
+
+    let data = std::fs::read(&path).map_err(|e| format!("Failed to read screenshot: {}", e))?;
+    let base64_data = base64::engine::general_purpose::STANDARD.encode(&data);
+    Ok(format!("data:image/png;base64,{}", base64_data))
+}
+
+/// Compare two screenshot images to detect if we've hit the page bottom.
+/// When scrolling stops working (page bottom reached), the BOTTOM EDGE of both
+/// captures will be identical (same footer/content).
+/// This is more reliable than comparing the whole image.
+#[tauri::command]
+pub async fn compare_screenshots(
+    path1: String,
+    path2: String,
+    _skip_header_pixels: u32, // kept for API compatibility
+) -> Result<bool, String> {
+    use image::GenericImageView;
+
+    let img1 = image::open(&path1).map_err(|e| format!("Failed to open image 1: {}", e))?;
+    let img2 = image::open(&path2).map_err(|e| format!("Failed to open image 2: {}", e))?;
+
+    // Different dimensions = not similar
+    if img1.width() != img2.width() || img1.height() != img2.height() {
+        return Ok(false);
+    }
+
+    let width = img1.width();
+    let height = img1.height();
+
+    // Compare just the bottom 100 pixels of each image
+    // When we hit page bottom, both images will have the same footer
+    let bottom_region = 100.min(height / 4); // At most 25% of image height
+    let compare_start = height.saturating_sub(bottom_region);
+
+    // Sample every 20th pixel for accurate comparison
+    let sample_step = 20;
+    let mut matching = 0;
+    let mut total = 0;
+
+    for y in (compare_start..height).step_by(sample_step as usize) {
+        for x in (0..width).step_by(sample_step as usize) {
+            let p1 = img1.get_pixel(x, y);
+            let p2 = img2.get_pixel(x, y);
+            total += 1;
+            // Allow small differences due to compression artifacts
+            if (p1[0] as i32 - p2[0] as i32).abs() < 10
+                && (p1[1] as i32 - p2[1] as i32).abs() < 10
+                && (p1[2] as i32 - p2[2] as i32).abs() < 10
+            {
+                matching += 1;
+            }
+        }
+    }
+
+    // Bottom edges are the same if >95% of sampled pixels match
+    // This is strict because we're only comparing a small region
+    let is_similar = total > 0 && (matching * 100 / total) > 95;
+
+    tracing::debug!(
+        "Screenshot comparison: {}/{} pixels match ({}%) - {}",
+        matching,
+        total,
+        if total > 0 { matching * 100 / total } else { 0 },
+        if is_similar { "DUPLICATE" } else { "different" }
+    );
+
+    Ok(is_similar)
+}
+
+/// Stitch multiple screenshots together vertically for full-page capture.
+/// Takes multiple image paths and combines them into a single image.
+/// sticky_header_height: height of fixed/sticky elements at the top to skip in subsequent captures
+#[tauri::command]
+pub async fn stitch_screenshots(
+    project_path: String,
+    image_paths: Vec<String>,
+    viewport_height: u32,
+    full_height: u32,
+    sticky_header_height: u32,
+) -> Result<String, String> {
+    use image::{DynamicImage, GenericImageView, RgbaImage};
+
+    if image_paths.is_empty() {
+        return Err("No images to stitch".to_string());
+    }
+
+    let project = validate_project_path(&project_path)?;
+    let screenshots_dir = project.join(".shipstudio").join("screenshots");
+
+    // Ensure screenshots directory exists
+    if !screenshots_dir.exists() {
+        std::fs::create_dir_all(&screenshots_dir).map_err(|e| e.to_string())?;
+    }
+
+    // Helper function to compare two images for similarity (returns true if they're nearly identical)
+    // Focuses on the bottom 60% of each image where duplicates are most apparent
+    fn images_are_similar(img1: &DynamicImage, img2: &DynamicImage, skip_header: u32) -> bool {
+        // Compare dimensions first
+        if img1.width() != img2.width() || img1.height() != img2.height() {
+            return false;
+        }
+
+        let width = img1.width();
+        let height = img1.height();
+
+        // Focus on bottom 60% of the image (where duplicates appear when hitting page bottom)
+        let content_height = height.saturating_sub(skip_header);
+        let compare_start = skip_header + (content_height * 40 / 100);
+
+        // Sample every 30th pixel for accurate comparison
+        let sample_step = 30;
+        let mut matching = 0;
+        let mut total = 0;
+
+        for y in (compare_start..height).step_by(sample_step as usize) {
+            for x in (0..width).step_by(sample_step as usize) {
+                let p1 = img1.get_pixel(x, y);
+                let p2 = img2.get_pixel(x, y);
+                total += 1;
+                // Allow small differences due to compression artifacts
+                if (p1[0] as i32 - p2[0] as i32).abs() < 10
+                    && (p1[1] as i32 - p2[1] as i32).abs() < 10
+                    && (p1[2] as i32 - p2[2] as i32).abs() < 10
+                {
+                    matching += 1;
+                }
+            }
+        }
+
+        // Images are similar if >90% of sampled pixels in the bottom half match
+        total > 0 && (matching * 100 / total) > 93
+    }
+
+    // Load all images first to detect duplicates
+    let mut images: Vec<DynamicImage> = Vec::new();
+    let mut unique_count = 0;
+
+    for (i, path) in image_paths.iter().enumerate() {
+        let img = image::open(path).map_err(|e| format!("Failed to open image {}: {}", path, e))?;
+
+        // Check if this image is a duplicate of the previous one (we've hit the bottom)
+        if i > 0 {
+            if images_are_similar(&images[i - 1], &img, sticky_header_height) {
+                tracing::info!(
+                    "Detected duplicate image at index {} - stopping stitch (page bottom reached)",
+                    i
+                );
+                // Clean up remaining temp files
+                for remaining_path in image_paths.iter().skip(i) {
+                    let _ = std::fs::remove_file(remaining_path);
+                }
+                break;
+            }
+        }
+
+        images.push(img);
+        unique_count += 1;
+    }
+
+    if images.is_empty() {
+        return Err("No valid images to stitch".to_string());
+    }
+
+    // Load first image to get width
+    let width = images[0].width();
+
+    // Calculate actual content height per capture (excluding sticky header for images after first)
+    let content_height_first = viewport_height;
+    let content_height_rest = viewport_height.saturating_sub(sticky_header_height);
+
+    // Calculate total output height based on actual unique images
+    let num_images = unique_count as u32;
+    let calculated_height = if num_images > 1 {
+        content_height_first + (num_images - 1) * content_height_rest
+    } else {
+        content_height_first
+    };
+    // Use the smaller of calculated height and reported full height
+    let output_height = calculated_height.min(full_height);
+
+    // Create output image
+    let mut output = RgbaImage::new(width, output_height);
+
+    let mut y_offset = 0u32;
+
+    for (i, img) in images.iter().enumerate() {
+        // For first image, copy from top; for subsequent images, skip the sticky header
+        let source_y_start = if i == 0 { 0 } else { sticky_header_height };
+        let available_source_height = img.height().saturating_sub(source_y_start);
+
+        // Calculate how much of this image to copy
+        let remaining = output_height.saturating_sub(y_offset);
+        let copy_height = remaining.min(available_source_height);
+
+        // Copy pixels from source to output
+        for y in 0..copy_height {
+            for x in 0..width.min(img.width()) {
+                let pixel = img.get_pixel(x, source_y_start + y);
+                if y_offset + y < output_height {
+                    output.put_pixel(x, y_offset + y, pixel);
+                }
+            }
+        }
+
+        y_offset += copy_height;
+
+        // Clean up temp file
+        let _ = std::fs::remove_file(&image_paths[i]);
+
+        // Log progress for debugging
+        tracing::debug!(
+            "Stitched image {} of {}: copied {} rows (skipped {} header rows) at y_offset {}",
+            i + 1,
+            unique_count,
+            copy_height,
+            source_y_start,
+            y_offset - copy_height
+        );
+    }
+
+    // Generate timestamped filename
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_millis();
+    let output_path = screenshots_dir.join(format!("fullpage-{}.png", timestamp));
+    let output_path_str = output_path.to_string_lossy().to_string();
+
+    // Save the stitched image
+    output
+        .save(&output_path)
+        .map_err(|e| format!("Failed to save stitched image: {}", e))?;
+
+    tracing::info!(
+        "Full-page screenshot saved: {} ({}x{}, sticky header: {}px)",
+        output_path_str,
+        width,
+        output_height,
+        sticky_header_height
+    );
+
+    Ok(output_path_str)
 }

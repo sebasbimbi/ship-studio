@@ -777,3 +777,27 @@ export function ArrowLeftIcon({ size = 14, className }: IconProps) {
     </svg>
   );
 }
+
+export function FullPageIcon({ size = 14 }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {/* Document outline */}
+      <rect x="4" y="2" width="16" height="20" rx="2" />
+      {/* Up arrow */}
+      <polyline points="12 6 12 10" />
+      <polyline points="9 8 12 5 15 8" />
+      {/* Down arrow */}
+      <polyline points="12 14 12 18" />
+      <polyline points="9 16 12 19 15 16" />
+    </svg>
+  );
+}

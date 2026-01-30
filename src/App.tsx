@@ -39,6 +39,7 @@ import { BugReportButton } from './components/BugReportButton';
 import { MainBranchBanner } from './components/MainBranchBanner';
 import { BrowserDropdown } from './components/BrowserDropdown';
 import { CodeHealthPanel, CodeHealthPanelRef } from './components/CodeHealthPanel';
+import { ScreenshotToast, ScreenshotPreviewModal } from './components/ScreenshotPreview';
 import {
   BranchInfo,
   PullRequestInfo,
@@ -53,6 +54,7 @@ import {
   ChatIcon,
   CameraIcon,
   CropIcon,
+  FullPageIcon,
   SuccessIcon,
   InfoIcon,
   CloseIcon,
@@ -233,6 +235,11 @@ function App() {
   const [isCapturing, setIsCapturing] = useState(false);
   const [isCropMode, setIsCropMode] = useState(false);
   const [isCropCapturing, setIsCropCapturing] = useState(false);
+  const [isFullPageCapturing, setIsFullPageCapturing] = useState(false);
+
+  // Screenshot preview state
+  const [screenshotPreviewPath, setScreenshotPreviewPath] = useState<string | null>(null);
+  const [showScreenshotModal, setShowScreenshotModal] = useState(false);
 
   // Dev server port (dynamically assigned to avoid conflicts)
   const [devServerPort, setDevServerPort] = useState(PREFERRED_DEV_SERVER_PORT);
@@ -444,11 +451,32 @@ function App() {
         // Quote path if it contains spaces
         const quotedPath = filePath.includes(' ') ? `"${filePath}"` : filePath;
         terminalRefsMap.current.get(activeTerminalTab)?.paste(quotedPath);
+        // Show screenshot preview toast
+        setScreenshotPreviewPath(filePath);
       }
     } finally {
       setIsCapturing(false);
     }
   }, [isCapturing, activeTerminalTab]);
+
+  // Handle full page capture - screenshot entire scrollable page and paste path into terminal
+  const handleCaptureFullPage = useCallback(async () => {
+    if (isFullPageCapturing || !previewRef.current) return;
+
+    setIsFullPageCapturing(true);
+    try {
+      const filePath = await previewRef.current.captureFullPage();
+      if (filePath) {
+        // Quote path if it contains spaces
+        const quotedPath = filePath.includes(' ') ? `"${filePath}"` : filePath;
+        terminalRefsMap.current.get(activeTerminalTab)?.paste(quotedPath);
+        // Show screenshot preview toast
+        setScreenshotPreviewPath(filePath);
+      }
+    } finally {
+      setIsFullPageCapturing(false);
+    }
+  }, [isFullPageCapturing, activeTerminalTab]);
 
   // Handle crop mode start - show loading state
   const handleCropStart = useCallback(() => {
@@ -463,6 +491,8 @@ function App() {
       if (filePath) {
         const quotedPath = filePath.includes(' ') ? `"${filePath}"` : filePath;
         terminalRefsMap.current.get(activeTerminalTab)?.paste(quotedPath);
+        // Show screenshot preview toast
+        setScreenshotPreviewPath(filePath);
       }
     },
     [activeTerminalTab]
@@ -771,7 +801,9 @@ function App() {
       await devServerRef.current.stop();
       devServerRef.current = null;
     }
-    logger.info(`[OpenProject] Step 1: Stop existing dev server - ${Math.round(performance.now() - stepStart)}ms`);
+    logger.info(
+      `[OpenProject] Step 1: Stop existing dev server - ${Math.round(performance.now() - stepStart)}ms`
+    );
 
     // Kill any process on our previously used port (handles orphaned processes from this session)
     stepStart = performance.now();
@@ -780,7 +812,9 @@ function App() {
     } catch {
       // Ignore errors - port may already be free
     }
-    logger.info(`[OpenProject] Step 2: Kill port ${devServerPort} - ${Math.round(performance.now() - stepStart)}ms`);
+    logger.info(
+      `[OpenProject] Step 2: Kill port ${devServerPort} - ${Math.round(performance.now() - stepStart)}ms`
+    );
 
     // Clean up any orphaned PTY processes from previous operations
     stepStart = performance.now();
@@ -790,7 +824,9 @@ function App() {
     } catch {
       // Ignore cleanup errors
     }
-    logger.info(`[OpenProject] Step 3: Kill PTY and cleanup orphaned processes - ${Math.round(performance.now() - stepStart)}ms`);
+    logger.info(
+      `[OpenProject] Step 3: Kill PTY and cleanup orphaned processes - ${Math.round(performance.now() - stepStart)}ms`
+    );
 
     // Find an available port (doesn't kill other apps' processes)
     stepStart = performance.now();
@@ -802,7 +838,9 @@ function App() {
     } catch (error) {
       logger.error('Failed to find available port, using default', { error });
     }
-    logger.info(`[OpenProject] Step 4: Find available port ${port} - ${Math.round(performance.now() - stepStart)}ms`);
+    logger.info(
+      `[OpenProject] Step 4: Find available port ${port} - ${Math.round(performance.now() - stepStart)}ms`
+    );
     setDevServerPort(port);
 
     // Clear any existing screenshot interval
@@ -836,7 +874,9 @@ function App() {
     } catch {
       setAutoAcceptMode(false);
     }
-    logger.info(`[OpenProject] Step 5: Fetch auto-accept mode - ${Math.round(performance.now() - stepStart)}ms`);
+    logger.info(
+      `[OpenProject] Step 5: Fetch auto-accept mode - ${Math.round(performance.now() - stepStart)}ms`
+    );
 
     // Mark project as opened (for sorting by last opened)
     void invoke('mark_project_opened', { projectPath: project.path }).catch(() => {});
@@ -847,7 +887,9 @@ function App() {
     // Fetch branch info (needed for UI before showing workspace)
     stepStart = performance.now();
     await fetchBranchInfo(project.path);
-    logger.info(`[OpenProject] Step 6: Fetch branch info - ${Math.round(performance.now() - stepStart)}ms`);
+    logger.info(
+      `[OpenProject] Step 6: Fetch branch info - ${Math.round(performance.now() - stepStart)}ms`
+    );
 
     // Start dev server in background on the available port
     stepStart = performance.now();
@@ -870,7 +912,9 @@ function App() {
     } catch (error) {
       logger.error('Failed to start dev server', { error });
     }
-    logger.info(`[OpenProject] Step 7: Start dev server - ${Math.round(performance.now() - stepStart)}ms`);
+    logger.info(
+      `[OpenProject] Step 7: Start dev server - ${Math.round(performance.now() - stepStart)}ms`
+    );
 
     setView('workspace');
     logger.info(`[OpenProject] Complete - Total: ${Math.round(performance.now() - totalStart)}ms`);
@@ -887,7 +931,9 @@ function App() {
       } catch {
         dispatch({ type: 'CLEAR_PROJECT_STATUSES' });
       }
-      logger.info(`[OpenProject] Background: Fetch GitHub and Vercel status - ${Math.round(performance.now() - bgStart)}ms`);
+      logger.info(
+        `[OpenProject] Background: Fetch GitHub and Vercel status - ${Math.round(performance.now() - bgStart)}ms`
+      );
     })();
 
     // Capture screenshots periodically - check ref to avoid stale closure
@@ -1261,7 +1307,7 @@ function App() {
                     <button
                       className="agent-capture-btn"
                       onClick={() => void handleCaptureForClaude()}
-                      disabled={isCapturing || isCropMode}
+                      disabled={isCapturing || isCropMode || isFullPageCapturing}
                       title="Screenshot preview for Claude"
                     >
                       {isCapturing ? <div className="capture-spinner" /> : <CameraIcon size={14} />}
@@ -1269,13 +1315,25 @@ function App() {
                     <button
                       className={`agent-capture-btn ${isCropMode ? 'active' : ''}`}
                       onClick={() => setIsCropMode(!isCropMode)}
-                      disabled={isCapturing || isCropCapturing}
+                      disabled={isCapturing || isCropCapturing || isFullPageCapturing}
                       title="Crop screenshot for Claude"
                     >
                       {isCropCapturing ? (
                         <div className="capture-spinner" />
                       ) : (
                         <CropIcon size={14} />
+                      )}
+                    </button>
+                    <button
+                      className="agent-capture-btn"
+                      onClick={() => void handleCaptureFullPage()}
+                      disabled={isCapturing || isCropCapturing || isFullPageCapturing || isCropMode}
+                      title="Full page screenshot for Claude"
+                    >
+                      {isFullPageCapturing ? (
+                        <div className="capture-spinner" />
+                      ) : (
+                        <FullPageIcon size={14} />
                       )}
                     </button>
                   </div>
@@ -1597,6 +1655,26 @@ function App() {
               </div>
             ))}
           </div>
+        )}
+
+        {/* Screenshot Preview Toast */}
+        {screenshotPreviewPath && !showScreenshotModal && (
+          <ScreenshotToast
+            filePath={screenshotPreviewPath}
+            onDismiss={() => setScreenshotPreviewPath(null)}
+            onViewFull={() => setShowScreenshotModal(true)}
+          />
+        )}
+
+        {/* Screenshot Preview Modal */}
+        {showScreenshotModal && screenshotPreviewPath && (
+          <ScreenshotPreviewModal
+            filePath={screenshotPreviewPath}
+            onClose={() => {
+              setShowScreenshotModal(false);
+              setScreenshotPreviewPath(null);
+            }}
+          />
         )}
 
         {/* Submit for Review Modal */}

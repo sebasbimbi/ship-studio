@@ -91,7 +91,7 @@ export function MoveFolderModal({
             {/* No Folder option */}
             <button
               className={`move-folder-item ${currentFolderId === null ? 'active' : ''}`}
-              onClick={() => handleSelect(null)}
+              onClick={() => void handleSelect(null)}
               disabled={selecting || currentFolderId === null}
             >
               <span className="move-folder-item-name">No Folder (Root)</span>
@@ -103,7 +103,7 @@ export function MoveFolderModal({
               <button
                 key={folder.id}
                 className={`move-folder-item ${currentFolderId === folder.id ? 'active' : ''}`}
-                onClick={() => handleSelect(folder.id)}
+                onClick={() => void handleSelect(folder.id)}
                 disabled={selecting || currentFolderId === folder.id}
               >
                 <FolderIcon size={16} />

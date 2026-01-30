@@ -120,6 +120,8 @@ interface PreviewProps {
 export interface PreviewHandle {
   /** Capture the current preview viewport and return the saved file path */
   captureForClaude: () => Promise<string | null>;
+  /** Capture the full scrollable page by scrolling and stitching */
+  captureFullPage: () => Promise<string | null>;
   /** Check if a capture is currently in progress */
   isCapturing: () => boolean;
   /** Force refresh the preview iframe */
@@ -380,39 +382,75 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     return await getWindowScreenshot(ourWindow.id);
   }, []);
 
-  // Capture preview screenshot using Tauri window capture + crop
+  // Capture viewport screenshot using Playwright (hides dev tools)
+  // Falls back to window capture + crop if Playwright fails
   const captureForClaude = useCallback(async (): Promise<string | null> => {
-    if (!iframeWrapperRef.current || isCapturing) {
+    if (isCapturing) {
       return null;
     }
 
     setIsCapturing(true);
     try {
-      const tempPath = await captureWindowScreenshot();
-      if (!tempPath) return null;
-
-      // Get the iframe's bounding rect and account for device pixel ratio
-      const rect = iframeWrapperRef.current.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-
-      // Crop to iframe bounds and save
-      const finalPath = await invoke<string>('crop_and_save_screenshot', {
+      // Try Playwright first (hides Next.js dev tools and other overlays)
+      const filePath = await invoke<string>('capture_viewport_playwright', {
         projectPath,
-        sourcePath: tempPath,
-        x: Math.round(rect.left * dpr),
-        y: Math.round(rect.top * dpr),
-        width: Math.round(rect.width * dpr),
-        height: Math.round(rect.height * dpr),
+        url: currentUrl,
       });
+      return filePath;
+    } catch (playwrightError) {
+      console.warn(
+        '[Preview] Playwright capture failed, falling back to window capture:',
+        playwrightError
+      );
 
-      return finalPath;
-    } catch (error) {
-      console.error('[Preview] Capture failed:', error);
-      return null;
+      // Fallback to window capture + crop
+      if (!iframeWrapperRef.current) return null;
+
+      try {
+        const tempPath = await captureWindowScreenshot();
+        if (!tempPath) return null;
+
+        const rect = iframeWrapperRef.current.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+
+        const finalPath = await invoke<string>('crop_and_save_screenshot', {
+          projectPath,
+          sourcePath: tempPath,
+          x: Math.round(rect.left * dpr),
+          y: Math.round(rect.top * dpr),
+          width: Math.round(rect.width * dpr),
+          height: Math.round(rect.height * dpr),
+        });
+        return finalPath;
+      } catch (fallbackError) {
+        console.error('[Preview] Fallback capture also failed:', fallbackError);
+        return null;
+      }
     } finally {
       setIsCapturing(false);
     }
-  }, [projectPath, captureWindowScreenshot, isCapturing]);
+  }, [projectPath, currentUrl, captureWindowScreenshot, isCapturing]);
+
+  // Capture full page by creating a native webview and scrolling through it
+  // Full-page capture using Playwright (scrolls page to trigger lazy content, then captures)
+  const captureFullPage = useCallback(async (): Promise<string | null> => {
+    if (isCapturing) return null;
+
+    setIsCapturing(true);
+    try {
+      const filePath = await invoke<string>('capture_fullpage_playwright', {
+        projectPath,
+        url: currentUrl,
+      });
+      return filePath;
+    } catch (error) {
+      console.error('[Preview] Full page capture failed:', error);
+      // Fall back to viewport capture if Playwright fails
+      return captureForClaude();
+    } finally {
+      setIsCapturing(false);
+    }
+  }, [isCapturing, projectPath, currentUrl, captureForClaude]);
 
   // Capture a specific region of the preview
   const captureRegion = useCallback(
@@ -574,10 +612,11 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     ref,
     () => ({
       captureForClaude,
+      captureFullPage,
       isCapturing: () => isCapturing,
       refresh,
     }),
-    [captureForClaude, isCapturing, refresh]
+    [captureForClaude, captureFullPage, isCapturing, refresh]
   );
 
   // Open CMS modal with native webview

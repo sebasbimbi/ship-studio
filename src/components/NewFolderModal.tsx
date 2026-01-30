@@ -88,7 +88,7 @@ export function NewFolderModal({
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>{title}</h3>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={(e) => void handleSubmit(e)}>
           <div className="form-group">
             <label htmlFor="folder-name">Folder name</label>
             <input
