@@ -176,10 +176,7 @@ export function BranchIndicator({
             ))}
           </div>
           <div className="branch-changes-footer">
-            <button
-              className="branch-changes-save-btn"
-              onClick={handleSave}
-            >
+            <button className="branch-changes-save-btn" onClick={handleSave}>
               Save
             </button>
             <button
