@@ -1420,20 +1420,10 @@ function App() {
                     style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}
                   >
                     {isPreviewHidden && (
-                      <div className="preview-hidden-actions">
-                        <BrowserDropdown
-                          url={`http://localhost:${devServerPort}`}
-                          buttonClassName="show-preview-btn"
-                        />
-                        <button
-                          className="show-preview-btn"
-                          onClick={() => setIsPreviewHidden(false)}
-                          title="Show Preview"
-                        >
-                          <PanelRightIcon size={14} />
-                          <span>Show Preview</span>
-                        </button>
-                      </div>
+                      <BrowserDropdown
+                        url={`http://localhost:${devServerPort}`}
+                        buttonClassName="show-preview-btn"
+                      />
                     )}
                     <button
                       className="show-preview-btn"
@@ -1448,6 +1438,25 @@ function App() {
                       )}
                       <span>Restart Server</span>
                     </button>
+                    {isPreviewHidden ? (
+                      <button
+                        className="show-preview-btn"
+                        onClick={() => setIsPreviewHidden(false)}
+                        title="Show Preview"
+                      >
+                        <PanelRightIcon size={14} />
+                        <span>Show Preview</span>
+                      </button>
+                    ) : (
+                      <button
+                        className="show-preview-btn"
+                        onClick={() => setIsPreviewHidden(true)}
+                        title="Hide Preview"
+                      >
+                        <PanelRightIcon size={14} />
+                        <span>Hide Preview</span>
+                      </button>
+                    )}
                   </div>
                 </div>
                 <CodeHealthPanel

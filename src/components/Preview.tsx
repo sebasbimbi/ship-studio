@@ -412,12 +412,14 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
 
         const rect = iframeWrapperRef.current.getBoundingClientRect();
         const dpr = window.devicePixelRatio || 1;
+        // Account for macOS title bar in window screenshot
+        const TITLE_BAR_HEIGHT = 31;
 
         const finalPath = await invoke<string>('crop_and_save_screenshot', {
           projectPath,
           sourcePath: tempPath,
           x: Math.round(rect.left * dpr),
-          y: Math.round(rect.top * dpr),
+          y: Math.round((rect.top + TITLE_BAR_HEIGHT) * dpr),
           width: Math.round(rect.width * dpr),
           height: Math.round(rect.height * dpr),
         });
@@ -471,10 +473,12 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
         // Get the iframe's position relative to the window
         const iframeRect = iframeWrapperRef.current.getBoundingClientRect();
         const dpr = window.devicePixelRatio || 1;
+        // Account for macOS title bar in window screenshot
+        const TITLE_BAR_HEIGHT = 31;
 
         // Calculate absolute position of the selection within the window
         const absoluteX = Math.round((iframeRect.left + regionX) * dpr);
-        const absoluteY = Math.round((iframeRect.top + regionY) * dpr);
+        const absoluteY = Math.round((iframeRect.top + regionY + TITLE_BAR_HEIGHT) * dpr);
         const width = Math.round(regionWidth * dpr);
         const height = Math.round(regionHeight * dpr);
 
