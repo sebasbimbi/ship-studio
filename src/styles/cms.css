@@ -130,6 +130,7 @@
   background: var(--bg-tertiary);
   overflow: hidden;
   padding: 0;
+  position: relative;
 }
 
 .preview-iframe-wrapper {
@@ -143,6 +144,50 @@
   height: 100%;
   border: none;
   background: #1e1e1e;
+}
+
+/* Preview resize overlay (captures mouse during drag) */
+.preview-resize-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  cursor: ew-resize;
+}
+
+/* Preview resize handle */
+.preview-resize-handle {
+  width: 8px;
+  height: 100%;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  cursor: ew-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.preview-resize-handle:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--accent);
+}
+
+.preview-resize-handle-bar {
+  width: 2px;
+  height: 40px;
+  background: var(--text-muted);
+  border-radius: 1px;
+}
+
+.preview-resize-handle:hover .preview-resize-handle-bar {
+  background: var(--accent);
 }
 
 /* Crop selection overlay */

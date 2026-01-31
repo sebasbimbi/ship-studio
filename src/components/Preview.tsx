@@ -150,7 +150,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   const [hasError, setHasError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [serverReady, setServerReady] = useState(false);
-  const [breakpoint, setBreakpoint] = useState<Breakpoint>('desktop');
+  const [customWidth, setCustomWidth] = useState<number | null>(null); // null = 100% (desktop)
   const [pages, setPages] = useState<PageInfo[]>([]);
   const [currentPage, setCurrentPage] = useState('/');
   const [hasSanity, setHasSanity] = useState(false);
@@ -173,6 +173,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   const searchInputRef = useRef<HTMLInputElement>(null);
   const cmsModalRef = useRef<HTMLDivElement>(null);
   const cropOverlayRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
 
   // Dev server URL (for health checks and page loading)
   const devServerUrl = `http://localhost:${port}`;
@@ -584,6 +585,66 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     }
   }, [isCropMode]);
 
+  // Determine which breakpoint matches the current width
+  const getActiveBreakpoint = useCallback((): Breakpoint => {
+    if (customWidth === null) return 'desktop';
+    if (customWidth <= 375) return 'mobile';
+    if (customWidth <= 768) return 'tablet';
+    return 'desktop';
+  }, [customWidth]);
+
+  // Resize state
+  const [isResizing, setIsResizing] = useState(false);
+
+  // Handle resize drag - like SplitPane
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    document.body.style.cursor = 'ew-resize';
+    document.body.style.userSelect = 'none';
+
+    const startX = e.clientX;
+    const startWidth = iframeWrapperRef.current?.offsetWidth || 0;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!viewportRef.current) return;
+
+      const deltaX = e.clientX - startX;
+      // Multiply by 2 because preview is centered (handle moves half of width change)
+      const newWidth = startWidth + deltaX * 2;
+      const maxWidth = viewportRef.current.offsetWidth - 12; // Leave space for handle
+
+      if (newWidth >= maxWidth - 10) {
+        // Snap to full width (desktop)
+        setCustomWidth(null);
+      } else {
+        setCustomWidth(Math.max(320, Math.min(newWidth, maxWidth)));
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }, []);
+
+  // Handle breakpoint button click
+  const handleBreakpointClick = useCallback((bp: Breakpoint) => {
+    if (bp === 'desktop') {
+      setCustomWidth(null);
+    } else if (bp === 'tablet') {
+      setCustomWidth(768);
+    } else {
+      setCustomWidth(375);
+    }
+  }, []);
+
   // Force refresh the preview iframe with cache busting
   const refresh = useCallback(() => {
     if (iframeRef.current && serverReady) {
@@ -853,8 +914,8 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
           {(Object.keys(BREAKPOINTS) as Breakpoint[]).map((bp) => (
             <button
               key={bp}
-              className={`breakpoint-btn ${breakpoint === bp ? 'active' : ''}`}
-              onClick={() => setBreakpoint(bp)}
+              className={`breakpoint-btn ${getActiveBreakpoint() === bp ? 'active' : ''}`}
+              onClick={() => handleBreakpointClick(bp)}
               title={BREAKPOINTS[bp].label}
             >
               <BreakpointIcon type={bp} />
@@ -862,13 +923,15 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
           ))}
         </div>
       </div>
-      <div className="preview-viewport">
+      <div className="preview-viewport" ref={viewportRef}>
+        {/* Overlay to capture mouse events during resize */}
+        {isResizing && <div className="preview-resize-overlay" />}
         <div
           ref={iframeWrapperRef}
           className="preview-iframe-wrapper"
           style={{
-            width: BREAKPOINTS[breakpoint].width,
-            maxWidth: '100%',
+            width: customWidth === null ? 'calc(100% - 12px)' : `${customWidth}px`,
+            maxWidth: 'calc(100% - 12px)',
           }}
         >
           <iframe
@@ -928,6 +991,10 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
               )}
             </div>
           )}
+        </div>
+        {/* Resize handle */}
+        <div className="preview-resize-handle" onMouseDown={handleResizeStart}>
+          <div className="preview-resize-handle-bar" />
         </div>
       </div>
 
