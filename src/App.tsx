@@ -887,9 +887,14 @@ function App() {
     logger.info('Terminal exited', { code });
   }, []);
 
-  // Capture project screenshot in background
+  // Capture project screenshot in background (only if dev server is ready)
   const captureScreenshot = useCallback(
     async (projectPath: string) => {
+      // Skip capture if the preview server isn't ready (avoids "localhost cannot connect" thumbnails)
+      if (!previewRef.current?.isServerReady()) {
+        logger.debug('Skipping thumbnail capture - dev server not ready');
+        return;
+      }
       try {
         await invoke('capture_project_thumbnail', {
           projectPath,

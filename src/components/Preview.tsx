@@ -128,6 +128,8 @@ export interface PreviewHandle {
   isCapturing: () => boolean;
   /** Force refresh the preview iframe */
   refresh: () => void;
+  /** Check if the dev server is ready and responding */
+  isServerReady: () => boolean;
 }
 
 export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
@@ -683,8 +685,9 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
       captureFullPage,
       isCapturing: () => isCapturing,
       refresh,
+      isServerReady: () => serverReady,
     }),
-    [captureForClaude, captureFullPage, isCapturing, refresh]
+    [captureForClaude, captureFullPage, isCapturing, refresh, serverReady]
   );
 
   // Open CMS modal with native webview
