@@ -325,16 +325,22 @@ export function PublishBranchDropdown({
     );
   }
 
-  // Disable sync button when there are no changes to sync
+  // Check if there are changes to sync
   const canSync = hasChangesToSync || isPublishing || publishState.status !== 'idle';
+
+  // Get live site URLs
+  const productionUrl = projectVercelStatus?.production_url
+    ? `https://${projectVercelStatus.production_url}`
+    : null;
+  const stagingUrl = projectVercelStatus?.staging_url
+    ? `https://${projectVercelStatus.staging_url}`
+    : null;
 
   return (
     <div className="publish-dropdown" ref={dropdownRef}>
       <button
         className={`publish-button ${isPublishing ? 'publishing' : ''} ${!canSync ? 'synced' : ''}`}
-        onClick={() => canSync && setIsOpen(!isOpen)}
-        disabled={!canSync}
-        title={!canSync ? 'Already synced' : undefined}
+        onClick={() => setIsOpen(!isOpen)}
       >
         {isPublishing
           ? isMainBranch
@@ -506,8 +512,8 @@ export function PublishBranchDropdown({
             </>
           )}
 
-          {/* Idle State */}
-          {publishState.status === 'idle' && (
+          {/* Idle State - with changes to sync */}
+          {publishState.status === 'idle' && canSync && (
             <>
               <div className="publish-branch-header">
                 <h3>{isMainBranch ? 'Publish to Production' : 'Sync your changes'}</h3>
@@ -552,6 +558,53 @@ export function PublishBranchDropdown({
                   disabled={isPublishing}
                 >
                   {isMainBranch ? 'Go Live' : 'Sync'}
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* Synced State - show live sites */}
+          {publishState.status === 'idle' && !canSync && (
+            <>
+              <div className="publish-success">
+                <SuccessIcon />
+                <span>All changes synced</span>
+              </div>
+
+              {/* Live Sites */}
+              {hasVercel && (productionUrl || stagingUrl) && (
+                <div className="publish-live-sites">
+                  <div className="publish-live-sites-header">Live Sites</div>
+                  {productionUrl && (
+                    <button
+                      className="publish-live-site-link"
+                      onClick={() => void openUrl(productionUrl)}
+                    >
+                      <span className="publish-live-site-badge">Prod</span>
+                      <span className="publish-live-site-url">
+                        {projectVercelStatus?.production_url}
+                      </span>
+                      <ExternalLinkIcon />
+                    </button>
+                  )}
+                  {stagingUrl && (
+                    <button
+                      className="publish-live-site-link"
+                      onClick={() => void openUrl(stagingUrl)}
+                    >
+                      <span className="publish-live-site-badge">Stage</span>
+                      <span className="publish-live-site-url">
+                        {projectVercelStatus?.staging_url}
+                      </span>
+                      <ExternalLinkIcon />
+                    </button>
+                  )}
+                </div>
+              )}
+
+              <div className="publish-actions publish-actions-center">
+                <button className="publish-done" onClick={handleDone}>
+                  Done
                 </button>
               </div>
             </>
