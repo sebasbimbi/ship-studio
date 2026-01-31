@@ -6,6 +6,15 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.3.28
+
+- **Resizable preview** - Drag the handle to resize the preview panel and test responsive breakpoints
+- **Compact health panel** - Health checks now live in the toolbar, click to expand details
+- **Global search** - Search finds projects inside folders, not just root level
+- **Cleaner workspace** - Reorganized toolbar layout, screenshot buttons centered in preview bar
+- **Dashboard polish** - Shorter header elements, bolder buttons, Next.js pre-selected
+- **Fixed screenshot memory leak** - Playwright browser processes now properly close
+
 ## What's New in v0.3.27
 
 - **IntegrationBar Connect buttons** - Added Connect buttons to the integrations dropdown for GitHub and Vercel accounts
