@@ -25,7 +25,7 @@ const SERVER_CHECK_TIMEOUT_MS = 3000;
 const SERVER_MAX_RETRIES = 60;
 
 /** Responsive breakpoint options */
-type Breakpoint = 'desktop' | 'tablet' | 'mobile';
+type Breakpoint = 'full' | 'desktop' | 'laptop' | 'tablet' | 'mobile';
 
 /** Information about a Next.js page/route */
 interface PageInfo {
@@ -36,14 +36,35 @@ interface PageInfo {
 }
 
 const BREAKPOINTS: Record<Breakpoint, { width: string; label: string }> = {
-  desktop: { width: '100%', label: 'Desktop' },
+  full: { width: '100%', label: 'Full' },
+  desktop: { width: '1440px', label: 'Desktop' },
+  laptop: { width: '1024px', label: 'Laptop' },
   tablet: { width: '768px', label: 'Tablet' },
   mobile: { width: '375px', label: 'Mobile' },
 };
 
 // SVG icons for breakpoints
 const BreakpointIcon = ({ type }: { type: Breakpoint }) => {
+  if (type === 'full') {
+    // Expand/maximize icon for full width
+    return (
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+      >
+        <polyline points="15 3 21 3 21 9" />
+        <polyline points="9 21 3 21 3 15" />
+        <line x1="21" y1="3" x2="14" y2="10" />
+        <line x1="3" y1="21" x2="10" y2="14" />
+      </svg>
+    );
+  }
   if (type === 'desktop') {
+    // Monitor with stand for desktop
     return (
       <svg
         width="16"
@@ -56,6 +77,22 @@ const BreakpointIcon = ({ type }: { type: Breakpoint }) => {
         <rect x="2" y="3" width="20" height="14" rx="2" />
         <line x1="8" y1="21" x2="16" y2="21" />
         <line x1="12" y1="17" x2="12" y2="21" />
+      </svg>
+    );
+  }
+  if (type === 'laptop') {
+    // Laptop icon
+    return (
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+      >
+        <rect x="3" y="4" width="18" height="12" rx="2" />
+        <line x1="2" y1="20" x2="22" y2="20" />
       </svg>
     );
   }
@@ -74,6 +111,7 @@ const BreakpointIcon = ({ type }: { type: Breakpoint }) => {
       </svg>
     );
   }
+  // Mobile
   return (
     <svg
       width="16"
@@ -589,10 +627,12 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
 
   // Determine which breakpoint matches the current width
   const getActiveBreakpoint = useCallback((): Breakpoint => {
-    if (customWidth === null) return 'desktop';
+    if (customWidth === null) return 'full';
     if (customWidth <= 375) return 'mobile';
     if (customWidth <= 768) return 'tablet';
-    return 'desktop';
+    if (customWidth <= 1024) return 'laptop';
+    if (customWidth <= 1440) return 'desktop';
+    return 'full';
   }, [customWidth]);
 
   // Resize state
@@ -638,8 +678,12 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
 
   // Handle breakpoint button click
   const handleBreakpointClick = useCallback((bp: Breakpoint) => {
-    if (bp === 'desktop') {
+    if (bp === 'full') {
       setCustomWidth(null);
+    } else if (bp === 'desktop') {
+      setCustomWidth(1440);
+    } else if (bp === 'laptop') {
+      setCustomWidth(1024);
     } else if (bp === 'tablet') {
       setCustomWidth(768);
     } else {
@@ -919,7 +963,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
               key={bp}
               className={`breakpoint-btn ${getActiveBreakpoint() === bp ? 'active' : ''}`}
               onClick={() => handleBreakpointClick(bp)}
-              title={BREAKPOINTS[bp].label}
+              title={`${BREAKPOINTS[bp].label} (${BREAKPOINTS[bp].width})`}
             >
               <BreakpointIcon type={bp} />
             </button>
