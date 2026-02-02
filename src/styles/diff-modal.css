@@ -272,3 +272,39 @@
 .diff-error button:hover {
   background: var(--border);
 }
+
+/* Image preview */
+.diff-image-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  min-height: 200px;
+  background: var(--bg-tertiary);
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--bg-primary) 25%,
+    transparent 25%,
+    transparent 75%,
+    var(--bg-primary) 75%,
+    var(--bg-primary)
+  ),
+  repeating-linear-gradient(
+    45deg,
+    var(--bg-primary) 25%,
+    var(--bg-tertiary) 25%,
+    var(--bg-tertiary) 75%,
+    var(--bg-primary) 75%,
+    var(--bg-primary)
+  );
+  background-position: 0 0, 8px 8px;
+  background-size: 16px 16px;
+}
+
+.diff-image-preview img {
+  max-width: 100%;
+  max-height: 60vh;
+  object-fit: contain;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}

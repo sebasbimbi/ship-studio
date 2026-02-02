@@ -10,8 +10,17 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { getFileDiff, FileDiff, ChangeStatus } from '../lib/git';
 import { CloseIcon, FileIcon } from './icons';
+
+// Image extensions to detect for preview
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp', '.tiff', '.tif'];
+
+function isImageFile(filePath: string): boolean {
+  const lower = filePath.toLowerCase();
+  return IMAGE_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
 
 interface DiffModalProps {
   projectPath: string;
@@ -25,7 +34,15 @@ export function DiffModal({ projectPath, filePath, fileStatus, onClose }: DiffMo
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const isImage = isImageFile(filePath);
+  const imageSrc = isImage ? convertFileSrc(`${projectPath}/${filePath}`) : null;
+
   const loadDiff = useCallback(async () => {
+    // Skip loading diff for images
+    if (isImage) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
@@ -36,7 +53,7 @@ export function DiffModal({ projectPath, filePath, fileStatus, onClose }: DiffMo
     } finally {
       setIsLoading(false);
     }
-  }, [projectPath, filePath]);
+  }, [projectPath, filePath, isImage]);
 
   useEffect(() => {
     void loadDiff();
@@ -174,7 +191,15 @@ export function DiffModal({ projectPath, filePath, fileStatus, onClose }: DiffMo
             </div>
           )}
 
-          {!isLoading && !error && diff && <pre className="diff-pre">{renderDiffContent()}</pre>}
+          {!isLoading && !error && isImage && imageSrc && (
+            <div className="diff-image-preview">
+              <img src={imageSrc} alt={filePath} />
+            </div>
+          )}
+
+          {!isLoading && !error && !isImage && diff && (
+            <pre className="diff-pre">{renderDiffContent()}</pre>
+          )}
         </div>
       </div>
     </div>
