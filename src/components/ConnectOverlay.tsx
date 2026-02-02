@@ -39,11 +39,7 @@ export function ConnectOverlay({
         </div>
         <h3 className="connect-overlay-title">{title}</h3>
         <p className="connect-overlay-description">{description}</p>
-        <button
-          className="connect-overlay-btn"
-          onClick={onConnect}
-          disabled={isConnecting}
-        >
+        <button className="connect-overlay-btn" onClick={onConnect} disabled={isConnecting}>
           {isConnecting ? 'Connecting...' : `Connect ${serviceName}`}
         </button>
       </div>

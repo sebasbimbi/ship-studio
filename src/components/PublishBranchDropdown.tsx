@@ -108,7 +108,8 @@ export function PublishBranchDropdown({
         production_url: projectVercelStatus.production_url,
         staging_url: projectVercelStatus.staging_url,
         hasVercel,
-        willShowLiveSites: hasVercel && (projectVercelStatus.production_url || projectVercelStatus.staging_url),
+        willShowLiveSites:
+          hasVercel && (projectVercelStatus.production_url || projectVercelStatus.staging_url),
       });
     } else {
       logger.debug('PublishBranchDropdown: No Vercel status available');

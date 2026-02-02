@@ -186,8 +186,10 @@ export function EnvEditor({ projectPath, isOpen, onClose, onToast }: EnvEditorPr
       if (match) {
         let value = match[2];
         // Remove surrounding quotes if present
-        if ((value.startsWith('"') && value.endsWith('"')) ||
-            (value.startsWith("'") && value.endsWith("'"))) {
+        if (
+          (value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))
+        ) {
           value = value.slice(1, -1);
         }
         parsed.push({ key: match[1], value });
