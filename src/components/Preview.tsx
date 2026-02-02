@@ -426,8 +426,8 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     return await getWindowScreenshot(ourWindow.id);
   }, []);
 
-  // Capture viewport screenshot using Playwright (hides dev tools)
-  // Falls back to window capture + crop if Playwright fails
+  // Capture viewport screenshot by capturing the window and cropping to iframe bounds
+  // This captures what's actually visible on screen (including any navigation the user did in the iframe)
   const captureForClaude = useCallback(async (): Promise<string | null> => {
     if (isCapturing) {
       return null;
@@ -435,50 +435,36 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
 
     setIsCapturing(true);
     try {
-      // Try Playwright first (hides Next.js dev tools and other overlays)
-      const filePath = await invoke<string>('capture_viewport_playwright', {
-        projectPath,
-        url: currentUrl,
-      });
-      return filePath;
-    } catch (playwrightError) {
-      console.warn(
-        '[Preview] Playwright capture failed, falling back to window capture:',
-        playwrightError
-      );
-
-      // Fallback to window capture + crop
       if (!iframeWrapperRef.current) return null;
 
-      try {
-        const tempPath = await captureWindowScreenshot();
-        if (!tempPath) return null;
+      const tempPath = await captureWindowScreenshot();
+      if (!tempPath) return null;
 
-        const rect = iframeWrapperRef.current.getBoundingClientRect();
-        const dpr = window.devicePixelRatio || 1;
-        // Account for macOS title bar in window screenshot
-        const TITLE_BAR_HEIGHT = 31;
+      const rect = iframeWrapperRef.current.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      // Account for macOS title bar in window screenshot
+      const TITLE_BAR_HEIGHT = 31;
 
-        const finalPath = await invoke<string>('crop_and_save_screenshot', {
-          projectPath,
-          sourcePath: tempPath,
-          x: Math.round(rect.left * dpr),
-          y: Math.round((rect.top + TITLE_BAR_HEIGHT) * dpr),
-          width: Math.round(rect.width * dpr),
-          height: Math.round(rect.height * dpr),
-        });
-        return finalPath;
-      } catch (fallbackError) {
-        console.error('[Preview] Fallback capture also failed:', fallbackError);
-        return null;
-      }
+      const finalPath = await invoke<string>('crop_and_save_screenshot', {
+        projectPath,
+        sourcePath: tempPath,
+        x: Math.round(rect.left * dpr),
+        y: Math.round((rect.top + TITLE_BAR_HEIGHT) * dpr),
+        width: Math.round(rect.width * dpr),
+        height: Math.round(rect.height * dpr),
+      });
+      return finalPath;
+    } catch (error) {
+      console.error('[Preview] Viewport capture failed:', error);
+      return null;
     } finally {
       setIsCapturing(false);
     }
-  }, [projectPath, currentUrl, captureWindowScreenshot, isCapturing]);
+  }, [projectPath, captureWindowScreenshot, isCapturing]);
 
-  // Capture full page by creating a native webview and scrolling through it
   // Full-page capture using Playwright (scrolls page to trigger lazy content, then captures)
+  // Note: Uses currentUrl from page selector state - if user navigated via iframe links,
+  // this may not match. Use the page selector dropdown to ensure correct page.
   const captureFullPage = useCallback(async (): Promise<string | null> => {
     if (isCapturing) return null;
 
