@@ -1,5 +1,21 @@
 /* ============ Dashboard Styles ============ */
 
+/* Scroll container that fills viewport and handles scroll anywhere */
+.dashboard-scroll-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.dashboard-scroll-container::-webkit-scrollbar {
+  display: none;
+}
+
 /* Dashboard Layout */
 .project-list.dashboard {
   display: flex;
@@ -9,6 +25,10 @@
   width: 100%;
   max-width: 900px;
   min-width: 900px;
+  margin: 0 auto;
+  /* Override base .project-list styles */
+  height: auto;
+  overflow-y: visible;
 }
 
 /* Dashboard Header */

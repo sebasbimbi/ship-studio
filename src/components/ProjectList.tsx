@@ -367,207 +367,209 @@ export function ProjectList({
     : filteredFolders.length + filteredProjects.length;
 
   return (
-    <div className="project-list dashboard">
-      <DashboardHeader
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        onCreateProject={onCreateProject}
-        onImportProject={onImportProject}
-        onCreateFolder={() => setShowNewFolderModal(true)}
-        isGitHubAuthenticated={isGitHubAuthenticated}
-        onGitHubConnectForImport={onGitHubConnectForImport}
-      />
+    <div className="dashboard-scroll-container">
+      <div className="project-list dashboard">
+        <DashboardHeader
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onCreateProject={onCreateProject}
+          onImportProject={onImportProject}
+          onCreateFolder={() => setShowNewFolderModal(true)}
+          isGitHubAuthenticated={isGitHubAuthenticated}
+          onGitHubConnectForImport={onGitHubConnectForImport}
+        />
 
-      {/* Folder breadcrumb when inside a folder */}
-      {currentFolderId && currentFolder && (
-        <div className="folder-breadcrumb">
-          <button className="folder-breadcrumb-back" onClick={() => setCurrentFolderId(null)}>
-            <ArrowLeftIcon size={14} />
-            All Projects
-          </button>
-          <span className="folder-breadcrumb-separator">/</span>
-          <span className="folder-breadcrumb-current">{currentFolder.name}</span>
-        </div>
-      )}
-
-      <div className="dashboard-section-header">
-        <span className="dashboard-section-title">
-          {currentFolderId ? 'Projects' : 'All Projects'} {totalCount > 0 && `(${totalCount})`}
-        </span>
-        <div className="dashboard-section-controls">
-          <div className="sort-dropdown" ref={sortDropdownRef}>
-            <button
-              className="sort-dropdown-btn"
-              onClick={() => setShowSortDropdown(!showSortDropdown)}
-            >
-              {sortLabels[sortBy]}
-              <ChevronIcon />
+        {/* Folder breadcrumb when inside a folder */}
+        {currentFolderId && currentFolder && (
+          <div className="folder-breadcrumb">
+            <button className="folder-breadcrumb-back" onClick={() => setCurrentFolderId(null)}>
+              <ArrowLeftIcon size={14} />
+              All Projects
             </button>
-            {showSortDropdown && (
-              <div className="sort-dropdown-menu">
-                {(Object.keys(sortLabels) as SortOption[]).map((option) => (
-                  <button
-                    key={option}
-                    className={`sort-dropdown-item ${sortBy === option ? 'active' : ''}`}
-                    onClick={() => {
-                      setSortBy(option);
-                      setShowSortDropdown(false);
-                    }}
-                  >
-                    {sortLabels[option]}
-                    {sortBy === option && <CheckIcon />}
-                  </button>
-                ))}
-              </div>
+            <span className="folder-breadcrumb-separator">/</span>
+            <span className="folder-breadcrumb-current">{currentFolder.name}</span>
+          </div>
+        )}
+
+        <div className="dashboard-section-header">
+          <span className="dashboard-section-title">
+            {currentFolderId ? 'Projects' : 'All Projects'} {totalCount > 0 && `(${totalCount})`}
+          </span>
+          <div className="dashboard-section-controls">
+            <div className="sort-dropdown" ref={sortDropdownRef}>
+              <button
+                className="sort-dropdown-btn"
+                onClick={() => setShowSortDropdown(!showSortDropdown)}
+              >
+                {sortLabels[sortBy]}
+                <ChevronIcon />
+              </button>
+              {showSortDropdown && (
+                <div className="sort-dropdown-menu">
+                  {(Object.keys(sortLabels) as SortOption[]).map((option) => (
+                    <button
+                      key={option}
+                      className={`sort-dropdown-item ${sortBy === option ? 'active' : ''}`}
+                      onClick={() => {
+                        setSortBy(option);
+                        setShowSortDropdown(false);
+                      }}
+                    >
+                      {sortLabels[option]}
+                      {sortBy === option && <CheckIcon />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {totalCount === 0 ? (
+          <div className="project-list-empty">
+            {searchQuery ? (
+              <>
+                <p>No items found</p>
+                <p className="hint">Try a different search term</p>
+              </>
+            ) : currentFolderId ? (
+              <>
+                <p>This folder is empty</p>
+                <p className="hint">Move projects here or create a new project</p>
+              </>
+            ) : (
+              <>
+                <p>No projects yet</p>
+                <p className="hint">Create your first project to get started</p>
+              </>
             )}
           </div>
-        </div>
-      </div>
-
-      {totalCount === 0 ? (
-        <div className="project-list-empty">
-          {searchQuery ? (
-            <>
-              <p>No items found</p>
-              <p className="hint">Try a different search term</p>
-            </>
-          ) : currentFolderId ? (
-            <>
-              <p>This folder is empty</p>
-              <p className="hint">Move projects here or create a new project</p>
-            </>
-          ) : (
-            <>
-              <p>No projects yet</p>
-              <p className="hint">Create your first project to get started</p>
-            </>
-          )}
-        </div>
-      ) : (
-        <div className="project-grid">
-          {/* Render folders first (only at root level) */}
-          {!currentFolderId &&
-            filteredFolders.map((folder) => (
-              <FolderCard
-                key={folder.id}
-                folder={folder}
-                onOpen={() => setCurrentFolderId(folder.id)}
-                onRename={() => setRenamingFolder(folder)}
-                onDelete={() => setDeleteFolderConfirm(folder)}
+        ) : (
+          <div className="project-grid">
+            {/* Render folders first (only at root level) */}
+            {!currentFolderId &&
+              filteredFolders.map((folder) => (
+                <FolderCard
+                  key={folder.id}
+                  folder={folder}
+                  onOpen={() => setCurrentFolderId(folder.id)}
+                  onRename={() => setRenamingFolder(folder)}
+                  onDelete={() => setDeleteFolderConfirm(folder)}
+                />
+              ))}
+            {/* Render projects */}
+            {filteredProjects.map((project) => (
+              <ProjectCard
+                key={project.path}
+                project={project}
+                thumbnailData={project.thumbnailData}
+                onSelect={() => onSelectProject(project)}
+                onDelete={() => setDeleteConfirm(project)}
+                onToggleAutoAccept={(enabled) => void handleToggleAutoAccept(project.path, enabled)}
+                onToggleMainBranchWarning={(hidden) =>
+                  void handleToggleMainBranchWarning(project.path, hidden)
+                }
+                onMoveToFolder={() => void handleOpenMoveModal(project)}
+                onExportAsTemplate={() => void handleExportAsTemplate(project.path)}
+                onOpenSite={
+                  project.production_url
+                    ? () => {
+                        const url = project.production_url!;
+                        void openUrl(url.startsWith('http') ? url : `https://${url}`);
+                      }
+                    : undefined
+                }
               />
             ))}
-          {/* Render projects */}
-          {filteredProjects.map((project) => (
-            <ProjectCard
-              key={project.path}
-              project={project}
-              thumbnailData={project.thumbnailData}
-              onSelect={() => onSelectProject(project)}
-              onDelete={() => setDeleteConfirm(project)}
-              onToggleAutoAccept={(enabled) => void handleToggleAutoAccept(project.path, enabled)}
-              onToggleMainBranchWarning={(hidden) =>
-                void handleToggleMainBranchWarning(project.path, hidden)
-              }
-              onMoveToFolder={() => void handleOpenMoveModal(project)}
-              onExportAsTemplate={() => void handleExportAsTemplate(project.path)}
-              onOpenSite={
-                project.production_url
-                  ? () => {
-                      const url = project.production_url!;
-                      void openUrl(url.startsWith('http') ? url : `https://${url}`);
-                    }
-                  : undefined
-              }
-            />
-          ))}
-        </div>
-      )}
+          </div>
+        )}
 
-      <IntegrationBar onGitHubConnect={onGitHubConnect} onVercelConnect={onVercelConnect} />
+        <IntegrationBar onGitHubConnect={onGitHubConnect} onVercelConnect={onVercelConnect} />
 
-      {/* New Folder Modal */}
-      <NewFolderModal
-        isOpen={showNewFolderModal}
-        onClose={() => setShowNewFolderModal(false)}
-        onCreate={handleCreateFolder}
-      />
+        {/* New Folder Modal */}
+        <NewFolderModal
+          isOpen={showNewFolderModal}
+          onClose={() => setShowNewFolderModal(false)}
+          onCreate={handleCreateFolder}
+        />
 
-      {/* Rename Folder Modal */}
-      <NewFolderModal
-        isOpen={renamingFolder !== null}
-        onClose={() => setRenamingFolder(null)}
-        onCreate={handleRenameFolder}
-        initialName={renamingFolder?.name || ''}
-        title="Rename Folder"
-        buttonLabel="Rename"
-      />
+        {/* Rename Folder Modal */}
+        <NewFolderModal
+          isOpen={renamingFolder !== null}
+          onClose={() => setRenamingFolder(null)}
+          onCreate={handleRenameFolder}
+          initialName={renamingFolder?.name || ''}
+          title="Rename Folder"
+          buttonLabel="Rename"
+        />
 
-      {/* Move to Folder Modal */}
-      <MoveFolderModal
-        isOpen={moveProject !== null}
-        onClose={() => {
-          setMoveProject(null);
-          setMoveProjectFolderId(null);
-        }}
-        onSelect={handleMoveProject}
-        projectName={moveProject?.name || ''}
-        currentFolderId={moveProjectFolderId}
-      />
+        {/* Move to Folder Modal */}
+        <MoveFolderModal
+          isOpen={moveProject !== null}
+          onClose={() => {
+            setMoveProject(null);
+            setMoveProjectFolderId(null);
+          }}
+          onSelect={handleMoveProject}
+          projectName={moveProject?.name || ''}
+          currentFolderId={moveProjectFolderId}
+        />
 
-      {/* Delete Project Confirmation Modal */}
-      {deleteConfirm && (
-        <div className="modal-overlay" onClick={() => setDeleteConfirm(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Delete Project?</h3>
-            <p>
-              Are you sure you want to delete <strong>{deleteConfirm.name}</strong>?
-            </p>
-            <p className="hint">
-              This will delete the local copy from your computer. If this project is connected to
-              GitHub, your code will remain there and you can reimport it at any time.
-            </p>
-            <div className="modal-actions">
-              <button onClick={() => setDeleteConfirm(null)} disabled={deleting}>
-                Cancel
-              </button>
-              <button
-                className="btn-danger"
-                onClick={() => void handleDelete(deleteConfirm)}
-                disabled={deleting}
-              >
-                {deleting ? 'Deleting...' : 'Delete'}
-              </button>
+        {/* Delete Project Confirmation Modal */}
+        {deleteConfirm && (
+          <div className="modal-overlay" onClick={() => setDeleteConfirm(null)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <h3>Delete Project?</h3>
+              <p>
+                Are you sure you want to delete <strong>{deleteConfirm.name}</strong>?
+              </p>
+              <p className="hint">
+                This will delete the local copy from your computer. If this project is connected to
+                GitHub, your code will remain there and you can reimport it at any time.
+              </p>
+              <div className="modal-actions">
+                <button onClick={() => setDeleteConfirm(null)} disabled={deleting}>
+                  Cancel
+                </button>
+                <button
+                  className="btn-danger"
+                  onClick={() => void handleDelete(deleteConfirm)}
+                  disabled={deleting}
+                >
+                  {deleting ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Delete Folder Confirmation Modal */}
-      {deleteFolderConfirm && (
-        <div className="modal-overlay" onClick={() => setDeleteFolderConfirm(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Delete Folder?</h3>
-            <p>
-              Are you sure you want to delete <strong>{deleteFolderConfirm.name}</strong>?
-            </p>
-            <p className="hint">
-              Projects in this folder will not be deleted. They will appear at the root level.
-            </p>
-            <div className="modal-actions">
-              <button onClick={() => setDeleteFolderConfirm(null)} disabled={deletingFolder}>
-                Cancel
-              </button>
-              <button
-                className="btn-danger"
-                onClick={() => void handleDeleteFolder(deleteFolderConfirm)}
-                disabled={deletingFolder}
-              >
-                {deletingFolder ? 'Deleting...' : 'Delete'}
-              </button>
+        {/* Delete Folder Confirmation Modal */}
+        {deleteFolderConfirm && (
+          <div className="modal-overlay" onClick={() => setDeleteFolderConfirm(null)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <h3>Delete Folder?</h3>
+              <p>
+                Are you sure you want to delete <strong>{deleteFolderConfirm.name}</strong>?
+              </p>
+              <p className="hint">
+                Projects in this folder will not be deleted. They will appear at the root level.
+              </p>
+              <div className="modal-actions">
+                <button onClick={() => setDeleteFolderConfirm(null)} disabled={deletingFolder}>
+                  Cancel
+                </button>
+                <button
+                  className="btn-danger"
+                  onClick={() => void handleDeleteFolder(deleteFolderConfirm)}
+                  disabled={deletingFolder}
+                >
+                  {deletingFolder ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

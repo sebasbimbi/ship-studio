@@ -104,7 +104,7 @@ export function ProjectCard({
         </div>
       </div>
       <div className="project-card-info">
-        <div className="project-card-details">
+        <div className="project-card-details" onClick={onSelect} style={{ cursor: 'pointer' }}>
           <div className="project-card-name-row">
             <span className="project-card-name">{project.name}</span>
             {autoAcceptMode && (
