@@ -376,8 +376,10 @@ function App({ initialProjectPath }: AppProps) {
 
   // Publishing state (lifted from PublishDropdown so button shows "Publishing..." even when dropdown closed)
   const [isPublishing, setIsPublishing] = useState(false);
-  // Force publish dropdown to open (triggered by Save button in BranchIndicator)
+  // Force publish dropdown to open (triggered by Save button in BranchIndicator) - trigger mode
   const [forcePublishOpen, setForcePublishOpen] = useState(false);
+  // Compact publish dropdown state - controlled mode for toggle behavior via the compact Publish button
+  const [isCompactPublishOpen, setIsCompactPublishOpen] = useState(false);
 
   // Vercel auto-connecting state (when linking after GitHub repo creation)
   const [isVercelAutoConnecting, setIsVercelAutoConnecting] = useState(false);
@@ -2476,31 +2478,60 @@ function App({ initialProjectPath }: AppProps) {
         </div>
 
         {/* Compact footer - visible only at narrow window widths via CSS */}
-        <CompactActionsRow
-          serverHealth={
-            devServerRef.current ? 'healthy' : isRestartingDevServer ? 'starting' : 'unhealthy'
-          }
-          currentBranch={currentBranch}
-          hasUncommittedChanges={hasUncommittedChanges}
-          prStatus={openPRs.find((pr) => pr.headRef === currentBranch) ? 'open' : 'none'}
-          isGitHubConnected={integrations.projectGithub?.status === 'connected'}
-          onRestartServer={() => void handleRestartDevServer()}
-          onOpenAssets={() => setShowAssetsPanel(true)}
-          onOpenEnvEditor={() => setShowEnvEditor(true)}
-          onCreateRepo={() => {
-            // Button only shows when GitHub not connected, so prompt GitHub connection
-            void handleGitHubConnectFromOverlay();
-          }}
-          onSwitchBranch={() => {
-            // Toggle between terminal and branches view in compact mode
-            setCompactView(compactView === 'branches' ? 'terminal' : 'branches');
-          }}
-          onCreatePR={() => {
-            // Toggle between terminal and PRs view in compact mode
-            setCompactView(compactView === 'prs' ? 'terminal' : 'prs');
-          }}
-          onPublish={() => setForcePublishOpen(true)}
-        />
+        <div className="compact-footer-container">
+          {/* Compact publish dropdown - uses controlled mode (forceOpen synced with state)
+              The button is hidden via CSS; only the dropdown menu appears */}
+          <div className="compact-publish-dropdown">
+            <PublishBranchDropdown
+              currentBranch={currentBranch || 'main'}
+              projectGithubStatus={integrations.projectGithub}
+              projectVercelStatus={integrations.projectVercel}
+              projectPath={currentProject?.path || ''}
+              hasChangesToSync={hasUncommittedChanges}
+              onStatusChange={() => {
+                void handleGitHubStatusChange();
+                if (currentProject) void fetchBranchInfo(currentProject.path);
+              }}
+              onModalClose={() => {
+                setIsCompactPublishOpen(false);
+                focusTerminal();
+              }}
+              onToast={showToast}
+              isPublishing={isPublishing}
+              setIsPublishing={setIsPublishing}
+              onPublishError={handlePublishError}
+              forceOpen={isCompactPublishOpen}
+              onForceOpenHandled={() => {}}
+              excludeClickOutsideSelector=".compact-publish-btn"
+            />
+          </div>
+          <CompactActionsRow
+            serverHealth={
+              devServerRef.current ? 'healthy' : isRestartingDevServer ? 'starting' : 'unhealthy'
+            }
+            currentBranch={currentBranch}
+            hasUncommittedChanges={hasUncommittedChanges}
+            prStatus={openPRs.find((pr) => pr.headRef === currentBranch) ? 'open' : 'none'}
+            isGitHubConnected={integrations.projectGithub?.status === 'connected'}
+            isSynced={!hasUncommittedChanges}
+            onRestartServer={() => void handleRestartDevServer()}
+            onOpenAssets={() => setShowAssetsPanel(true)}
+            onOpenEnvEditor={() => setShowEnvEditor(true)}
+            onCreateRepo={() => {
+              // Button only shows when GitHub not connected, so prompt GitHub connection
+              void handleGitHubConnectFromOverlay();
+            }}
+            onSwitchBranch={() => {
+              // Toggle between terminal and branches view in compact mode
+              setCompactView(compactView === 'branches' ? 'terminal' : 'branches');
+            }}
+            onCreatePR={() => {
+              // Toggle between terminal and PRs view in compact mode
+              setCompactView(compactView === 'prs' ? 'terminal' : 'prs');
+            }}
+            onPublish={() => setIsCompactPublishOpen((prev) => !prev)}
+          />
+        </div>
 
         <EnvEditor
           projectPath={currentProject?.path || ''}

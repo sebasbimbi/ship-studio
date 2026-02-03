@@ -16,11 +16,18 @@
 .back-button {
   padding: 6px 12px;
   font-size: 13px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .workspace-header h1 {
   font-size: 16px;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 .workspace-header .project-path {
@@ -28,6 +35,11 @@
   font-size: 12px;
   font-family: monospace;
   margin-right: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 .workspace-content {
@@ -540,6 +552,40 @@
   .terminal-pane {
     border-radius: 0;
   }
+}
+
+/* Compact footer container - shown only at narrow widths */
+.compact-footer-container {
+  display: none;
+  position: relative;
+}
+
+@media (max-width: 550px) {
+  .compact-footer-container {
+    display: block;
+  }
+}
+
+/* Compact publish dropdown - hide button, position dropdown above footer */
+.compact-publish-dropdown {
+  position: absolute;
+  bottom: 100%;
+  right: 8px;
+  margin-bottom: 8px;
+  z-index: 1001;
+}
+
+.compact-publish-dropdown .publish-dropdown {
+  position: static;
+}
+
+.compact-publish-dropdown .publish-button {
+  display: none;
+}
+
+.compact-publish-dropdown .publish-dropdown-menu {
+  position: static;
+  width: 300px;
 }
 
 /* Compact footer - shown only at narrow widths */

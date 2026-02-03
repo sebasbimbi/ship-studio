@@ -23,22 +23,29 @@ import { useEffect, RefObject } from 'react';
  * @param ref - Reference to the element to monitor
  * @param callback - Function to call when clicking outside
  * @param enabled - Whether the hook is active (default: true)
+ * @param excludeSelector - Optional CSS selector for elements to exclude from outside detection
  */
 export function useClickOutside<T extends HTMLElement>(
   ref: RefObject<T | null>,
   callback: () => void,
-  enabled = true
+  enabled = true,
+  excludeSelector?: string
 ): void {
   useEffect(() => {
     if (!enabled) return;
 
     const handleClickOutside = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (ref.current && !ref.current.contains(target)) {
+        // Check if click is on an excluded element
+        if (excludeSelector && (target as Element).closest?.(excludeSelector)) {
+          return;
+        }
         callback();
       }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [ref, callback, enabled]);
+  }, [ref, callback, enabled, excludeSelector]);
 }

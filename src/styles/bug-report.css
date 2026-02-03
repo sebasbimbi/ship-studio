@@ -35,6 +35,13 @@
   color: #fff;
 }
 
+/* Hide bug report button in compact mode */
+@media (max-width: 550px) {
+  .bug-report-button {
+    display: none;
+  }
+}
+
 /* Modal Overlay */
 .bug-report-overlay {
   position: fixed;

@@ -238,19 +238,41 @@
 
 /* Publish button */
 .compact-publish-btn {
-  background: #4ecdc4;
-  border-color: #4ecdc4;
+  background: var(--action);
+  border-color: var(--action-hover);
   color: #1e1e1e;
+  font-weight: 500;
+  padding: 0 10px;
 }
 
 .compact-publish-btn:hover {
-  background: #3dbdb5;
-  border-color: #3dbdb5;
+  background: var(--action-hover);
+  border-color: var(--action-hover);
   color: #1e1e1e;
 }
 
 .compact-publish-btn svg {
   color: #1e1e1e;
+}
+
+/* Synced state */
+.compact-publish-btn.synced {
+  background: var(--bg-tertiary);
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+
+.compact-publish-btn.synced:hover {
+  background: var(--border);
+  color: var(--text-primary);
+}
+
+.compact-publish-btn.synced svg {
+  color: var(--text-muted);
+}
+
+.compact-publish-btn.synced:hover svg {
+  color: var(--text-primary);
 }
 
 /* Window control buttons */

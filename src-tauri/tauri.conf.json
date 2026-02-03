@@ -21,7 +21,9 @@
         "resizable": true,
         "fullscreen": false,
         "dragDropEnabled": true,
-        "transparent": true
+        "transparent": true,
+        "theme": "Dark",
+        "backgroundColor": "#2d2d2d"
       }
     ],
     "security": {

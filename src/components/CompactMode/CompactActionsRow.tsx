@@ -33,6 +33,8 @@ export interface CompactActionsRowProps {
   prStatus: 'none' | 'open' | 'merged' | 'closed';
   /** GitHub connection status */
   isGitHubConnected: boolean;
+  /** Whether the project is synced (no changes to publish) */
+  isSynced?: boolean;
   /** Callback to restart dev server */
   onRestartServer: () => void;
   /** Callback to open assets panel */
@@ -55,6 +57,7 @@ export function CompactActionsRow({
   hasUncommittedChanges,
   prStatus,
   isGitHubConnected,
+  isSynced = false,
   onRestartServer,
   onOpenAssets,
   onOpenEnvEditor,
@@ -172,12 +175,13 @@ export function CompactActionsRow({
       {/* Right side - Publish only */}
       <div className="compact-actions-right">
         <button
-          className="compact-action-btn compact-publish-btn"
+          className={`compact-action-btn compact-publish-btn ${isSynced ? 'synced' : ''}`}
           onClick={onPublish}
-          title="Publish"
-          aria-label="Publish"
+          title={isSynced ? 'All changes synced' : 'Publish'}
+          aria-label={isSynced ? 'Synced' : 'Publish'}
         >
           <UploadIcon size={12} />
+          <span>{isSynced ? 'Synced' : 'Publish'}</span>
         </button>
       </div>
     </div>

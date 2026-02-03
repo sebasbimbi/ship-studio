@@ -55,6 +55,11 @@ interface PublishBranchDropdownProps {
   forceOpen?: boolean;
   /** Callback when forceOpen has been handled */
   onForceOpenHandled?: () => void;
+  /**
+   * CSS selector for elements that should NOT trigger click-outside closing.
+   * Used by compact mode to exclude its publish button from closing the dropdown.
+   */
+  excludeClickOutsideSelector?: string;
 }
 
 type PublishState =
@@ -84,6 +89,7 @@ export function PublishBranchDropdown({
   onPublishError,
   forceOpen,
   onForceOpenHandled,
+  excludeClickOutsideSelector,
 }: PublishBranchDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [publishState, setPublishState] = useState<PublishState>({ status: 'idle' });
@@ -124,11 +130,23 @@ export function PublishBranchDropdown({
     };
   }, []);
 
-  // Handle forceOpen from parent (e.g., when Save button is clicked in BranchIndicator)
+  // Track previous forceOpen value to detect true→false transitions
+  const prevForceOpenRef = useRef<boolean | undefined>(undefined);
+
+  // Handle forceOpen prop from parent. Supports two modes:
+  // 1. Trigger mode (header button): forceOpen briefly true, then reset via onForceOpenHandled
+  // 2. Controlled mode (compact button): forceOpen stays synced with parent state
+  // We only close on true→false transition to support controlled mode without breaking trigger mode
   useEffect(() => {
+    const prevForceOpen = prevForceOpenRef.current;
+    prevForceOpenRef.current = forceOpen;
+
     if (forceOpen && hasGitHubRepo) {
       setIsOpen(true);
       onForceOpenHandled?.();
+    } else if (prevForceOpen === true && forceOpen === false) {
+      // Controlled mode: parent explicitly closed the dropdown
+      setIsOpen(false);
     }
   }, [forceOpen, hasGitHubRepo, onForceOpenHandled]);
 
@@ -226,7 +244,7 @@ export function PublishBranchDropdown({
     setIsOpen(false);
     onModalClose?.();
   }, [onModalClose]);
-  useClickOutside(dropdownRef, closeDropdown, isOpen);
+  useClickOutside(dropdownRef, closeDropdown, isOpen, excludeClickOutsideSelector);
 
   // Generate preview URL for branch
   const getPreviewUrl = (): string | null => {
