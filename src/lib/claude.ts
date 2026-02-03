@@ -35,3 +35,24 @@ export async function checkClaudeCliStatus(): Promise<ClaudeCliStatus> {
 export async function installClaudeCli(): Promise<void> {
   return invoke('install_claude_cli');
 }
+
+/** Represents a Claude skill (custom command) */
+export interface ClaudeSkill {
+  /** Skill name (command without the leading /) */
+  name: string;
+  /** Short description of what the skill does */
+  description: string;
+  /** The plugin this skill belongs to */
+  plugin: string;
+  /** Whether this is a "user" or "project" scoped skill */
+  scope: string;
+}
+
+/**
+ * List available Claude skills from installed plugins.
+ * @param projectPath - Optional project path to include project-level skills
+ * @returns Array of available skills
+ */
+export async function listClaudeSkills(projectPath?: string): Promise<ClaudeSkill[]> {
+  return invoke<ClaudeSkill[]>('list_claude_skills', { projectPath });
+}

@@ -167,6 +167,8 @@ pub fn run() {
             // Claude integration
             commands::claude::check_claude_cli_status,
             commands::claude::install_claude_cli,
+            // Claude skills
+            commands::skills::list_claude_skills,
             // Vercel integration
             commands::vercel::check_vercel_cli_status,
             commands::vercel::get_vercel_username,

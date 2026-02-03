@@ -17,6 +17,7 @@ pub mod pty;
 pub mod publishing;
 pub mod pull_requests;
 pub mod setup;
+pub mod skills;
 pub mod vercel;
 pub mod window;
 
@@ -36,5 +37,6 @@ pub use pty::*;
 pub use publishing::*;
 pub use pull_requests::*;
 pub use setup::*;
+pub use skills::*;
 pub use vercel::*;
 pub use window::*;

@@ -1,0 +1,251 @@
+/**
+ * HelpModal component for displaying Claude CLI commands and Ship Studio tips.
+ *
+ * Shows a glossary of available slash commands for Claude Code,
+ * user's custom skills, keyboard shortcuts, and helpful tips.
+ *
+ * @module components/HelpModal
+ */
+
+import { useEffect, useState } from 'react';
+import { CloseIcon } from './icons';
+import { listClaudeSkills, ClaudeSkill } from '../lib/claude';
+
+interface HelpModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  /** Optional project path to include project-level skills */
+  projectPath?: string;
+}
+
+export function HelpModal({ isOpen, onClose, projectPath }: HelpModalProps) {
+  const [skills, setSkills] = useState<ClaudeSkill[]>([]);
+  const [isLoadingSkills, setIsLoadingSkills] = useState(false);
+
+  // Handle Escape key to close
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  // Fetch skills when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+
+    setIsLoadingSkills(true);
+    listClaudeSkills(projectPath)
+      .then(setSkills)
+      .catch((err) => {
+        console.error('Failed to load skills:', err);
+        setSkills([]);
+      })
+      .finally(() => setIsLoadingSkills(false));
+  }, [isOpen, projectPath]);
+
+  if (!isOpen) return null;
+
+  const userSkills = skills.filter((s) => s.scope === 'user');
+  const projectSkills = skills.filter((s) => s.scope === 'project');
+
+  return (
+    <div className="modal-overlay" onMouseDown={onClose}>
+      <div className="modal help-modal" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="help-modal-header">
+          <h3>Help & Commands</h3>
+          <button className="help-close-btn" onClick={onClose}>
+            <CloseIcon size={16} />
+          </button>
+        </div>
+
+        <div className="help-modal-body">
+          {/* Custom Skills Section - shown first if user has any */}
+          {skills.length > 0 && (
+            <>
+              <div className="help-section">
+                <div className="help-section-title">Your Skills</div>
+                <div className="help-command-list">
+                  {userSkills.map((skill) => (
+                    <div key={`${skill.plugin}-${skill.name}`} className="help-command">
+                      <span className="help-command-name">/{skill.name}</span>
+                      <span className="help-command-desc">{skill.description}</span>
+                    </div>
+                  ))}
+                  {projectSkills.map((skill) => (
+                    <div key={`${skill.plugin}-${skill.name}`} className="help-command">
+                      <span className="help-command-name">/{skill.name}</span>
+                      <span className="help-command-desc">
+                        {skill.description}
+                        <span className="help-skill-badge">project</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="help-divider" />
+            </>
+          )}
+
+          {isLoadingSkills && skills.length === 0 && (
+            <>
+              <div className="help-section">
+                <div className="help-section-title">Your Skills</div>
+                <div className="help-loading">Loading skills...</div>
+              </div>
+              <div className="help-divider" />
+            </>
+          )}
+
+          {/* Session Commands */}
+          <div className="help-section">
+            <div className="help-section-title">Session</div>
+            <div className="help-command-list">
+              <div className="help-command">
+                <span className="help-command-name">/clear</span>
+                <span className="help-command-desc">Clear conversation history</span>
+              </div>
+              <div className="help-command">
+                <span className="help-command-name">/compact</span>
+                <span className="help-command-desc">Toggle compact output mode</span>
+              </div>
+              <div className="help-command">
+                <span className="help-command-name">/cost</span>
+                <span className="help-command-desc">Show token usage and cost</span>
+              </div>
+              <div className="help-command">
+                <span className="help-command-name">/status</span>
+                <span className="help-command-desc">Show current session status</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="help-divider" />
+
+          {/* Code Actions */}
+          <div className="help-section">
+            <div className="help-section-title">Code Actions</div>
+            <div className="help-command-list">
+              <div className="help-command">
+                <span className="help-command-name">/init</span>
+                <span className="help-command-desc">Initialize project with CLAUDE.md</span>
+              </div>
+              <div className="help-command">
+                <span className="help-command-name">/review</span>
+                <span className="help-command-desc">Review code changes</span>
+              </div>
+              <div className="help-command">
+                <span className="help-command-name">/pr-comments</span>
+                <span className="help-command-desc">View PR comments from GitHub</span>
+              </div>
+              <div className="help-command">
+                <span className="help-command-name">/bug</span>
+                <span className="help-command-desc">Report a bug to Anthropic</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="help-divider" />
+
+          {/* Configuration Commands */}
+          <div className="help-section">
+            <div className="help-section-title">Configuration</div>
+            <div className="help-command-list">
+              <div className="help-command">
+                <span className="help-command-name">/config</span>
+                <span className="help-command-desc">Open configuration settings</span>
+              </div>
+              <div className="help-command">
+                <span className="help-command-name">/model</span>
+                <span className="help-command-desc">Change AI model</span>
+              </div>
+              <div className="help-command">
+                <span className="help-command-name">/permissions</span>
+                <span className="help-command-desc">Manage tool permissions</span>
+              </div>
+              <div className="help-command">
+                <span className="help-command-name">/memory</span>
+                <span className="help-command-desc">Edit CLAUDE.md memory file</span>
+              </div>
+              <div className="help-command">
+                <span className="help-command-name">/mcp</span>
+                <span className="help-command-desc">Manage MCP servers</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="help-divider" />
+
+          {/* Utility Commands */}
+          <div className="help-section">
+            <div className="help-section-title">Utility</div>
+            <div className="help-command-list">
+              <div className="help-command">
+                <span className="help-command-name">/help</span>
+                <span className="help-command-desc">Show all available commands</span>
+              </div>
+              <div className="help-command">
+                <span className="help-command-name">/doctor</span>
+                <span className="help-command-desc">Run diagnostics</span>
+              </div>
+              <div className="help-command">
+                <span className="help-command-name">/login</span>
+                <span className="help-command-desc">Log in to your account</span>
+              </div>
+              <div className="help-command">
+                <span className="help-command-name">/logout</span>
+                <span className="help-command-desc">Log out of your account</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="help-divider" />
+
+          {/* Ship Studio Tips */}
+          <div className="help-section">
+            <div className="help-section-title">Ship Studio Tips</div>
+            <div className="help-tip-list">
+              <div className="help-tip">
+                Drag files onto the terminal to paste their paths
+              </div>
+              <div className="help-tip">
+                Use <span className="help-shortcut">Shift</span> +{' '}
+                <span className="help-shortcut">Enter</span> for multiline input
+              </div>
+              <div className="help-tip">
+                Status dot shows Claude state: thinking, waiting, or idle
+              </div>
+              <div className="help-tip">
+                Use numbered tabs to run multiple Claude sessions
+              </div>
+            </div>
+          </div>
+
+          <div className="help-divider" />
+
+          {/* Example Prompts */}
+          <div className="help-section">
+            <div className="help-section-title">Example Prompts</div>
+            <div className="help-example-list">
+              <div className="help-example">"Fix the TypeScript errors in this file"</div>
+              <div className="help-example">"Add tests for the authentication flow"</div>
+              <div className="help-example">"Refactor this component to use hooks"</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="help-footer">
+          <span className="help-footer-hint">
+            Press <span className="help-shortcut">Esc</span> to close
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
