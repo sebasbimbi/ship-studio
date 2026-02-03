@@ -6,6 +6,11 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.3.40
+
+- **Compact mode button repositioned** - Moved to left of Open in Browser for better discoverability, now visible when preview is hidden
+
+
 ## What's New in v0.3.39
 
 - **Updated onboarding colors** - Changed to softer mint green to match brand
