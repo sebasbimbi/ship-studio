@@ -6,6 +6,14 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.3.47
+
+- **Dashboard changelog sidebar** - See What's New on the dashboard
+- **GitHub contribution calendar** - Shows your GitHub activity
+- **Better Vercel CLI error messages** - Clearer error codes and messages
+- **Improved dashboard styling** - Consistent button spacing and borders
+
+
 ## What's New in v0.3.46
 
 - **Safe Backup Restore** - Restoring a backup now creates a new branch for review via PR instead of pushing directly
