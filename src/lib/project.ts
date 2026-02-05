@@ -354,11 +354,15 @@ export async function startDevServer(
     ptyId,
     stop: async () => {
       try {
+        // Kill the PTY process
         pty.kill();
+        // Small delay to let the PTY cleanup complete before unregistering
+        await new Promise((resolve) => setTimeout(resolve, 100));
         // Unregister from backend
         await invoke('unregister_external_pty', { ptyId }).catch(() => {});
-      } catch {
-        // Ignore errors
+      } catch (e) {
+        // Log but don't throw - the PTY might already be dead
+        logger.warn('[DevServer] Error during PTY stop, may already be dead', { error: e, ptyId });
       }
     },
   };

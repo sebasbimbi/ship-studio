@@ -260,6 +260,27 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     return () => clearTimeout(timer);
   }, [projectPath, port]);
 
+  // Track previous restart state to detect transitions
+  const wasRestartingRef = useRef(false);
+
+  // Reset server state when dev server is restarting, start polling when done
+  useEffect(() => {
+    if (isDevServerRestarting) {
+      // Dev server is restarting - reset server state to stop proxy and iframe loading
+      setServerReady(false);
+      setIsLoading(true);
+      setHasError(false);
+      setRetryCount(-1); // Pause server checks
+      wasRestartingRef.current = true;
+    } else if (wasRestartingRef.current) {
+      // Dev server restart complete - start polling for new server
+      // Small delay to allow the new server to bind to the port
+      wasRestartingRef.current = false;
+      const timer = setTimeout(() => setRetryCount(0), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [isDevServerRestarting]);
+
   // Load pages
   const loadPages = useCallback(async () => {
     try {

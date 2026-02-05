@@ -1301,7 +1301,7 @@ function App({ initialProjectPath }: AppProps) {
   };
 
   const handleRestartDevServer = async () => {
-    if (!currentProject || !devServerRef.current) return;
+    if (!currentProject) return;
 
     setIsRestartingDevServer(true);
 
@@ -1313,10 +1313,19 @@ function App({ initialProjectPath }: AppProps) {
       ]);
     };
 
+    // Helper for delays
+    const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
     try {
-      // Stop current dev server (5s timeout)
-      await withTimeout(devServerRef.current.stop(), 5000, undefined);
-      devServerRef.current = null;
+      // Stop current dev server if it exists (5s timeout)
+      if (devServerRef.current) {
+        try {
+          await withTimeout(devServerRef.current.stop(), 5000, undefined);
+        } catch (e) {
+          logger.warn('Error stopping dev server, continuing with restart', { error: e });
+        }
+        devServerRef.current = null;
+      }
 
       // Clear output buffers for fresh logs
       devServerOutputRef.current = '';
@@ -1324,12 +1333,18 @@ function App({ initialProjectPath }: AppProps) {
       healthOutputRef.current = '';
       setHealthOutputVersion(0);
 
+      // Small delay to let the PTY cleanup complete
+      await delay(500);
+
       // Kill any lingering process on the port (5s timeout)
       try {
         await withTimeout(invoke('kill_port', { port: devServerPort }), 5000, undefined);
       } catch {
         // Ignore if nothing to kill
       }
+
+      // Another small delay after port kill
+      await delay(300);
 
       // Clear project cache - can be slow for large .next folders (10s timeout)
       try {
