@@ -265,6 +265,7 @@ pub fn run() {
             commands::setup::install_node_via_brew,
             commands::setup::install_git_via_brew,
             commands::setup::install_gh_via_brew,
+            commands::setup::install_brew_packages,
             commands::setup::start_github_auth,
             commands::setup::start_claude_auth,
             commands::setup::check_claude_auth_status,

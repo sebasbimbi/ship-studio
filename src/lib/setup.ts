@@ -85,7 +85,7 @@ export const SETUP_DEPENDENCIES: Record<string, string[]> = {
   gh_auth: ['gh'],
   claude: [], // Uses its own installer, no Homebrew dependency
   claude_auth: ['claude'],
-  vercel: ['node'],
+  vercel: ['homebrew'], // Installed via brew install vercel-cli
   vercel_auth: ['vercel'],
 };
 
@@ -261,6 +261,20 @@ export async function resetSetupState(): Promise<void> {
 export async function installVercel(): Promise<void> {
   return invoke('install_vercel_cli');
 }
+
+/**
+ * Batch install multiple Homebrew packages in a single command.
+ * This is faster than individual installs because auto-update only runs once
+ * and Homebrew can download bottles in parallel.
+ *
+ * @param packages - Array of item IDs to install (e.g., ['node', 'git', 'gh', 'vercel'])
+ */
+export async function installBrewPackages(packages: string[]): Promise<void> {
+  return invoke('install_brew_packages', { packages });
+}
+
+/** Brew-installed packages that can be batched */
+export const BREW_PACKAGES = new Set(['node', 'git', 'gh', 'vercel']);
 
 /**
  * Start Vercel authentication flow (opens browser).

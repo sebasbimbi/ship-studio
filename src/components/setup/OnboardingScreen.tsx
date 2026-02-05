@@ -17,11 +17,9 @@ import {
   SetupItem,
   FullSetupStatus,
   getFullSetupStatus,
-  installNode,
-  installGit,
-  installGh,
   checkClaudeAuthStatus,
-  installVercel,
+  installBrewPackages,
+  BREW_PACKAGES,
   TERMINAL_COMMANDS,
   USES_TERMINAL,
   SETUP_FRIENDLY_NAMES,
@@ -203,21 +201,24 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
 
       // Non-terminal items - run via backend
       try {
-        switch (itemId) {
-          case 'node':
-            await installNode();
-            break;
-          case 'git':
-            await installGit();
-            break;
-          case 'gh':
-            await installGh();
-            break;
-          case 'vercel':
-            await installVercel();
-            break;
-          default:
-            console.warn('Unknown item:', itemId);
+        // Check if this is a brew package - if so, batch install all missing brew packages
+        if (BREW_PACKAGES.has(itemId)) {
+          // Find all missing brew packages to install in one command
+          const missingBrewPackages = items
+            .filter((item) => BREW_PACKAGES.has(item.id) && item.status !== 'ready')
+            .map((item) => item.id);
+
+          // Mark all of them as in_progress
+          for (const pkgId of missingBrewPackages) {
+            if (pkgId !== itemId) {
+              updateItemStatus(pkgId, { status: 'in_progress', errorMessage: undefined });
+            }
+          }
+
+          // Batch install all missing brew packages
+          await installBrewPackages(missingBrewPackages);
+        } else {
+          console.warn('Unknown item:', itemId);
         }
 
         // Installation complete, refresh status
@@ -228,17 +229,28 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
         const errorMessage = err instanceof Error ? err.message : String(err);
         // Show the actual error message so users can troubleshoot
         // Strip error codes like [VERCEL_INSTALL_002] for cleaner display
-        const cleanedMessage = errorMessage
-          .replace(/\[[\w_]+\]\s*/g, '')
-          .trim();
-        updateItemStatus(itemId, {
-          status: 'error',
-          errorMessage: cleanedMessage || 'Something went wrong. Click to try again.',
-        });
+        const cleanedMessage = errorMessage.replace(/\[[\w_]+\]\s*/g, '').trim();
+
+        // If this was a batch brew install, reset all in_progress brew items
+        if (BREW_PACKAGES.has(itemId)) {
+          for (const item of items) {
+            if (BREW_PACKAGES.has(item.id) && item.status === 'in_progress') {
+              updateItemStatus(item.id, {
+                status: 'error',
+                errorMessage: cleanedMessage || 'Something went wrong. Click to try again.',
+              });
+            }
+          }
+        } else {
+          updateItemStatus(itemId, {
+            status: 'error',
+            errorMessage: cleanedMessage || 'Something went wrong. Click to try again.',
+          });
+        }
         setActiveItemId(null);
       }
     },
-    [activeItemId, terminalConfig, updateItemStatus, fetchStatus]
+    [activeItemId, terminalConfig, updateItemStatus, fetchStatus, items]
   );
 
   // Check if all required items are ready (optional items can be skipped)

@@ -219,34 +219,21 @@ pub async fn install_vercel_cli() -> Result<(), String> {
         return Ok(());
     }
 
-    // Install Vercel CLI globally via npm
-    let output = Command::new("npm")
-        .args(["install", "-g", "vercel"])
-        .env("PATH", get_extended_path())
+    // Install Vercel CLI via Homebrew (more reliable than npm -g)
+    let brew = crate::utils::get_brew_command()
+        .ok_or("[VERCEL_INSTALL_001] Homebrew not found. Please install Homebrew first.")?;
+
+    let output = Command::new(&brew)
+        .args(["install", "vercel-cli"])
+        // Skip auto-update to speed up install (can save 10-30 seconds)
+        .env("HOMEBREW_NO_AUTO_UPDATE", "1")
         .output()
-        .map_err(|e| format!("[VERCEL_INSTALL_001] Failed to run npm: {}", e))?;
+        .map_err(|e| format!("[VERCEL_INSTALL_002] Failed to run brew: {}", e))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        // Parse common npm install errors
-        let combined = format!("{} {}", stdout, stderr).to_lowercase();
-        if combined.contains("eacces") || combined.contains("permission denied") {
-            return Err(
-                "[VERCEL_INSTALL_002] Permission denied installing Vercel CLI.\n\
-                Try running: sudo npm install -g vercel"
-                    .to_string(),
-            );
-        }
-        if combined.contains("npm err!") && combined.contains("network") {
-            return Err("[VERCEL_INSTALL_003] Network error during installation.\n\
-                Please check your internet connection."
-                .to_string());
-        }
-
         return Err(format!(
-            "[VERCEL_INSTALL_004] Failed to install Vercel CLI: {}",
+            "[VERCEL_INSTALL_003] Failed to install Vercel CLI: {}",
             stderr.lines().next().unwrap_or("Unknown error")
         ));
     }

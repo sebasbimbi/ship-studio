@@ -206,7 +206,7 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
             ("gh_auth", "GitHub Account", Some("gh")),
             ("claude", "Claude Code", None),
             ("claude_auth", "Claude Account", Some("claude")),
-            ("vercel", "Vercel CLI", Some("node")),
+            ("vercel", "Vercel CLI", Some("homebrew")),
             ("vercel_auth", "Vercel Account", Some("vercel")),
         ];
 
@@ -723,6 +723,7 @@ pub async fn install_node_via_brew(app: tauri::AppHandle) -> Result<(), String> 
 
     let output = Command::new(&brew)
         .args(["install", "node"])
+        .env("HOMEBREW_NO_AUTO_UPDATE", "1") // Skip auto-update for faster install
         .output()
         .map_err(|e| format!("Failed to run brew: {}", e))?;
 
@@ -755,6 +756,7 @@ pub async fn install_git_via_brew(app: tauri::AppHandle) -> Result<(), String> {
 
     let output = Command::new(&brew)
         .args(["install", "git"])
+        .env("HOMEBREW_NO_AUTO_UPDATE", "1") // Skip auto-update for faster install
         .output()
         .map_err(|e| format!("Failed to run brew: {}", e))?;
 
@@ -787,12 +789,84 @@ pub async fn install_gh_via_brew(app: tauri::AppHandle) -> Result<(), String> {
 
     let output = Command::new(&brew)
         .args(["install", "gh"])
+        .env("HOMEBREW_NO_AUTO_UPDATE", "1") // Skip auto-update for faster install
         .output()
         .map_err(|e| format!("Failed to run brew: {}", e))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!("Failed to install GitHub CLI: {}", stderr));
+    }
+
+    Ok(())
+}
+
+/// Batch install multiple Homebrew packages in a single command.
+/// This is faster than individual installs because:
+/// 1. Auto-update only runs once
+/// 2. Homebrew can download bottles in parallel
+///
+/// Mapping from item IDs to brew package names:
+/// - node -> node
+/// - git -> git
+/// - gh -> gh
+/// - vercel -> vercel-cli
+#[tauri::command]
+pub async fn install_brew_packages(
+    app: tauri::AppHandle,
+    packages: Vec<String>,
+) -> Result<(), String> {
+    if packages.is_empty() {
+        return Ok(());
+    }
+
+    let _ = app.emit(
+        "setup-progress",
+        serde_json::json!({
+            "itemId": "brew_batch",
+            "message": format!("Installing {}...", packages.join(", "))
+        }),
+    );
+
+    if is_mock_mode() {
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+        for pkg in &packages {
+            // Map brew package names back to item IDs for mock
+            let item_id = match pkg.as_str() {
+                "vercel-cli" => "vercel",
+                other => other,
+            };
+            mock_install(item_id);
+        }
+        return Ok(());
+    }
+
+    let brew = get_brew_command().ok_or("Homebrew not found")?;
+
+    // Map item IDs to actual brew package names
+    let brew_packages: Vec<&str> = packages
+        .iter()
+        .map(|p| match p.as_str() {
+            "vercel" => "vercel-cli",
+            other => other,
+        })
+        .collect();
+
+    let mut args = vec!["install"];
+    args.extend(brew_packages.iter().copied());
+
+    let output = Command::new(&brew)
+        .args(&args)
+        // Allow auto-update since it only runs once for all packages
+        .output()
+        .map_err(|e| format!("Failed to run brew: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "Failed to install packages: {}",
+            stderr.lines().next().unwrap_or("Unknown error")
+        ));
     }
 
     Ok(())
