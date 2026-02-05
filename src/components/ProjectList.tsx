@@ -40,6 +40,7 @@ import { FolderCard } from './FolderCard';
 import { IntegrationBar } from './IntegrationBar';
 import { NewFolderModal } from './NewFolderModal';
 import { MoveFolderModal } from './MoveFolderModal';
+import { GitHubCalendar } from './GitHubCalendar';
 import { ChevronIcon, CheckIcon, ArrowLeftIcon, SlackIcon } from './icons';
 import { useClickOutside } from '../hooks/useClickOutside';
 
@@ -75,6 +76,12 @@ interface ProjectListProps {
   onGitHubConnect?: () => void;
   /** Callback to connect Vercel account */
   onVercelConnect?: () => void;
+  /** GitHub username for contribution calendar */
+  githubUsername?: string | null;
+  /** Whether the initial auth check has completed */
+  isAuthCheckDone?: boolean;
+  /** Callback when loading state changes */
+  onLoadingChange?: (loading: boolean) => void;
 }
 
 export function ProjectList({
@@ -85,6 +92,9 @@ export function ProjectList({
   onGitHubConnectForImport,
   onGitHubConnect,
   onVercelConnect,
+  githubUsername,
+  isAuthCheckDone = false,
+  onLoadingChange,
 }: ProjectListProps) {
   const [projects, setProjects] = useState<ProjectWithThumbnail[]>([]);
   const [folders, setFolders] = useState<FolderInfo[]>([]);
@@ -163,6 +173,11 @@ export function ProjectList({
     await Promise.all([loadProjects(), loadFolders()]);
     setLoading(false);
   }, []);
+
+  // Notify parent when loading state changes
+  useEffect(() => {
+    onLoadingChange?.(loading);
+  }, [loading, onLoadingChange]);
 
   // Load folder details when navigating into a folder
   useEffect(() => {
@@ -366,9 +381,13 @@ export function ProjectList({
 
   if (loading) {
     return (
-      <div className="project-list-loading">
-        <div className="spinner" />
-        <p>Loading projects...</p>
+      <div className="dashboard-scroll-container">
+        <div className="project-list dashboard">
+          <div className="project-list-loading">
+            <div className="spinner" />
+            <p>Loading projects...</p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -405,6 +424,12 @@ export function ProjectList({
             Join Slack
           </button>
         </div>
+
+        <GitHubCalendar
+          username={githubUsername}
+          isAuthenticated={isGitHubAuthenticated}
+          isAuthCheckDone={isAuthCheckDone}
+        />
 
         <DashboardHeader
           searchQuery={searchQuery}

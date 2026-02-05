@@ -44,6 +44,9 @@
   overflow-y: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .dashboard-scroll-container::-webkit-scrollbar {
@@ -61,6 +64,7 @@
   margin: 0 auto;
   /* Override base .project-list styles */
   height: auto;
+  min-height: 100%;
   overflow-y: visible;
 }
 
@@ -135,14 +139,14 @@
 .dashboard-search {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex: 1;
-  max-width: 400px;
-  padding: 7px 12px;
+  padding: 0 10px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 6px;
   transition: border-color 0.15s;
+  height: 30px;
 }
 
 .dashboard-search:focus-within {
@@ -152,6 +156,8 @@
 .dashboard-search svg {
   color: var(--text-muted);
   flex-shrink: 0;
+  width: 14px;
+  height: 14px;
 }
 
 .dashboard-search-input {
@@ -159,7 +165,7 @@
   background: transparent;
   border: none;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 13px;
   outline: none;
 }
 
@@ -168,9 +174,9 @@
 }
 
 .dashboard-search-shortcut {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-muted);
-  padding: 2px 6px;
+  padding: 2px 5px;
   background: var(--bg-tertiary);
   border-radius: 4px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -441,6 +447,7 @@
 .integration-bar {
   margin-top: 32px;
   padding-top: 24px;
+  padding-bottom: 24px;
   border-top: 1px solid var(--border);
 }
 

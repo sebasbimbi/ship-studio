@@ -162,6 +162,7 @@ function App({ initialProjectPath }: AppProps) {
   const [view, setView] = useState<AppView>('loading');
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [autoAcceptMode, setAutoAcceptMode] = useState(false);
+  const [projectsLoading, setProjectsLoading] = useState(true);
   const devServerRef = useRef<DevServerHandle | null>(null);
   const previewRef = useRef<PreviewHandle | null>(null);
   const screenshotIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -245,6 +246,7 @@ function App({ initialProjectPath }: AppProps) {
   // Integration states consolidated via reducer for atomic updates
   const {
     integrations,
+    isInitialCheckDone,
     refreshVercelStatus,
     refreshAllCliStatuses,
     setProjectGitHubStatus,
@@ -1501,8 +1503,11 @@ function App({ initialProjectPath }: AppProps) {
               onGitHubConnectForImport={() => void handleGitHubConnectFromOverlay()}
               onGitHubConnect={handleGitHubConnectFromOverlay}
               onVercelConnect={handleVercelConnectFromOverlay}
+              githubUsername={integrations.github.username}
+              isAuthCheckDone={isInitialCheckDone}
+              onLoadingChange={setProjectsLoading}
             />
-            <Changelog />
+            {!projectsLoading && <Changelog />}
           </div>
           {showCreateModal && (
             <CreateProject

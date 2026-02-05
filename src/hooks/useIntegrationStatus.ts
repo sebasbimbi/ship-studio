@@ -137,6 +137,8 @@ function integrationReducer(state: IntegrationState, action: IntegrationAction):
 export interface UseIntegrationStatusReturn {
   /** Current integration states */
   integrations: IntegrationState;
+  /** Whether the initial CLI status check has completed */
+  isInitialCheckDone: boolean;
   /** Dispatch function for direct reducer actions */
   dispatch: React.Dispatch<IntegrationAction>;
   /** Refresh GitHub CLI status */
@@ -214,6 +216,7 @@ export const VERCEL_STATUS_FALLBACK: ProjectVercelStatus = {
 export function useIntegrationStatus(): UseIntegrationStatusReturn {
   const [integrations, dispatch] = useReducer(integrationReducer, initialIntegrationState);
   const [authTerminalConfig, setAuthTerminalConfig] = useState<AuthTerminalConfig | null>(null);
+  const [isInitialCheckDone, setIsInitialCheckDone] = useState(false);
 
   // Generic refresh helper for authenticated integrations
   const refreshAuthenticatedIntegration = async (
@@ -281,6 +284,7 @@ export function useIntegrationStatus(): UseIntegrationStatusReturn {
         claude: { cliStatus: clStatus },
       },
     });
+    setIsInitialCheckDone(true);
   }, []);
 
   const setProjectGitHubStatus = useCallback((status: ProjectGitHubStatus | null) => {
@@ -355,6 +359,7 @@ export function useIntegrationStatus(): UseIntegrationStatusReturn {
 
   return {
     integrations,
+    isInitialCheckDone,
     dispatch,
     refreshGitHubStatus,
     refreshVercelStatus,
