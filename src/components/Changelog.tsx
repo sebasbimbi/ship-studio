@@ -15,6 +15,15 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.47',
+    items: [
+      'Dashboard changelog sidebar',
+      'GitHub contribution calendar',
+      'Better Vercel CLI error messages',
+      'Improved dashboard header styling',
+    ],
+  },
+  {
     version: '0.3.46',
     items: [
       'Safe Backup Restore - creates branch for PR review',

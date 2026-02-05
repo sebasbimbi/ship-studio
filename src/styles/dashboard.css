@@ -130,7 +130,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 8px;
   padding-bottom: 24px;
   margin-bottom: 16px;
   border-bottom: 1px solid var(--border);
@@ -193,6 +193,10 @@
 .dashboard-header-actions button {
   padding: 6px 12px;
   font-size: 12px;
+}
+
+.dashboard-header-actions .btn-secondary {
+  background: var(--bg-secondary);
 }
 
 .dashboard-header-actions .btn-icon {
@@ -1004,7 +1008,7 @@
   }
 
   .dashboard-header {
-    gap: 12px;
+    gap: 8px;
     padding-bottom: 20px;
     margin-bottom: 12px;
   }
@@ -1028,7 +1032,7 @@
 
   .dashboard-header {
     flex-wrap: wrap;
-    gap: 10px;
+    gap: 8px;
     padding-bottom: 16px;
     margin-bottom: 12px;
   }
