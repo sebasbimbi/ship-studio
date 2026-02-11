@@ -30,6 +30,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useToasts } from './hooks/useToasts';
 import { useTerminalManagement } from './hooks/useTerminalManagement';
+import { usePlugins } from './hooks/usePlugins';
 import {
   useIntegrationStatus,
   GITHUB_STATUS_FALLBACK,
@@ -68,6 +69,8 @@ import { NotificationSettingsModal } from './components/NotificationSettingsModa
 import { HelpModal } from './components/HelpModal';
 import { BackupsModal } from './components/BackupsModal';
 import { SkillsModal } from './components/SkillsModal';
+import { PluginManager } from './components/PluginManager';
+import { PluginSlot } from './components/PluginSlot';
 import { EducationOverlay } from './components/EducationOverlay';
 import {
   NotificationSettings,
@@ -114,6 +117,7 @@ import {
   ActivityIcon,
   HistoryIcon,
   DollarIcon,
+  PuzzleIcon,
 } from './components/icons';
 import { startDevServer, Project, DevServerHandle, getAutoAcceptMode } from './lib/project';
 import {
@@ -350,6 +354,12 @@ function App({ initialProjectPath }: AppProps) {
 
   // Skills modal state
   const [showSkillsModal, setShowSkillsModal] = useState(false);
+
+  // Plugin manager modal state
+  const [showPluginManager, setShowPluginManager] = useState(false);
+
+  // Plugin system
+  const { getSlotPlugins, reloadPlugins } = usePlugins();
 
   // Workspace tab state (preview/branches/prs)
   const [workspaceTab, setWorkspaceTab] = useState<'preview' | 'branches' | 'prs'>('preview');
@@ -1546,6 +1556,37 @@ function App({ initialProjectPath }: AppProps) {
     }
   };
 
+  // Plugin data for PluginSlot components (defined before early returns so all views can use them)
+  const pluginProject = currentProject
+    ? {
+        name: currentProject.name,
+        path: currentProject.path,
+        currentBranch: currentBranch || 'main',
+        hasUncommittedChanges,
+      }
+    : null;
+
+  const pluginActions = {
+    showToast,
+    refreshGitStatus: () => {
+      if (currentProject) void fetchBranchInfo(currentProject.path);
+    },
+    refreshBranches: () => {
+      if (currentProject) void fetchBranchInfo(currentProject.path);
+    },
+    focusTerminal: focusActiveTerminal,
+  };
+
+  const pluginTheme = {
+    bgPrimary: 'var(--bg-primary)',
+    bgSecondary: 'var(--bg-secondary)',
+    bgTertiary: 'var(--bg-tertiary)',
+    textPrimary: 'var(--text-primary)',
+    textSecondary: 'var(--text-secondary)',
+    border: 'var(--border)',
+    accent: 'var(--accent, #10b981)',
+  };
+
   if (view === 'loading') {
     return (
       <>
@@ -1596,6 +1637,15 @@ function App({ initialProjectPath }: AppProps) {
               onLoadingChange={setProjectsLoading}
             />
             {!projectsLoading && <Changelog />}
+            {!projectsLoading && (
+              <PluginSlot
+                name="sidebar"
+                plugins={getSlotPlugins('sidebar')}
+                project={pluginProject}
+                actions={pluginActions}
+                theme={pluginTheme}
+              />
+            )}
           </div>
           {showCreateModal && (
             <CreateProject
@@ -1679,6 +1729,13 @@ function App({ initialProjectPath }: AppProps) {
           </button>
 
           <div className="workspace-header-actions">
+            <PluginSlot
+              name="toolbar"
+              plugins={getSlotPlugins('toolbar')}
+              project={pluginProject}
+              actions={pluginActions}
+              theme={pluginTheme}
+            />
             <button
               className={`education-button ${isEducationMode ? 'active' : ''}`}
               onClick={(e) => {
@@ -1801,6 +1858,13 @@ function App({ initialProjectPath }: AppProps) {
               onPublishError={handlePublishError}
               forceOpen={forcePublishOpen}
               onForceOpenHandled={() => setForcePublishOpen(false)}
+            />
+            <PluginSlot
+              name="publish"
+              plugins={getSlotPlugins('publish')}
+              project={pluginProject}
+              actions={pluginActions}
+              theme={pluginTheme}
             />
           </div>
         </header>
@@ -1949,6 +2013,21 @@ function App({ initialProjectPath }: AppProps) {
                       >
                         <ZapIcon size={12} />
                       </button>
+                      <button
+                        className="workspace-tab icon-only"
+                        onClick={() => setShowPluginManager(true)}
+                        title="Manage Plugins"
+                        data-education-id="plugin-manager"
+                      >
+                        <PuzzleIcon size={12} />
+                      </button>
+                      <PluginSlot
+                        name="terminal"
+                        plugins={getSlotPlugins('terminal')}
+                        project={pluginProject}
+                        actions={pluginActions}
+                        theme={pluginTheme}
+                      />
                       <button
                         className="workspace-tab icon-only"
                         onClick={() => setShowHelpModal(true)}
@@ -2457,6 +2536,22 @@ function App({ initialProjectPath }: AppProps) {
           isOpen={showSkillsModal}
           onClose={() => setShowSkillsModal(false)}
           projectPath={currentProject?.path}
+        />
+
+        {/* Plugin Manager */}
+        <PluginManager
+          isOpen={showPluginManager}
+          onClose={() => setShowPluginManager(false)}
+          onPluginsChanged={() => void reloadPlugins()}
+        />
+
+        {/* Plugin Settings Slot */}
+        <PluginSlot
+          name="settings"
+          plugins={getSlotPlugins('settings')}
+          project={pluginProject}
+          actions={pluginActions}
+          theme={pluginTheme}
         />
 
         {/* Submit for Review Modal */}

@@ -222,6 +222,17 @@ pub fn run() {
             commands::skills::search_skills,
             commands::skills::install_skill,
             commands::skills::remove_skill,
+            // Plugins
+            commands::plugins::list_plugins,
+            commands::plugins::install_plugin,
+            commands::plugins::uninstall_plugin,
+            commands::plugins::update_plugin,
+            commands::plugins::read_plugin_bundle,
+            commands::plugins::read_plugin_manifest,
+            commands::plugins::toggle_plugin,
+            commands::plugins::exec_plugin_shell,
+            commands::plugins::read_plugin_storage,
+            commands::plugins::write_plugin_storage,
             // Vercel integration
             commands::vercel::check_vercel_cli_status,
             commands::vercel::get_vercel_username,
