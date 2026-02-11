@@ -105,16 +105,15 @@ import {
   PinIcon,
   ExpandIcon,
   ArrowLeftIcon,
-  HelpIcon,
   GraduationCapIcon,
-  ZapIcon,
-  BellIcon,
   ActivityIcon,
   HistoryIcon,
   DollarIcon,
   PuzzleIcon,
-  ShieldCheckIcon,
+  ZapIcon,
 } from './components/icons';
+import { ToolbarDropdown } from './components/ToolbarDropdown';
+import { TerminalTabDropdown } from './components/TerminalTabDropdown';
 import {
   startDevServer,
   Project,
@@ -1909,17 +1908,7 @@ function App({ initialProjectPath }: AppProps) {
                           }}
                         >
                           <span className="terminal-tab-number">{index + 1}</span>
-                          {terminalTabs.length > 1 && (
-                            <span
-                              className="terminal-tab-close"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                closeTerminalTab(tabId);
-                              }}
-                            >
-                              <CloseIcon size={10} />
-                            </span>
-                          )}
+                          <TerminalTabDropdown onClose={() => closeTerminalTab(tabId)} />
                         </button>
                       ))}
                       {terminalTabs.length < maxTerminalTabs && (
@@ -1951,47 +1940,18 @@ function App({ initialProjectPath }: AppProps) {
                       >
                         <ActivityIcon size={12} />
                       </button>
-                      <button
-                        className="workspace-tab icon-only"
-                        onClick={() => setShowNotificationSettings(true)}
-                        title="Notification sounds"
-                        data-education-id="notification-settings"
-                      >
-                        <BellIcon size={12} />
-                      </button>
-                      <button
-                        className="workspace-tab icon-only"
-                        onClick={() => setShowSkillsModal(true)}
-                        title="Manage Skills"
-                        data-education-id="skills-manager"
-                      >
-                        <ZapIcon size={12} />
-                      </button>
-                      <PluginSlot
-                        name="terminal"
-                        plugins={getSlotPlugins('terminal')}
-                        project={pluginProject}
-                        actions={pluginActions}
-                        theme={pluginTheme}
+                      <ToolbarDropdown
+                        agent={getActiveAgent()}
+                        autoAcceptMode={autoAcceptMode}
+                        onNotificationSettings={() => setShowNotificationSettings(true)}
+                        onSkills={() => setShowSkillsModal(true)}
+                        onAutoAcceptToggle={handleToolbarAutoAcceptToggle}
+                        onHelp={() => setShowHelpModal(true)}
+                        terminalPlugins={getSlotPlugins('terminal')}
+                        pluginProject={pluginProject}
+                        pluginActions={pluginActions}
+                        pluginTheme={pluginTheme}
                       />
-                      {getActiveAgent().autoAcceptFlag && (
-                        <button
-                          className={`workspace-tab icon-only ${autoAcceptMode ? 'auto-accept-active' : ''}`}
-                          onClick={handleToolbarAutoAcceptToggle}
-                          title={`Auto-accept: ${autoAcceptMode ? 'ON' : 'OFF'}`}
-                          data-education-id="auto-accept-toggle"
-                        >
-                          <ShieldCheckIcon size={12} />
-                        </button>
-                      )}
-                      <button
-                        className="workspace-tab icon-only"
-                        onClick={() => setShowHelpModal(true)}
-                        title="Help & Commands"
-                        data-education-id="help-commands"
-                      >
-                        <HelpIcon size={12} />
-                      </button>
                     </div>
 
                     {/* Compact mode controls - visible only at narrow widths via CSS */}
