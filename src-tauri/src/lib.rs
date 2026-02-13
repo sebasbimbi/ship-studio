@@ -16,6 +16,7 @@ pub mod commands;
 pub mod logging;
 pub mod proxy;
 pub mod state;
+pub mod static_server;
 pub mod types;
 pub mod utils;
 
@@ -94,8 +95,9 @@ pub fn run() {
                 let label = window.label().to_string();
                 tracing::info!("Window {} destroyed, cleaning up", label);
 
-                // Stop preview proxy for this window
+                // Stop preview proxy and static server for this window
                 proxy::stop_preview_proxy(&label);
+                static_server::stop_static_server(&label);
 
                 // Kill PTY processes (dev server, etc.) owned by this window
                 let killed = commands::pty::kill_window_pty_sync(&label);
@@ -124,6 +126,7 @@ pub fn run() {
                     cleanup_claude_processes();
                     commands::setup::cleanup_auth_processes_sync();
                     proxy::stop_all_proxies();
+                    static_server::stop_all_static_servers();
                 }
             }
         })
@@ -257,6 +260,11 @@ pub fn run() {
             // Preview Proxy
             commands::proxy::start_preview_proxy,
             commands::proxy::stop_preview_proxy,
+            // Static File Server
+            commands::static_server::start_static_server,
+            commands::static_server::stop_static_server,
+            // Project Type Detection
+            commands::projects::detect_project_type_command,
             // PTY & Terminal
             commands::pty::spawn_pty,
             commands::pty::kill_pty,

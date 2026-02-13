@@ -4,6 +4,21 @@
 
 use serde::{Deserialize, Serialize};
 
+// ============ Project Type ============
+
+/// Detected project type based on config files and directory structure
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ProjectType {
+    Nextjs,
+    Sveltekit,
+    Astro,
+    Nuxt,
+    /// Plain HTML/CSS/JS project (no framework, no package.json required)
+    Statichtml,
+    Unknown,
+}
+
 // ============ Prerequisites ============
 
 /// Result of checking if a prerequisite tool is installed

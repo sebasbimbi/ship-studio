@@ -5,7 +5,8 @@
 use crate::commands::vercel::get_vercel_deployment_info;
 use crate::state::{get_window_for_project, register_project_window, unregister_project_window};
 use crate::types::{
-    DashboardProject, PageInfo, ProjectInfo, ProjectMetadata, PROJECT_METADATA_SCHEMA_VERSION,
+    DashboardProject, PageInfo, ProjectInfo, ProjectMetadata, ProjectType,
+    PROJECT_METADATA_SCHEMA_VERSION,
 };
 use crate::utils::{create_command, validate_project_path};
 use std::io::{Read, Write};
@@ -160,6 +161,58 @@ fn is_nuxt_project(project_path: &std::path::Path) -> bool {
     }
 
     false
+}
+
+/// Check if a directory contains HTML files in its root
+pub fn has_html_files(project_path: &std::path::Path) -> bool {
+    if let Ok(entries) = std::fs::read_dir(project_path) {
+        for entry in entries.flatten() {
+            if let Some(name) = entry.file_name().to_str() {
+                if name.ends_with(".html") {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Detect the project type from config files and directory structure
+pub fn detect_project_type(project_path: &std::path::Path) -> ProjectType {
+    // Check framework-specific configs first
+    if is_astro_project(project_path) {
+        return ProjectType::Astro;
+    }
+    if is_sveltekit_project(project_path) {
+        return ProjectType::Sveltekit;
+    }
+    if is_nuxt_project(project_path) {
+        return ProjectType::Nuxt;
+    }
+
+    // If package.json exists, default to Next.js (existing behavior)
+    if project_path.join("package.json").exists() {
+        return ProjectType::Nextjs;
+    }
+
+    // Check for HTML files in root (static HTML project)
+    if has_html_files(project_path) {
+        return ProjectType::Statichtml;
+    }
+
+    ProjectType::Unknown
+}
+
+/// Detect the project type for a given project path
+#[tauri::command]
+pub async fn detect_project_type_command(project_path: String) -> Result<ProjectType, String> {
+    let project = validate_project_path(&project_path)?;
+    Ok(detect_project_type(&project))
+}
+
+/// Check if a directory is a valid project (has package.json or HTML files)
+fn is_valid_project(path: &std::path::Path) -> bool {
+    path.is_dir() && (path.join("package.json").exists() || has_html_files(path))
 }
 
 /// Scan Next.js pages (app/ directory with page.tsx/js/jsx files)
@@ -443,6 +496,67 @@ fn scan_nuxt_pages(
     Ok(pages)
 }
 
+/// Scan for HTML files recursively and map them to routes
+fn scan_html_pages(
+    dir: &std::path::Path,
+    base_dir: &std::path::Path,
+) -> Result<Vec<PageInfo>, String> {
+    let mut pages = Vec::new();
+    scan_html_pages_recursive(dir, base_dir, &mut pages)?;
+    Ok(pages)
+}
+
+fn scan_html_pages_recursive(
+    dir: &std::path::Path,
+    base_dir: &std::path::Path,
+    pages: &mut Vec<PageInfo>,
+) -> Result<(), String> {
+    if !dir.exists() {
+        return Ok(());
+    }
+
+    let entries = std::fs::read_dir(dir).map_err(|e| e.to_string())?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            let dir_name = entry.file_name().to_string_lossy().to_string();
+            // Skip hidden dirs, node_modules, .git, .shipstudio, etc.
+            if dir_name.starts_with('.') || dir_name == "node_modules" {
+                continue;
+            }
+            scan_html_pages_recursive(&path, base_dir, pages)?;
+        } else {
+            let file_name = entry.file_name().to_string_lossy().to_string();
+            if file_name.ends_with(".html") {
+                let relative = path.strip_prefix(base_dir).unwrap_or(&path);
+                let relative_str = relative.to_string_lossy();
+
+                let route = if file_name == "index.html" {
+                    let parent = relative.parent();
+                    match parent {
+                        Some(p) if p.as_os_str().is_empty() => "/".to_string(),
+                        Some(p) => format!("/{}", p.to_string_lossy()),
+                        None => "/".to_string(),
+                    }
+                } else {
+                    // about.html -> /about
+                    let without_ext = relative_str.trim_end_matches(".html");
+                    format!("/{}", without_ext)
+                };
+
+                pages.push(PageInfo {
+                    route,
+                    file_path: path.to_string_lossy().to_string(),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Sort pages with root first, then alphabetically
 fn sort_pages(pages: &mut Vec<PageInfo>) {
     pages.sort_by(|a, b| {
@@ -473,7 +587,7 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
     for entry in entries {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
-        if path.is_dir() && path.join("package.json").exists() {
+        if is_valid_project(&path) {
             let thumbnail_path = path.join(".shipstudio").join("thumbnail.png");
             let thumbnail = if thumbnail_path.exists() {
                 Some(thumbnail_path.to_string_lossy().to_string())
@@ -504,7 +618,7 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
     if let Ok(ext_config) = crate::commands::external_projects::load_config() {
         for ext in &ext_config.projects {
             let ext_path = std::path::Path::new(&ext.path);
-            if ext_path.exists() && ext_path.join("package.json").exists() {
+            if ext_path.exists() && is_valid_project(ext_path) {
                 let name = ext_path
                     .file_name()
                     .map(|n| n.to_string_lossy().to_string())
@@ -565,7 +679,7 @@ pub async fn get_dashboard_projects() -> Result<Vec<DashboardProject>, String> {
     for entry in entries {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
-        if path.is_dir() && path.join("package.json").exists() {
+        if is_valid_project(&path) {
             let thumbnail_path = path.join(".shipstudio").join("thumbnail.png");
             let thumbnail = if thumbnail_path.exists() {
                 Some(thumbnail_path.to_string_lossy().to_string())
@@ -618,7 +732,7 @@ pub async fn get_dashboard_projects() -> Result<Vec<DashboardProject>, String> {
     if let Ok(ext_config) = crate::commands::external_projects::load_config() {
         for ext in &ext_config.projects {
             let path = std::path::PathBuf::from(&ext.path);
-            if path.exists() && path.join("package.json").exists() {
+            if path.exists() && is_valid_project(&path) {
                 let name = path
                     .file_name()
                     .map(|n| n.to_string_lossy().to_string())
@@ -683,59 +797,62 @@ pub async fn get_dashboard_projects() -> Result<Vec<DashboardProject>, String> {
 }
 
 /// Scans a project's pages/routes directory for page routes.
-/// Supports Next.js (app/ directory), SvelteKit (src/routes/ directory), Astro (src/pages/ directory), and Nuxt (pages/ directory).
+/// Supports Next.js, SvelteKit, Astro, Nuxt, and static HTML projects.
 #[tauri::command]
 pub async fn list_pages(project_path: String) -> Result<Vec<PageInfo>, String> {
     let project = validate_project_path(&project_path)?;
+    let project_type = detect_project_type(&project);
 
-    // Check if this is an Astro project
-    if is_astro_project(&project) {
-        let pages_dir = project.join("src").join("pages");
-        if pages_dir.exists() {
-            let mut pages = scan_astro_pages(&pages_dir, &pages_dir)?;
+    match project_type {
+        ProjectType::Astro => {
+            let pages_dir = project.join("src").join("pages");
+            if pages_dir.exists() {
+                let mut pages = scan_astro_pages(&pages_dir, &pages_dir)?;
+                sort_pages(&mut pages);
+                return Ok(pages);
+            }
+            Ok(Vec::new())
+        }
+        ProjectType::Sveltekit => {
+            let routes_dir = project.join("src").join("routes");
+            if routes_dir.exists() {
+                let mut pages = scan_sveltekit_pages(&routes_dir, &routes_dir)?;
+                sort_pages(&mut pages);
+                return Ok(pages);
+            }
+            Ok(Vec::new())
+        }
+        ProjectType::Nuxt => {
+            let pages_dir = project.join("pages");
+            if pages_dir.exists() {
+                let mut pages = scan_nuxt_pages(&pages_dir, &pages_dir)?;
+                sort_pages(&mut pages);
+                return Ok(pages);
+            }
+            Ok(Vec::new())
+        }
+        ProjectType::Statichtml => {
+            let mut pages = scan_html_pages(&project, &project)?;
             sort_pages(&mut pages);
-            return Ok(pages);
+            Ok(pages)
         }
-        return Ok(Vec::new());
-    }
-
-    // Check if this is a SvelteKit project
-    if is_sveltekit_project(&project) {
-        let routes_dir = project.join("src").join("routes");
-        if routes_dir.exists() {
-            let mut pages = scan_sveltekit_pages(&routes_dir, &routes_dir)?;
+        _ => {
+            // Default to Next.js app router
+            let app_dir = project.join("app");
+            if !app_dir.exists() {
+                let src_app_dir = project.join("src").join("app");
+                if !src_app_dir.exists() {
+                    return Ok(Vec::new());
+                }
+                let mut pages = scan_nextjs_pages(&src_app_dir, &src_app_dir)?;
+                sort_pages(&mut pages);
+                return Ok(pages);
+            }
+            let mut pages = scan_nextjs_pages(&app_dir, &app_dir)?;
             sort_pages(&mut pages);
-            return Ok(pages);
+            Ok(pages)
         }
-        return Ok(Vec::new());
     }
-
-    // Check if this is a Nuxt project
-    if is_nuxt_project(&project) {
-        let pages_dir = project.join("pages");
-        if pages_dir.exists() {
-            let mut pages = scan_nuxt_pages(&pages_dir, &pages_dir)?;
-            sort_pages(&mut pages);
-            return Ok(pages);
-        }
-        return Ok(Vec::new());
-    }
-
-    // Default to Next.js app router
-    let app_dir = project.join("app");
-    if !app_dir.exists() {
-        let src_app_dir = project.join("src").join("app");
-        if !src_app_dir.exists() {
-            return Ok(Vec::new());
-        }
-        let mut pages = scan_nextjs_pages(&src_app_dir, &src_app_dir)?;
-        sort_pages(&mut pages);
-        return Ok(pages);
-    }
-
-    let mut pages = scan_nextjs_pages(&app_dir, &app_dir)?;
-    sort_pages(&mut pages);
-    Ok(pages)
 }
 
 #[tauri::command]
@@ -1322,12 +1439,12 @@ pub async fn extract_template_zip(
         }
     }
 
-    // Verify it's a valid project (has package.json)
-    if !project_path.join("package.json").exists() {
+    // Verify it's a valid project (has package.json or HTML files)
+    if !project_path.join("package.json").exists() && !has_html_files(&project_path) {
         // Clean up invalid project
         std::fs::remove_dir_all(&project_path).ok();
         return Err(
-            "Invalid template: no package.json found. Please use a valid Node.js project template."
+            "Invalid template: no package.json or .html files found. Please use a valid project template."
                 .to_string(),
         );
     }

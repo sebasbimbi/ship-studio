@@ -92,9 +92,14 @@ pub async fn register_external_project(app: AppHandle) -> Result<Option<String>,
         None => return Ok(None), // User cancelled
     };
 
-    // Validate package.json exists
-    if !folder_path.join("package.json").exists() {
-        return Err("Selected folder is not a valid project: no package.json found.".to_string());
+    // Validate project has package.json or HTML files
+    if !folder_path.join("package.json").exists()
+        && !crate::commands::projects::has_html_files(&folder_path)
+    {
+        return Err(
+            "Selected folder is not a valid project: no package.json or .html files found."
+                .to_string(),
+        );
     }
 
     // Canonicalize the path

@@ -64,6 +64,12 @@ const TEMPLATES: Template[] = [
     description: 'A minimal Nuxt starter with Tailwind CSS',
     repo: 'https://github.com/ship-studio/nuxt-static-marketing-site-starter',
   },
+  {
+    id: 'html-basic',
+    name: 'HTML/CSS/JS',
+    description: 'A plain HTML starter — no framework, no build step',
+    repo: 'https://github.com/ship-studio/html-starter',
+  },
 ];
 
 /** Form wizard steps before creation starts */
@@ -295,12 +301,15 @@ export function CreateProject({ onComplete, onCancel }: CreateProjectProps) {
       // Ensure .shipstudio/ is gitignored to prevent phantom changes
       await invoke('ensure_gitignore_has_shipstudio', { projectPath: projectPath });
 
-      // Install dependencies
+      // Install dependencies (skip for HTML-only templates with no package.json)
       setCreatedProjectPath(projectPath);
-      setCurrentStep('install');
-      await runNpmInstall(projectPath);
-
-      setCurrentStep('done');
+      if (selectedTemplate.id === 'html-basic') {
+        setCurrentStep('done');
+      } else {
+        setCurrentStep('install');
+        await runNpmInstall(projectPath);
+        setCurrentStep('done');
+      }
 
       // Small delay before opening
       await new Promise((r) => setTimeout(r, 800));
@@ -465,10 +474,21 @@ export function CreateProject({ onComplete, onCancel }: CreateProjectProps) {
       // Ensure .shipstudio/ is gitignored
       await invoke('ensure_gitignore_has_shipstudio', { projectPath });
 
-      // Install dependencies
+      // Install dependencies (skip if no package.json, e.g. HTML-only zip)
       setCreatedProjectPath(projectPath);
-      setCurrentStep('install');
-      await runNpmInstall(projectPath);
+      let hasPackageJson = false;
+      try {
+        const { readTextFile } = await import('@tauri-apps/plugin-fs');
+        await readTextFile(`${projectPath}/package.json`);
+        hasPackageJson = true;
+      } catch {
+        // No package.json - skip install
+      }
+
+      if (hasPackageJson) {
+        setCurrentStep('install');
+        await runNpmInstall(projectPath);
+      }
 
       setCurrentStep('done');
 

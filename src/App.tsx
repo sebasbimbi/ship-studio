@@ -116,6 +116,12 @@ import {
   DollarIcon,
 } from './components/icons';
 import { startDevServer, Project, DevServerHandle, getAutoAcceptMode } from './lib/project';
+import {
+  detectProjectType,
+  startStaticServer,
+  stopStaticServer,
+  ProjectType,
+} from './lib/static-server';
 import { getProjectGitHubStatus } from './lib/github';
 import { getChangedFiles, ChangedFile } from './lib/git';
 import { getProjectVercelStatus } from './lib/vercel';
@@ -273,6 +279,9 @@ function App({ initialProjectPath }: AppProps) {
 
   // Dev server port (dynamically assigned to avoid conflicts)
   const [devServerPort, setDevServerPort] = useState(PREFERRED_DEV_SERVER_PORT);
+
+  // Project type (detected from project files)
+  const [projectType, setProjectType] = useState<ProjectType>('unknown');
 
   // Dev server restart state
   const [isRestartingDevServer, setIsRestartingDevServer] = useState(false);
@@ -1140,26 +1149,48 @@ function App({ initialProjectPath }: AppProps) {
       `[OpenProject] Step 6: Fetch branch info - ${Math.round(performance.now() - stepStart)}ms`
     );
 
-    // Start dev server in background on the available port
-    stepStart = performance.now();
+    // Detect project type
+    let detectedType: ProjectType = 'unknown';
     try {
-      // Clear previous output buffers
-      devServerOutputRef.current = '';
-      setDevServerOutputVersion(0);
-      healthOutputRef.current = '';
-      setHealthOutputVersion(0);
-      devServerRef.current = await startDevServer(project.path, port, windowLabel, (data) => {
-        // Buffer output from the start so it's available when Logs tab opens
-        devServerOutputRef.current += data;
-        // Limit buffer size to prevent memory issues (keep last 100KB)
-        if (devServerOutputRef.current.length > 100000) {
-          devServerOutputRef.current = devServerOutputRef.current.slice(-100000);
-        }
-        // Trigger re-render for DevServerLogs (throttled by React)
-        setDevServerOutputVersion((v) => v + 1);
-      });
-    } catch (error) {
-      logger.error('Failed to start dev server', { error });
+      detectedType = await detectProjectType(project.path);
+    } catch {
+      logger.warn('[OpenProject] Failed to detect project type, defaulting to unknown');
+    }
+    setProjectType(detectedType);
+    logger.info(`[OpenProject] Detected project type: ${detectedType}`);
+
+    // Start dev server or static server based on project type
+    stepStart = performance.now();
+    if (detectedType === 'statichtml') {
+      // Static HTML project: start built-in static file server (no npm run dev needed)
+      try {
+        const staticPort = await startStaticServer(windowLabel, project.path);
+        setDevServerPort(staticPort);
+        logger.info(`[OpenProject] Static server started on port ${staticPort}`);
+      } catch (error) {
+        logger.error('Failed to start static server', { error });
+      }
+    } else {
+      // Framework project: start dev server via PTY
+      try {
+        // Clear previous output buffers
+        devServerOutputRef.current = '';
+        setDevServerOutputVersion(0);
+        healthOutputRef.current = '';
+        setHealthOutputVersion(0);
+        devServerRef.current = await startDevServer(project.path, port, windowLabel, (data) => {
+          // Buffer output from the start so it's available when Logs tab opens
+          devServerOutputRef.current += data;
+          // Limit buffer size to prevent memory issues (keep last 100KB)
+          if (devServerOutputRef.current.length > 100000) {
+            devServerOutputRef.current = devServerOutputRef.current.slice(-100000);
+          }
+          // Trigger re-render for DevServerLogs (throttled by React)
+          setDevServerOutputVersion((v) => v + 1);
+        });
+      } catch (error) {
+        logger.error('Failed to start dev server', { error });
+      }
     }
     logger.info(
       `[OpenProject] Step 7: Start dev server - ${Math.round(performance.now() - stepStart)}ms`
@@ -1276,14 +1307,21 @@ function App({ initialProjectPath }: AppProps) {
     resetTerminals();
     setShowDevServerLogs(false);
 
-    // Stop dev server if running
+    // Stop dev server or static server
     if (devServerRef.current) {
       await devServerRef.current.stop();
       devServerRef.current = null;
     }
+    // Stop static server (safe to call even if not running)
+    const currentWindowLabel = getWindowLabel();
+    try {
+      await stopStaticServer(currentWindowLabel);
+    } catch {
+      // Ignore - may not have been started
+    }
+    setProjectType('unknown');
 
     // Clean up PTY processes owned by this window
-    const currentWindowLabel = getWindowLabel();
     try {
       await invoke('kill_window_pty', { windowLabel: currentWindowLabel });
       await invoke('cleanup_orphaned_processes');
@@ -1323,61 +1361,75 @@ function App({ initialProjectPath }: AppProps) {
     const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
     try {
-      // Stop current dev server if it exists (5s timeout)
-      if (devServerRef.current) {
+      if (projectType === 'statichtml') {
+        // Static HTML: restart the built-in static server
+        const windowLabel = getWindowLabel();
         try {
-          await withTimeout(devServerRef.current.stop(), 5000, undefined);
-        } catch (e) {
-          logger.warn('Error stopping dev server, continuing with restart', { error: e });
+          await stopStaticServer(windowLabel);
+        } catch {
+          // Ignore
         }
-        devServerRef.current = null;
-      }
-
-      // Clear output buffers for fresh logs
-      devServerOutputRef.current = '';
-      setDevServerOutputVersion(0);
-      healthOutputRef.current = '';
-      setHealthOutputVersion(0);
-
-      // Small delay to let the PTY cleanup complete
-      await delay(500);
-
-      // Kill any lingering process on the port (5s timeout)
-      try {
-        await withTimeout(invoke('kill_port', { port: devServerPort }), 5000, undefined);
-      } catch {
-        // Ignore if nothing to kill
-      }
-
-      // Another small delay after port kill
-      await delay(300);
-
-      // Clear project cache - can be slow for large .next folders (10s timeout)
-      try {
-        await withTimeout(
-          invoke('clear_project_cache', { projectPath: currentProject.path }),
-          10000,
-          undefined
-        );
-      } catch {
-        // Non-critical - continue even if cache clear fails
-      }
-
-      // Start new dev server (10s timeout for the spawn setup, not the server itself)
-      devServerRef.current = await withTimeout(
-        startDevServer(currentProject.path, devServerPort, getWindowLabel(), (data) => {
-          devServerOutputRef.current += data;
-          if (devServerOutputRef.current.length > 100000) {
-            devServerOutputRef.current = devServerOutputRef.current.slice(-100000);
+        await delay(300);
+        const newPort = await startStaticServer(windowLabel, currentProject.path);
+        setDevServerPort(newPort);
+      } else {
+        // Framework project: restart the PTY dev server
+        // Stop current dev server if it exists (5s timeout)
+        if (devServerRef.current) {
+          try {
+            await withTimeout(devServerRef.current.stop(), 5000, undefined);
+          } catch (e) {
+            logger.warn('Error stopping dev server, continuing with restart', { error: e });
           }
-          setDevServerOutputVersion((v) => v + 1);
-        }),
-        10000,
-        null as unknown as DevServerHandle
-      );
+          devServerRef.current = null;
+        }
 
-      if (!devServerRef.current) {
-        logger.error('Failed to start dev server: spawn timed out');
+        // Clear output buffers for fresh logs
+        devServerOutputRef.current = '';
+        setDevServerOutputVersion(0);
+        healthOutputRef.current = '';
+        setHealthOutputVersion(0);
+
+        // Small delay to let the PTY cleanup complete
+        await delay(500);
+
+        // Kill any lingering process on the port (5s timeout)
+        try {
+          await withTimeout(invoke('kill_port', { port: devServerPort }), 5000, undefined);
+        } catch {
+          // Ignore if nothing to kill
+        }
+
+        // Another small delay after port kill
+        await delay(300);
+
+        // Clear project cache - can be slow for large .next folders (10s timeout)
+        try {
+          await withTimeout(
+            invoke('clear_project_cache', { projectPath: currentProject.path }),
+            10000,
+            undefined
+          );
+        } catch {
+          // Non-critical - continue even if cache clear fails
+        }
+
+        // Start new dev server (10s timeout for the spawn setup, not the server itself)
+        devServerRef.current = await withTimeout(
+          startDevServer(currentProject.path, devServerPort, getWindowLabel(), (data) => {
+            devServerOutputRef.current += data;
+            if (devServerOutputRef.current.length > 100000) {
+              devServerOutputRef.current = devServerOutputRef.current.slice(-100000);
+            }
+            setDevServerOutputVersion((v) => v + 1);
+          }),
+          10000,
+          null as unknown as DevServerHandle
+        );
+
+        if (!devServerRef.current) {
+          logger.error('Failed to start dev server: spawn timed out');
+        }
       }
     } catch (error) {
       logger.error('Failed to restart dev server', { error });
@@ -1778,7 +1830,10 @@ function App({ initialProjectPath }: AppProps) {
                     <button
                       className="show-preview-btn"
                       onClick={() => void handleRestartDevServer()}
-                      disabled={isRestartingDevServer || !devServerRef.current}
+                      disabled={
+                        isRestartingDevServer ||
+                        (!devServerRef.current && projectType !== 'statichtml')
+                      }
                       title="Restart dev server"
                       data-education-id="restart-server"
                     >
@@ -2130,6 +2185,7 @@ function App({ initialProjectPath }: AppProps) {
                       ref={previewRef}
                       port={devServerPort}
                       projectPath={currentProject?.path || ''}
+                      isStaticProject={projectType === 'statichtml'}
                       onServerReady={handlePreviewReady}
                       onPageChange={setCurrentPreviewPage}
                       isCropMode={isCropMode}
@@ -2273,7 +2329,11 @@ function App({ initialProjectPath }: AppProps) {
           </div>
           <CompactActionsRow
             serverHealth={
-              devServerRef.current ? 'healthy' : isRestartingDevServer ? 'starting' : 'unhealthy'
+              projectType === 'statichtml' || devServerRef.current
+                ? 'healthy'
+                : isRestartingDevServer
+                  ? 'starting'
+                  : 'unhealthy'
             }
             currentBranch={currentBranch}
             hasUncommittedChanges={hasUncommittedChanges}
