@@ -938,8 +938,11 @@ function App({ initialProjectPath }: AppProps) {
     }
   }, [currentProject]);
 
-  // Track previous agent status to detect transitions
-  const prevAgentStatusRef = useRef<AgentStatus>('idle');
+  // Track previous agent status per tab to detect transitions
+  const prevAgentStatusMap = useRef<Map<number, AgentStatus>>(new Map());
+
+  // Tabs waiting for user attention (finished processing while not active)
+  const [attentionTabs, setAttentionTabs] = useState<Set<number>>(new Set());
 
   // Use ref for notification settings to avoid re-creating callback
   const notificationSettingsRef = useRef(notificationSettings);
@@ -947,18 +950,34 @@ function App({ initialProjectPath }: AppProps) {
     notificationSettingsRef.current = notificationSettings;
   }, [notificationSettings]);
 
-  // Handle agent status changes - play sounds based on settings
-  const handleAgentStatusChange = useCallback((status: AgentStatus, _title: string) => {
-    const settings = notificationSettingsRef.current;
-    const wasThinking = prevAgentStatusRef.current === 'thinking';
+  // Ref for activeTerminalTab so the callback doesn't need to be recreated
+  const activeTerminalTabRef = useRef(activeTerminalTab);
+  useEffect(() => {
+    activeTerminalTabRef.current = activeTerminalTab;
+  }, [activeTerminalTab]);
 
-    // When agent transitions from thinking to waiting (finished processing)
-    if (wasThinking && status === 'waiting' && settings.enabled) {
-      void playSound(settings.sound);
-    }
+  // Handle agent status changes per tab - play sounds and mark attention
+  const createTabStatusHandler = useCallback(
+    (tabId: number) => (status: AgentStatus, _title: string) => {
+      const settings = notificationSettingsRef.current;
+      const prevStatus = prevAgentStatusMap.current.get(tabId) ?? 'idle';
+      const wasThinking = prevStatus === 'thinking';
 
-    prevAgentStatusRef.current = status;
-  }, []);
+      // When agent transitions from thinking to waiting (finished processing)
+      if (wasThinking && status === 'waiting') {
+        if (settings.enabled) {
+          void playSound(settings.sound);
+        }
+        // Mark tab as needing attention if it's not the active tab
+        if (activeTerminalTabRef.current !== tabId) {
+          setAttentionTabs((prev) => new Set(prev).add(tabId));
+        }
+      }
+
+      prevAgentStatusMap.current.set(tabId, status);
+    },
+    []
+  );
 
   // Save notification settings when they change
   const handleSaveNotificationSettings = useCallback((settings: NotificationSettings) => {
@@ -1968,11 +1987,16 @@ function App({ initialProjectPath }: AppProps) {
                       {terminalTabs.map((tab, index) => (
                         <button
                           key={tab.id}
-                          className={`workspace-tab ${!showDevServerLogs && activeTerminalTab === tab.id ? 'active' : ''}`}
+                          className={`workspace-tab ${!showDevServerLogs && activeTerminalTab === tab.id ? 'active' : ''} ${attentionTabs.has(tab.id) ? 'attention' : ''}`}
                           onClick={() => {
                             setShowDevServerLogs(false);
                             setShowHealthLogs(false);
                             setActiveTerminalTab(tab.id);
+                            setAttentionTabs((prev) => {
+                              const next = new Set(prev);
+                              next.delete(tab.id);
+                              return next;
+                            });
                           }}
                         >
                           <span className="terminal-tab-number">{index + 1}</span>
@@ -2064,7 +2088,7 @@ function App({ initialProjectPath }: AppProps) {
                           projectPath={currentProject?.path || ''}
                           onExit={handleTerminalExit}
                           autoAcceptMode={autoAcceptMode}
-                          onStatusChange={handleAgentStatusChange}
+                          onStatusChange={createTabStatusHandler(tab.id)}
                         />
                       </div>
                     ))}

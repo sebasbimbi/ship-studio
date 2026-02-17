@@ -180,6 +180,14 @@
   color: var(--text-primary);
 }
 
+.workspace-tab.attention {
+  color: #22c55e;
+}
+
+.workspace-tab.attention .terminal-tab-number {
+  color: #22c55e;
+}
+
 .workspace-tab svg {
   flex-shrink: 0;
 }
