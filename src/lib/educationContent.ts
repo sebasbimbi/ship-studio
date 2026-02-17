@@ -169,6 +169,31 @@ export const educationContent: Record<string, EducationItem> = {
       'See keyboard shortcuts and all the commands available in the terminal. Find quick ways to navigate and control the app.',
   },
 
+  // Toolbar more menu
+  'toolbar-more': {
+    title: 'More Options',
+    description:
+      'Access additional settings like notification sounds, skill management, and helpful commands.',
+  },
+
+  // Plugin manager
+  'plugin-manager': {
+    title: 'Plugins',
+    description:
+      'Install and manage plugins that add new features to the app. Plugins can add toolbar buttons, sidebar panels, and more.',
+  },
+
+  // Preview visibility
+  'show-preview': {
+    title: 'Show Preview',
+    description: 'Bring back the live preview panel so you can see your website while you work.',
+  },
+  'hide-preview': {
+    title: 'Hide Preview',
+    description:
+      'Hide the preview panel to give Claude more room. Useful when you want to focus on chatting.',
+  },
+
   // Education mode button itself
   'education-button': {
     title: 'Learn Mode',

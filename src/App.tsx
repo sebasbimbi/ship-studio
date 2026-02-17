@@ -1951,6 +1951,7 @@ function App({ initialProjectPath }: AppProps) {
                           className="show-preview-btn icon-only"
                           onClick={() => setIsPreviewHidden(false)}
                           title="Show Preview"
+                          data-education-id="show-preview"
                         >
                           <PanelRightIcon size={12} />
                         </button>
@@ -2238,6 +2239,7 @@ function App({ initialProjectPath }: AppProps) {
                       className="preview-action-btn-icon"
                       onClick={() => setIsPreviewHidden(true)}
                       title="Hide Preview"
+                      data-education-id="hide-preview"
                     >
                       <PanelRightIcon size={12} />
                     </button>
