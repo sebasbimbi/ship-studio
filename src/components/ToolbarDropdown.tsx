@@ -9,7 +9,14 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { useClickOutside } from '../hooks/useClickOutside';
-import { MoreHorizontalIcon, BellIcon, ZapIcon, ShieldCheckIcon, HelpIcon } from './icons';
+import {
+  MoreHorizontalIcon,
+  BellIcon,
+  ZapIcon,
+  PlugIcon,
+  ShieldCheckIcon,
+  HelpIcon,
+} from './icons';
 import { PluginSlot } from './PluginSlot';
 import type { LoadedPlugin } from '../hooks/usePlugins';
 import type {
@@ -24,6 +31,7 @@ interface ToolbarDropdownProps {
   autoAcceptMode: boolean;
   onNotificationSettings: () => void;
   onSkills: () => void;
+  onMcp: () => void;
   onAutoAcceptToggle: () => void;
   onHelp: () => void;
   terminalPlugins: LoadedPlugin[];
@@ -37,6 +45,7 @@ export function ToolbarDropdown({
   autoAcceptMode,
   onNotificationSettings,
   onSkills,
+  onMcp,
   onAutoAcceptToggle,
   onHelp,
   terminalPlugins,
@@ -83,6 +92,19 @@ export function ToolbarDropdown({
             >
               <ZapIcon size={14} />
               <span>Skills</span>
+            </button>
+          )}
+          {agent.supportsMcp && (
+            <button
+              className="toolbar-dropdown-item"
+              onClick={() => {
+                setIsOpen(false);
+                onMcp();
+              }}
+              data-education-id="mcp-manager"
+            >
+              <PlugIcon size={14} />
+              <span>MCP Servers</span>
             </button>
           )}
           {agent.autoAcceptFlag && (

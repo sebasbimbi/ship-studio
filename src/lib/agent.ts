@@ -24,6 +24,8 @@ export interface AgentConfig {
   autoAcceptFlag: string | null;
   /** Whether this agent supports the skills system */
   supportsSkills: boolean;
+  /** Whether this agent supports MCP (Model Context Protocol) servers */
+  supportsMcp: boolean;
   /** Whether this agent supports status detection via terminal title */
   supportsStatusDetection: boolean;
   /** Loading message shown while terminal starts */
@@ -42,6 +44,7 @@ export const CLAUDE_CODE: AgentConfig = {
   processName: 'claude',
   autoAcceptFlag: '--dangerously-skip-permissions',
   supportsSkills: true,
+  supportsMcp: true,
   supportsStatusDetection: true,
   loadingMessage: 'Starting Claude Code...',
   notFoundMessage: 'Error starting Claude',
@@ -56,6 +59,7 @@ export const CODEX: AgentConfig = {
   processName: 'codex',
   autoAcceptFlag: '--yolo',
   supportsSkills: true,
+  supportsMcp: true,
   supportsStatusDetection: false,
   loadingMessage: 'Starting Codex...',
   notFoundMessage: 'Error starting Codex',
@@ -70,6 +74,7 @@ export const TERMINAL: AgentConfig = {
   processName: 'zsh',
   autoAcceptFlag: null,
   supportsSkills: false,
+  supportsMcp: false,
   supportsStatusDetection: false,
   loadingMessage: 'Starting terminal...',
   notFoundMessage: 'Error starting terminal',

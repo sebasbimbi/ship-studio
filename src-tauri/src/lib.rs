@@ -226,6 +226,10 @@ pub fn run() {
             commands::skills::search_skills,
             commands::skills::install_skill,
             commands::skills::remove_skill,
+            // MCP servers
+            commands::mcp::list_mcp_servers,
+            commands::mcp::add_mcp_server,
+            commands::mcp::remove_mcp_server,
             // Plugins
             commands::plugins::list_plugins,
             commands::plugins::install_plugin,

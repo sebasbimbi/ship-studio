@@ -163,6 +163,11 @@ export const educationContent: Record<string, EducationItem> = {
     description:
       'Install and manage skills that give Claude specialized abilities. Skills add commands for specific tasks like React patterns or code review.',
   },
+  'mcp-manager': {
+    title: 'MCP Servers',
+    description:
+      'Manage Model Context Protocol servers that connect Claude to external tools and data sources. MCP servers let Claude interact with databases, APIs, and other services.',
+  },
   'help-commands': {
     title: 'Help & Commands',
     description:

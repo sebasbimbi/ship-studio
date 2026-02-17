@@ -64,6 +64,7 @@ import { NotificationSettingsModal } from './components/NotificationSettingsModa
 import { HelpModal } from './components/HelpModal';
 import { BackupsModal } from './components/BackupsModal';
 import { SkillsModal } from './components/SkillsModal';
+import { McpModal } from './components/McpModal';
 import { PluginManager } from './components/PluginManager';
 import { PluginSlot } from './components/PluginSlot';
 import { EducationOverlay } from './components/EducationOverlay';
@@ -371,6 +372,9 @@ function App({ initialProjectPath }: AppProps) {
 
   // Skills modal state
   const [showSkillsModal, setShowSkillsModal] = useState(false);
+
+  // MCP modal state
+  const [showMcpModal, setShowMcpModal] = useState(false);
 
   // Plugin manager modal state
   const [showPluginManager, setShowPluginManager] = useState(false);
@@ -2041,6 +2045,7 @@ function App({ initialProjectPath }: AppProps) {
                         autoAcceptMode={autoAcceptMode}
                         onNotificationSettings={() => setShowNotificationSettings(true)}
                         onSkills={() => setShowSkillsModal(true)}
+                        onMcp={() => setShowMcpModal(true)}
                         onAutoAcceptToggle={handleToolbarAutoAcceptToggle}
                         onHelp={() => setShowHelpModal(true)}
                         terminalPlugins={getSlotPlugins('terminal')}
@@ -2559,6 +2564,16 @@ function App({ initialProjectPath }: AppProps) {
           projectPath={currentProject?.path}
           agentId={getActiveTabAgent().id}
           agentDisplayName={getActiveTabAgent().displayName}
+        />
+
+        {/* MCP Servers Modal */}
+        <McpModal
+          isOpen={showMcpModal}
+          onClose={() => setShowMcpModal(false)}
+          projectPath={currentProject?.path}
+          agentId={getActiveTabAgent().id}
+          agentDisplayName={getActiveTabAgent().displayName}
+          agentBinaryName={getActiveTabAgent().binaryName}
         />
 
         {/* Plugin Manager */}
