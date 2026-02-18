@@ -96,7 +96,6 @@
   flex: 1;
   overflow: hidden;
   padding-left: 12px;
-  border-left: 1px solid var(--border);
 }
 
 .preview-pane {
