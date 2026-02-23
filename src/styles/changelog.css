@@ -38,25 +38,11 @@
   flex: 1;
   overflow-y: auto;
   padding: 4px 0;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
+  scrollbar-width: none;
 }
 
 .changelog-list::-webkit-scrollbar {
-  width: 6px;
-}
-
-.changelog-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.changelog-list::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 3px;
-}
-
-.changelog-list::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
+  display: none;
 }
 
 .changelog-entry {

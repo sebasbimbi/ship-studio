@@ -58,6 +58,11 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding-top: 0;
+  scrollbar-width: none;
+}
+
+.code-tab-sidebar-content::-webkit-scrollbar {
+  display: none;
 }
 
 .code-tab-sidebar-loading,
@@ -262,30 +267,11 @@
 .code-viewer-content {
   flex: 1;
   overflow: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
+  scrollbar-width: none;
 }
 
 .code-viewer-content::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-.code-viewer-content::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.code-viewer-content::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 3px;
-}
-
-.code-viewer-content::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
-}
-
-.code-viewer-content::-webkit-scrollbar-corner {
-  background: transparent;
+  display: none;
 }
 
 .code-viewer-code-wrapper {
