@@ -126,23 +126,6 @@
   padding-right: 4px;
 }
 
-.import-repo-list::-webkit-scrollbar {
-  width: 6px;
-}
-
-.import-repo-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.import-repo-list::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 3px;
-}
-
-.import-repo-list::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
-}
-
 .import-repo-item {
   display: flex;
   flex-direction: column;

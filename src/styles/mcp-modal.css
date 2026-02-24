@@ -82,25 +82,6 @@
   padding: 0 24px 24px;
   overflow-y: auto;
   flex: 1;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
-}
-
-.mcp-modal-body::-webkit-scrollbar {
-  width: 6px;
-}
-
-.mcp-modal-body::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.mcp-modal-body::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 3px;
-}
-
-.mcp-modal-body::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
 }
 
 /* Connected Tab Controls */

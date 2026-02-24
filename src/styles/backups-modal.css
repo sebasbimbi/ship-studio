@@ -59,25 +59,6 @@
   padding: 0 24px 24px;
   overflow-y: auto;
   flex: 1;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
-}
-
-.backups-modal-body::-webkit-scrollbar {
-  width: 6px;
-}
-
-.backups-modal-body::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.backups-modal-body::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 3px;
-}
-
-.backups-modal-body::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
 }
 
 .backups-loading,
