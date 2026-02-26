@@ -160,7 +160,7 @@ export function SubmitReviewModal({
               {isGenerating ? (
                 <>
                   <span className="submit-review-spinner" />
-                  Generating...
+                  Generating with AI...
                 </>
               ) : (
                 <>
