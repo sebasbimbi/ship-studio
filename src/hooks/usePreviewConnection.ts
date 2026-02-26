@@ -5,7 +5,7 @@
  * page list loading, navigation event listening, and cache busting.
  */
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useClickOutside } from './useClickOutside';
@@ -335,8 +335,9 @@ export function usePreviewConnection({
     setTimeout(() => setRetryCount(0), 50);
   }, []);
 
-  const filteredPages = pages.filter((page) =>
-    page.route.toLowerCase().includes(pageSearch.toLowerCase())
+  const filteredPages = useMemo(
+    () => pages.filter((page) => page.route.toLowerCase().includes(pageSearch.toLowerCase())),
+    [pages, pageSearch]
   );
 
   return {
