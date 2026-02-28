@@ -569,7 +569,7 @@ export function WorkspaceView({
                     isWebProject || customDevCommand ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                         <button
-                          className="show-preview-btn"
+                          className="show-preview-btn icon-only"
                           onClick={() => void handleRestartDevServer()}
                           disabled={
                             isRestartingDevServer || (!hasDevServer && projectType !== 'statichtml')
@@ -582,7 +582,6 @@ export function WorkspaceView({
                           ) : (
                             <ResetIcon size={14} />
                           )}
-                          <span>Restart Server</span>
                         </button>
                         {!isWebProject && (
                           <button
@@ -593,6 +592,15 @@ export function WorkspaceView({
                             <SettingsIcon size={12} />
                           </button>
                         )}
+                        <button
+                          className="show-preview-btn icon-only"
+                          onClick={() => {
+                            /* Phase 2 will wire to settings modal */
+                          }}
+                          title="Project settings"
+                        >
+                          <SettingsIcon size={12} />
+                        </button>
                       </div>
                     ) : (
                       <button
