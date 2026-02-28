@@ -12,7 +12,7 @@ Two phases deliver a clean toolbar and functional per-project settings. Phase 1 
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Toolbar Cleanup** - Strip restart button to icon-only and add settings cog
+- [x] **Phase 1: Toolbar Cleanup** - Strip restart button to icon-only and add settings cog (completed 2026-02-28)
 - [ ] **Phase 2: Project Settings** - Modal with port field, persistence, and dev server restart
 
 ## Phase Details
@@ -47,5 +47,5 @@ Phases execute in numeric order: 1 → 2
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Toolbar Cleanup | 0/1 | Not started | - |
+| 1. Toolbar Cleanup | 0/1 | Complete    | 2026-02-28 |
 | 2. Project Settings | 0/TBD | Not started | - |
