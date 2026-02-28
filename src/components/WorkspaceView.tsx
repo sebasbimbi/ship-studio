@@ -605,23 +605,13 @@ export function WorkspaceView({
                         </button>
                       </div>
                     ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <button
-                          className="show-preview-btn"
-                          onClick={openDevCommandModal}
-                          title="Configure a dev server command"
-                        >
-                          <SettingsIcon size={14} />
-                          <span>Dev Server...</span>
-                        </button>
-                        <button
-                          className="show-preview-btn icon-only"
-                          onClick={() => modals.openProjectSettings()}
-                          title="Project settings"
-                        >
-                          <SettingsIcon size={12} />
-                        </button>
-                      </div>
+                      <button
+                        className="show-preview-btn icon-only"
+                        onClick={() => modals.openProjectSettings()}
+                        title="Project settings"
+                      >
+                        <SettingsIcon size={12} />
+                      </button>
                     )
                   }
                   toolbarRight={
@@ -1257,6 +1247,7 @@ export function WorkspaceView({
           devServerPort={devServerPort}
           onSavePort={lifecycle.handleSavePort}
           onCloseProjectSettings={modals.closeProjectSettings}
+          isWebProject={isWebProject}
           pluginTerminal={pluginTerminal}
           pluginTerminalExited={pluginTerminalExited}
           onClosePluginTerminal={closePluginTerminal}

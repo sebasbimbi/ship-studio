@@ -146,6 +146,7 @@ export interface WorkspaceModalsProps {
   devServerPort: number;
   onSavePort: (port: number) => void;
   onCloseProjectSettings: () => void;
+  isWebProject: boolean;
 
   // Plugin terminal
   pluginTerminal: { command: string; args: string[]; title: string } | null;
@@ -223,6 +224,7 @@ export function WorkspaceModals({
   devServerPort,
   onSavePort,
   onCloseProjectSettings,
+  isWebProject,
   pluginTerminal,
   pluginTerminalExited,
   onClosePluginTerminal,
@@ -459,7 +461,7 @@ export function WorkspaceModals({
         </div>
       )}
 
-      {/* Dev Command Modal */}
+      {/* Dev Command Modal (web projects still use standalone for "Edit dev command" button) */}
       {showDevCommandModal && (
         <DevCommandModal
           currentCommand={customDevCommand}
@@ -474,6 +476,9 @@ export function WorkspaceModals({
           currentPort={devServerPort}
           onSave={onSavePort}
           onClose={onCloseProjectSettings}
+          customDevCommand={customDevCommand}
+          onSaveDevCommand={onSaveDevCommand}
+          isWebProject={isWebProject}
         />
       )}
 
