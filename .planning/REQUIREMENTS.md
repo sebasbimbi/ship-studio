@@ -36,20 +36,20 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TOOL-01 | — | Pending |
-| TOOL-02 | — | Pending |
-| SETS-01 | — | Pending |
-| SETS-02 | — | Pending |
-| SETS-03 | — | Pending |
-| SETS-04 | — | Pending |
-| SETS-05 | — | Pending |
-| SETS-06 | — | Pending |
+| TOOL-01 | Phase 1 | Pending |
+| TOOL-02 | Phase 1 | Pending |
+| SETS-01 | Phase 2 | Pending |
+| SETS-02 | Phase 2 | Pending |
+| SETS-03 | Phase 2 | Pending |
+| SETS-04 | Phase 2 | Pending |
+| SETS-05 | Phase 2 | Pending |
+| SETS-06 | Phase 2 | Pending |
 
 **Coverage:**
 - v1 requirements: 8 total
-- Mapped to phases: 0
-- Unmapped: 8 (pending roadmap)
+- Mapped to phases: 8
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-28*
-*Last updated: 2026-02-28 after initial definition*
+*Last updated: 2026-02-28 after roadmap creation*
