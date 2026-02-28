@@ -125,7 +125,7 @@ pub struct RestoreResult {
 
 /// Current schema version for project metadata.
 /// Increment this when making breaking changes to the schema.
-pub const PROJECT_METADATA_SCHEMA_VERSION: u32 = 1;
+pub const PROJECT_METADATA_SCHEMA_VERSION: u32 = 2;
 
 /// Project metadata stored in .shipstudio/project.json
 #[derive(Serialize, Deserialize)]
@@ -157,6 +157,10 @@ pub struct ProjectMetadata {
     /// Custom dev command for generic projects (e.g., "cargo run", "npm run dev")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub custom_dev_command: Option<String>,
+    /// Preferred dev server port for this project (default: 3000)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub dev_server_port: Option<u16>,
 }
 
 fn default_schema_version() -> u32 {
@@ -176,6 +180,7 @@ impl Default for ProjectMetadata {
             auto_accept_mode: None,
             hide_main_branch_warning: None,
             custom_dev_command: None,
+            dev_server_port: None,
         }
     }
 }

@@ -185,6 +185,8 @@ pub fn run() {
             commands::projects::set_hide_main_branch_warning,
             commands::projects::get_custom_dev_command,
             commands::projects::set_custom_dev_command,
+            commands::projects::get_dev_server_port,
+            commands::projects::set_dev_server_port,
             commands::projects::extract_template_zip,
             commands::projects::export_project_as_template,
             commands::projects::open_project_in_new_window,

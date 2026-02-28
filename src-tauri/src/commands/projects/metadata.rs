@@ -280,6 +280,59 @@ pub async fn set_custom_dev_command(
     Ok(())
 }
 
+/// Gets the dev server port for a project (returns None if not configured, meaning use default 3000)
+#[tauri::command]
+pub async fn get_dev_server_port(project_path: String) -> Result<Option<u16>, String> {
+    let project = validate_project_path(&project_path)?;
+    let metadata_path = project.join(".shipstudio").join("project.json");
+
+    if !metadata_path.exists() {
+        return Ok(None);
+    }
+
+    let metadata = std::fs::read_to_string(&metadata_path)
+        .ok()
+        .and_then(|contents| serde_json::from_str::<ProjectMetadata>(&contents).ok())
+        .unwrap_or_default();
+
+    Ok(metadata.dev_server_port)
+}
+
+/// Sets the dev server port for a project
+#[tauri::command]
+pub async fn set_dev_server_port(project_path: String, port: u16) -> Result<(), String> {
+    if port == 0 {
+        return Err("Port must be between 1 and 65535".to_string());
+    }
+
+    let project = validate_project_path(&project_path)?;
+    let shipstudio_dir = project.join(".shipstudio");
+    let metadata_path = shipstudio_dir.join("project.json");
+
+    let mut metadata = if metadata_path.exists() {
+        std::fs::read_to_string(&metadata_path)
+            .ok()
+            .and_then(|contents| serde_json::from_str::<ProjectMetadata>(&contents).ok())
+            .unwrap_or_default()
+    } else {
+        ProjectMetadata::default()
+    };
+
+    metadata.dev_server_port = Some(port);
+
+    if !shipstudio_dir.exists() {
+        std::fs::create_dir_all(&shipstudio_dir)
+            .map_err(|e| format!("Failed to create .shipstudio directory: {e}"))?;
+    }
+
+    let contents = serde_json::to_string_pretty(&metadata)
+        .map_err(|e| format!("Failed to serialize project metadata: {e}"))?;
+    std::fs::write(&metadata_path, contents)
+        .map_err(|e| format!("Failed to write project metadata: {e}"))?;
+
+    Ok(())
+}
+
 /// Sets the auto-accept mode preference for a project
 /// When enabled, Claude will run with --dangerously-skip-permissions flag
 #[tauri::command]
