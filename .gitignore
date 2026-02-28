@@ -27,3 +27,6 @@ ShipStudio.zip
 # Claude Code skills
 .agents/
 .claude/
+
+# GSD planning
+.planning/
