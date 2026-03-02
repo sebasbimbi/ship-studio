@@ -24,6 +24,15 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.4.11',
+    items: [
+      'Major performance improvements — reduced CPU and energy usage',
+      'Branch changes from Claude Code now reflected instantly',
+      'Screenshot capture pauses when window is in background',
+      'Fixed resource leaks in terminals, timers, and file watchers',
+    ],
+  },
+  {
     version: '0.4.10',
     items: [
       'Project Settings modal for dev server port and command',
