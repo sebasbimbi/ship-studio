@@ -6,6 +6,11 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.4.13
+
+- **Fixed 100% CPU on back-navigation** - Resolved tauri-pty infinite read loop that caused permanent CPU spike when navigating from workspace back to projects
+- **CSS transition performance** - Replaced broad `transition: all` with specific properties across 28 stylesheets
+
 ## What's New in v0.4.12
 
 - **Dashboard performance fix** — Fixed scrollbar engine causing 100% CPU usage on the projects page
