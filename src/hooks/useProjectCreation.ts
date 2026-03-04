@@ -213,6 +213,9 @@ export function useProjectCreation({ onComplete, onCancel }: UseProjectCreationP
       if (code === 128) {
         return "Git authentication failed. Make sure you're signed into GitHub.";
       }
+      if (code === 69) {
+        return 'Xcode Command Line Tools license has not been accepted. Open Terminal and run:\nsudo xcodebuild -license accept\n\nThen try creating the project again.';
+      }
     }
     return msg;
   };
