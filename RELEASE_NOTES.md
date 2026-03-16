@@ -6,6 +6,11 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.4.15
+
+- **Plugin crash isolation** - Plugin errors no longer crash the entire app
+
+
 ## What's New in v0.4.14
 
 - **Fixed rapid project switching** - Clicking back then immediately opening another project no longer hangs
