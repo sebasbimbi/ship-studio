@@ -8,6 +8,15 @@ Write clear, user-friendly notes about what changed in this version.
 
 ## What's New in v0.4.16
 
+- **Terminal session persistence** — Conversations resume when reopening projects
+- **Terminal tab dropdown** — Compact dropdown with ⌘T shortcut and agent switching
+- **File search** — Search files by name in the Code tab sidebar
+- **Keyboard shortcuts** — ⌘1-5 to switch tabs
+- **Stability** — Fixed PTY cleanup hangs, added startup logging, cleanup status indicator
+
+
+## What's New in v0.4.16
+
 - **Terminal session persistence** — Reopen a project and your Claude Code conversations automatically resume where you left off, with each tab restoring independently
 - **Terminal tab dropdown** — Tabs redesigned as a compact dropdown selector with agent switching, close buttons, and attention indicators all in one place
 - **File search in Code tab** — Filter the file tree by name with a search bar in the Code browser sidebar
