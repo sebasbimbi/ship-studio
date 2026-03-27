@@ -6,6 +6,15 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.4.18
+
+- **Overlay title bar** - Cleaner look with traffic lights inline, drag-to-move, and double-click to maximize
+- **Toolbar redesign** - Split into left (utilities) and right (hosting/GitHub/Publish) sides
+- **Dismissible Slack banner** - Hide via eye icon or Settings toggle
+- **Terminal focus fix** - Auto-focuses when switching tabs via keyboard shortcuts
+- **Session resume fix** - Stale sessions now reliably auto-restart
+
+
 ## What's New in v0.4.17
 
 - **External project support** — Projects outside ~/ShipStudio no longer show forbidden path errors
