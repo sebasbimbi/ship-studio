@@ -570,13 +570,17 @@ export function useProjectLifecycle({
     // to avoid killing the new project's dev server or PTY processes.
 
     let t = performance.now();
+    logger.info('[BackToProjects] calling unregister_project_from_window...');
     try {
       await invoke('unregister_project_from_window', { windowLabel });
-      logger.info('[BackToProjects] unregister_project_from_window', {
+      logger.info('[BackToProjects] unregister_project_from_window done', {
         ms: Math.round(performance.now() - t),
       });
-    } catch {
-      // Ignore - non-critical
+    } catch (e) {
+      logger.error('[BackToProjects] unregister_project_from_window FAILED', {
+        ms: Math.round(performance.now() - t),
+        error: String(e),
+      });
     }
 
     // Bail if user already opened another project
