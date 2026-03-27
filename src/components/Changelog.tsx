@@ -24,6 +24,16 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.4.19',
+    items: [
+      'Fixed terminal resize when switching tabs — no more narrow text wrapping',
+      'Smaller, consistent toolbar buttons matching workspace tab proportions',
+      'Screenshot shortcuts: ⌘⇧S for capture, ⌘⇧C for crop mode',
+      'Removed broken full page screenshot option',
+      'Window dragging restricted to title bar only',
+    ],
+  },
+  {
     version: '0.4.18',
     items: [
       'New overlay title bar — cleaner look with traffic lights inline',
