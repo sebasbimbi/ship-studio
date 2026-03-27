@@ -505,16 +505,16 @@ export const WorkspaceView = memo(function WorkspaceView({
     handleSaveDevCommand,
   } = lifecycle;
 
-  // Cmd+Shift+S — capture viewport screenshot, Cmd+Shift+C — toggle crop mode
+  // Cmd+Shift+2 — capture viewport screenshot, Cmd+Shift+1 — toggle crop mode
   useEffect(() => {
     function handleScreenshotKeys(e: KeyboardEvent) {
       if (!(e.metaKey || e.ctrlKey) || !e.shiftKey) return;
-      if (e.key === 'S') {
+      if (e.key === '2') {
         e.preventDefault();
         if (!isCapturing && !isCropMode) {
           void handleCaptureScreenshot();
         }
-      } else if (e.key === 'C') {
+      } else if (e.key === '1') {
         e.preventDefault();
         if (!isCapturing && !isCropCapturing) {
           setIsCropMode(!isCropMode);
@@ -1094,7 +1094,7 @@ export const WorkspaceView = memo(function WorkspaceView({
                             className="agent-capture-btn"
                             onClick={() => void handleCaptureScreenshot()}
                             disabled={isCapturing || isCropMode}
-                            title="Screenshot preview for Claude (⌘⇧S)"
+                            title="Screenshot preview for Claude (⌘⇧2)"
                             data-education-id="screenshot-button"
                           >
                             {isCapturing ? (
@@ -1102,15 +1102,13 @@ export const WorkspaceView = memo(function WorkspaceView({
                             ) : (
                               <CameraIcon size={14} />
                             )}
-                            <span className="capture-shortcut">
-                              <span className="capture-shortcut-cmd">&#8984;</span>&#8679;S
-                            </span>
+                            <span className="capture-shortcut">&#8984;&#8679;2</span>
                           </button>
                           <button
                             className={`agent-capture-btn ${isCropMode ? 'active' : ''}`}
                             onClick={() => setIsCropMode(!isCropMode)}
                             disabled={isCapturing || isCropCapturing}
-                            title="Crop screenshot for Claude (⌘⇧C)"
+                            title="Crop screenshot for Claude (⌘⇧1)"
                             data-education-id="crop-button"
                           >
                             {isCropCapturing ? (
@@ -1118,9 +1116,7 @@ export const WorkspaceView = memo(function WorkspaceView({
                             ) : (
                               <CropIcon size={14} />
                             )}
-                            <span className="capture-shortcut">
-                              <span className="capture-shortcut-cmd">&#8984;</span>&#8679;C
-                            </span>
+                            <span className="capture-shortcut">&#8984;&#8679;1</span>
                           </button>
                         </div>
                       }

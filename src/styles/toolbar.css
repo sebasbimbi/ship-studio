@@ -57,16 +57,10 @@
 }
 
 .capture-shortcut {
-  font-family: 'SF Mono', Monaco, monospace;
-  font-size: 10px;
-  color: var(--text-muted);
-  letter-spacing: 0.5px;
-  white-space: nowrap;
-}
-
-.capture-shortcut-cmd {
   font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  font-size: 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .terminal-capture {
