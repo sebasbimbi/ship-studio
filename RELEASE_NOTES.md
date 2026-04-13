@@ -6,6 +6,15 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.4.24
+
+- **Community template gallery** — browse, search, and download starter templates
+- **Learn Mode** — renamed from Education Mode, now covers all dashboard and workspace elements
+- **Screenshot shortcuts fixed** — ⌘⇧S and ⌘⇧C now work even when preview iframe has focus
+- **Agent-agnostic language** — Learn Mode works with Claude Code, Codex, or any terminal agent
+- **Toolbar buttons** no longer wrap text at narrow window sizes
+
+
 ## What's New in v0.4.23
 
 - **Client Editor** — New "Add Clients" button in the toolbar introduces the inline Client Editor for your clients
