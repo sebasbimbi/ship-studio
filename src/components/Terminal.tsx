@@ -146,15 +146,17 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     ptyDisposablesRef.current = [];
 
     if (ptyRef.current) {
-      // Invalidate PID FIRST to break tauri-pty's infinite readData() loop
-      // and prevent kill() from blocking. The backend's kill_window_pty
-      // handles cleanup of any zombie processes.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-      (ptyRef.current as any).pid = undefined;
-      try {
-        ptyRef.current.kill();
-      } catch {
-        // Ignore - PTY may already be dead
+      const pid = (ptyRef.current as any).pid as number | undefined;
+      if (typeof pid === 'number') {
+        // Fire-and-forget: backend `kill` removes the session from the
+        // plugin's map, so the next tauri-pty read invoke returns "EOF"
+        // and its internal `for(;;)` loop exits cleanly. Do NOT call
+        // `pty.kill()` here — that version swallows the return value
+        // so we can't discriminate between a real kill and a race.
+        void invoke('plugin:pty|kill', { pid }).catch(() => {
+          // Session may already be gone (e.g. child exited on its own).
+        });
       }
       ptyRef.current = null;
     }
@@ -437,7 +439,12 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
 
     // Track if this effect instance is still mounted (handles StrictMode/HMR)
     let mounted = true;
-    let attemptResume = !!shouldResume;
+    // Start pessimistic. We'll flip to true below only if the on-disk
+    // Claude session file actually exists — otherwise `--resume` exits 1
+    // ("No conversation found") every time, wasting a full Claude spawn
+    // per project open. Gating on disk-presence turns a ~1s miss into a
+    // ~5ms file-exists check.
+    let attemptResume = false;
 
     // Setup PTY connection using tauri-pty with retry logic
     const setupPty = async (retryCount = 0) => {
@@ -457,6 +464,24 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
       });
 
       try {
+        // Gate the optimistic resume on whether Claude CLI actually has a
+        // conversation stored for this (projectPath, sessionId). Cheap
+        // filesystem check; only runs on the first setupPty call (retry=0)
+        // because a retry can't turn a missing session into an existing one.
+        if (retryCount === 0 && shouldResume && agent.id === 'claude-code' && sessionName) {
+          try {
+            const exists = await invoke<boolean>('claude_session_exists', {
+              projectPath,
+              sessionId: sessionName,
+            });
+            attemptResume = exists;
+          } catch {
+            // If the check itself fails, fall through to fresh — safer
+            // than attempting a resume we can't verify.
+            attemptResume = false;
+          }
+        }
+
         // Fit again to ensure correct size
         fitAddon.fit();
 
@@ -546,9 +571,11 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
 
         // Check again after async operation
         if (!mounted) {
-          pty.kill();
           // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-          (pty as any).pid = undefined;
+          const ppid = (pty as any).pid as number | undefined;
+          if (typeof ppid === 'number') {
+            void invoke('plugin:pty|kill', { pid: ppid }).catch(() => {});
+          }
           return;
         }
 

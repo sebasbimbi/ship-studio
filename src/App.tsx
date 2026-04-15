@@ -42,6 +42,8 @@ import { useProjectLifecycle } from './hooks/useProjectLifecycle';
 import { useAppSetup } from './hooks/useAppSetup';
 import { ProjectsView } from './components/ProjectsView';
 import { WorkspaceView } from './components/WorkspaceView';
+import { ProjectRail } from './components/ProjectRail';
+import { useProjectRail } from './hooks/useProjectRail';
 import { OnboardingScreen } from './components/setup';
 import { Project } from './lib/project';
 import { markSetupComplete, getDefaultAgentId as fetchDefaultAgentId } from './lib/setup';
@@ -374,6 +376,12 @@ function AppContents({ initialProjectPath }: AppProps) {
     setIsEducationMode(false);
     await enterCompactMode();
   };
+
+  const { pinnedProjects, handleTogglePin, handleRailClick, handleRailUnpin } = useProjectRail({
+    currentProjectPath: currentProject?.path ?? null,
+    handleSelectProject,
+    showToast,
+  });
 
   // App setup, onboarding, HMR recovery, auto-open, keyboard shortcuts
   const { projectsLoading, setProjectsLoading } = useAppSetup({
@@ -857,6 +865,12 @@ function AppContents({ initialProjectPath }: AppProps) {
   if (view === 'projects') {
     return (
       <>
+        <ProjectRail
+          rows={pinnedProjects.rows}
+          onPinClick={handleRailClick}
+          onUnpin={handleRailUnpin}
+          onReorder={(orderedPaths) => void pinnedProjects.reorder(orderedPaths)}
+        />
         <ProjectsView
           onSelectProject={handleSelectProjectCallback}
           onCreateProject={handleCreateProject}
@@ -882,6 +896,8 @@ function AppContents({ initialProjectPath }: AppProps) {
           projectsLoading={projectsLoading}
           onLoadingChange={setProjectsLoading}
           cleanupStatus={cleanupStatus}
+          pinnedSet={pinnedProjects.pinnedSet}
+          onTogglePin={(path, pinned) => void handleTogglePin(path, pinned)}
         />
         {toasts.length > 0 && (
           <div className="toast-container">
@@ -928,6 +944,12 @@ function AppContents({ initialProjectPath }: AppProps) {
   }
   return (
     <ToastContext.Provider value={toastsProps}>
+      <ProjectRail
+        rows={pinnedProjects.rows}
+        onPinClick={handleRailClick}
+        onUnpin={handleRailUnpin}
+        onReorder={(orderedPaths) => void pinnedProjects.reorder(orderedPaths)}
+      />
       <WorkspaceView
         currentProject={currentProject}
         previewRef={previewRef}
