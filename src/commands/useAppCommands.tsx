@@ -6,14 +6,7 @@ import { sessionRegistry } from '../lib/sessionRegistry';
 import { checkForUpdate } from '../lib/updater';
 import { checkIdeAvailability, openInIde, openInFinder } from '../lib/ide';
 import { logger } from '../lib/logger';
-import {
-  CodeIcon,
-  CompactIcon,
-  CursorIcon,
-  FolderIcon,
-  PlusIcon,
-  SettingsIcon,
-} from '../components/icons';
+import { CodeIcon, CursorIcon, FolderIcon, PlusIcon, SettingsIcon } from '../components/icons';
 
 /** Inline restart/refresh glyph — no equivalent in the icons/ lib yet. */
 const RestartGlyph = () => (
@@ -53,7 +46,6 @@ export interface UseAppCommandsParams {
   handleImportLocalFolder: () => void | Promise<void>;
   handleGitHubConnect: () => void | Promise<void>;
   handleRestartDevServer: () => Promise<void> | void;
-  handleEnterCompactMode: () => Promise<void> | void;
   /** Current education-mode state, so the command can read "Enter" vs "Exit". */
   isEducationMode: boolean;
   setIsEducationMode: (mode: boolean) => void;
@@ -70,7 +62,6 @@ export function useAppCommands({
   handleImportLocalFolder,
   handleGitHubConnect,
   handleRestartDevServer,
-  handleEnterCompactMode,
   isEducationMode,
   setIsEducationMode,
   showToast,
@@ -134,7 +125,6 @@ export function useAppCommands({
 
   // Wrappers to keep `run` type Promise<void> | void clean for the registry.
   const restart = useCallback(() => void handleRestartDevServer(), [handleRestartDevServer]);
-  const compact = useCallback(() => void handleEnterCompactMode(), [handleEnterCompactMode]);
 
   // Subscribe to the session registry so the project list updates when live
   // sessions come and go. The returned key is a newline-joined, sorted list
@@ -310,14 +300,6 @@ export function useAppCommands({
         run: restart,
       },
       {
-        id: 'mode.compact',
-        title: 'Enter compact mode',
-        icon: <CompactIcon size={14} />,
-        category: 'action' as const,
-        when: 'project' as const,
-        run: compact,
-      },
-      {
         id: 'ide.finder',
         title: 'Reveal in Finder',
         icon: <FolderIcon size={14} />,
@@ -363,7 +345,6 @@ export function useAppCommands({
     currentProject,
     handleBackToProjects,
     restart,
-    compact,
     runFinder,
     runIde,
     ide,

@@ -706,6 +706,17 @@
   opacity: 0.35;
 }
 
+/* Trailing slot hosts the BrowserDropdown on the Dev server row. Needs to
+   be display:flex + shrink:0 so the 18px icon button inside (styled via
+   `.sidebar-row-action`) keeps its square footprint, and stopPropagation
+   on the wrapper prevents the row's own onClick from firing when the
+   user clicks the dropdown. */
+.sidebar-row-trailing {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
 /* Footer is the button itself — no inner outline, no padding gap. */
 .workspace-sidebar-footer {
   flex-shrink: 0;

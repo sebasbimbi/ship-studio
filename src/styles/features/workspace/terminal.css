@@ -210,6 +210,16 @@
   margin: 4px 0;
 }
 
+/* Wraps the full-mode terminal tabs bar + the absolute-positioned
+ * `.terminal-content` stack. Flex column so the content stack stretches to
+ * fill the split pane's left half. */
+.workspace-terminal-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 .terminal-tab-content {
   position: absolute;
   top: 0;

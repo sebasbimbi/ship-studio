@@ -41,7 +41,6 @@ export interface UseProjectLifecycleParams {
   currentProjectPathRef: RefObject<string | null>;
   setView: (view: AppView | ((prev: AppView) => AppView)) => void;
   // Dev server
-  devServerPort: number;
   setDevServerPort: (port: number, projectPath?: string) => void;
   startServerForProject: (
     projectPath: string,
@@ -51,7 +50,6 @@ export interface UseProjectLifecycleParams {
   ) => Promise<ProjectType>;
   isServerRunning: (projectPath: string) => boolean;
   restartDevServer: (projectPath: string, portOverride?: number) => Promise<void>;
-  enterCompact: (port: number) => Promise<void>;
   // Terminal
   pasteToActiveTerminal: (text: string) => void;
   terminalTabs: Array<{ id: number; agentId: string; sessionId: string }>;
@@ -91,12 +89,10 @@ export function useProjectLifecycle({
   setCurrentProject,
   currentProjectPathRef,
   setView,
-  devServerPort,
   setDevServerPort,
   startServerForProject,
   isServerRunning,
   restartDevServer,
-  enterCompact,
   pasteToActiveTerminal,
   terminalTabs,
   activeTerminalTab,
@@ -133,7 +129,6 @@ export function useProjectLifecycle({
   // Force publish dropdown to open (triggered by Save button in BranchIndicator) - trigger mode
   const [forcePublishOpen, setForcePublishOpen] = useState(false);
   // Compact publish dropdown state - controlled mode for toggle behavior via the compact Publish button
-  const [isCompactPublishOpen, setIsCompactPublishOpen] = useState(false);
 
   // Auto-accept warning modal state
   const [showAutoAcceptWarning, setShowAutoAcceptWarning] = useState(false);
@@ -683,15 +678,6 @@ export function useProjectLifecycle({
     await restartDevServer(currentProject.path);
   };
 
-  // Compact mode handler wrapper
-  const handleEnterCompactMode = async () => {
-    try {
-      await enterCompact(devServerPort);
-    } catch {
-      showToast('Failed to enter compact mode', 'error');
-    }
-  };
-
   const handleGitHubStatusChange = () => {
     // Refresh project GitHub status after push/publish
     if (currentProject) {
@@ -714,8 +700,6 @@ export function useProjectLifecycle({
     setIsPublishing,
     forcePublishOpen,
     setForcePublishOpen,
-    isCompactPublishOpen,
-    setIsCompactPublishOpen,
     showAutoAcceptWarning,
     setShowAutoAcceptWarning,
     // Handlers
@@ -727,7 +711,6 @@ export function useProjectLifecycle({
     handleImportLocalFolder,
     handleCreateProject,
     handleRestartDevServer,
-    handleEnterCompactMode,
     handleGitHubStatusChange,
     handlePreviewReady,
     sendToClaude,

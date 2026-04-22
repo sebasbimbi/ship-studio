@@ -25,32 +25,21 @@ import { DevServerLogs } from './DevServerLogs';
 import { Preview } from './Preview';
 import type { PreviewHandle } from './Preview';
 import { SplitPane } from './SplitPane';
-import { PublishBranchDropdown } from './PublishBranchDropdown';
 import { BranchIndicator } from './BranchIndicator';
 import { CodeTab } from './CodeTab';
 import { BranchPRTabContainer } from './workspace/BranchPRTabContainer';
-import { CompactActionsRow } from './CompactMode';
-import { CompactBranchPRView } from './CompactBranchPRView';
+import { CompactWorkspace } from './CompactWorkspace';
 import { MainBranchBanner } from './MainBranchBanner';
-import { BrowserDropdown } from './BrowserDropdown';
 import type { CodeHealthPanelRef } from './CodeHealthPanel';
 import { HealthIndicatorBar } from './workspace/HealthIndicatorBar';
-import { CompactModeToggle } from './workspace/CompactModeToggle';
+import { useIsCompact } from '../hooks/useIsCompact';
 import { WorkspaceModals } from './WorkspaceModals';
 import { WorkspaceHeader, HOSTING_PLUGIN_IDS } from './WorkspaceHeader';
 import { WorkspaceSidebar } from './WorkspaceSidebar';
 import { PluginSlot } from './PluginSlot';
 import { UpdateBanner } from './UpdateBanner';
 import { useWorkspaceCommands } from '../commands/useWorkspaceCommands';
-import {
-  CameraIcon,
-  CodeIcon,
-  CropIcon,
-  BranchIcon,
-  PullRequestIcon,
-  EyeIcon,
-  CompactIcon,
-} from './icons';
+import { CameraIcon, CodeIcon, CropIcon, BranchIcon, PullRequestIcon, EyeIcon } from './icons';
 import { ToolbarDropdown } from './ToolbarDropdown';
 import { PluginsDropdown } from './PluginsDropdown';
 import { getAgentById } from '../lib/agent';
@@ -160,11 +149,6 @@ interface LayoutProps {
   isPreviewHidden: boolean;
   workspaceTab: 'preview' | 'code' | 'branches' | 'prs';
   setWorkspaceTab: (tab: 'preview' | 'code' | 'branches' | 'prs') => void;
-  compactView: 'terminal' | 'branches' | 'prs';
-  setCompactView: (view: 'terminal' | 'branches' | 'prs') => void;
-  isPinned: boolean;
-  handlePinToggle: () => Promise<void>;
-  handleExpandToFull: () => Promise<void>;
 }
 
 interface PluginStateProps {
@@ -246,8 +230,6 @@ interface LifecycleProps {
   setIsPublishing: (p: boolean) => void;
   forcePublishOpen: boolean;
   setForcePublishOpen: (open: boolean) => void;
-  isCompactPublishOpen: boolean;
-  setIsCompactPublishOpen: React.Dispatch<React.SetStateAction<boolean>>;
   showAutoAcceptWarning: boolean;
   setShowAutoAcceptWarning: (show: boolean) => void;
   handleBackToProjects: () => void;
@@ -307,7 +289,6 @@ export interface WorkspaceViewProps {
   pluginProject: WorkspacePluginProject | null;
   pluginActions: WorkspacePluginActions;
   pluginTheme: PluginThemeData;
-  handleEnterCompactMode: () => Promise<void>;
   /** Project list shown in the workspace sidebar. */
   projectRows: PinnedProjectRow[];
   /** Switch to a different project from the sidebar. */
@@ -343,7 +324,6 @@ export const WorkspaceView = memo(function WorkspaceView({
   pluginProject,
   pluginActions,
   pluginTheme,
-  handleEnterCompactMode,
   projectRows,
   onSelectProject,
   onCloseProject,
@@ -352,6 +332,10 @@ export const WorkspaceView = memo(function WorkspaceView({
   onOpenProjectPicker,
   isProjectDevServerRunning,
 }: WorkspaceViewProps) {
+  // Window-width gate for the compact layout. Purely reactive — no Tauri
+  // resize calls, no pinning. See src/hooks/useIsCompact.ts for the threshold.
+  const isCompact = useIsCompact();
+
   // Destructure domain groups for readability in JSX
   const {
     terminalTabs,
@@ -450,11 +434,6 @@ export const WorkspaceView = memo(function WorkspaceView({
     isPreviewHidden,
     workspaceTab,
     setWorkspaceTab,
-    compactView,
-    setCompactView,
-    isPinned,
-    handlePinToggle,
-    handleExpandToFull,
   } = layout;
 
   const {
@@ -502,8 +481,6 @@ export const WorkspaceView = memo(function WorkspaceView({
     setIsPublishing,
     forcePublishOpen,
     setForcePublishOpen,
-    isCompactPublishOpen,
-    setIsCompactPublishOpen,
     showAutoAcceptWarning,
     setShowAutoAcceptWarning,
     handleRestartDevServer,
@@ -580,11 +557,12 @@ export const WorkspaceView = memo(function WorkspaceView({
   // Sidebar visibility is workspace-local (not persisted). The home /
   // projects view renders its own sidebar instance unconditionally, so
   // this state does not affect it.
+  // Sidebar visibility is workspace-local (not persisted). The home / projects
+  // view renders its own sidebar instance unconditionally, so this state does
+  // not affect it. Compact mode never renders the full sidebar — the narrow
+  // layout owns its own chrome (see `CompactWorkspace`).
   const [isSidebarHidden, setIsSidebarHidden] = useState(false);
-  // In compact mode we hide the sidebar unconditionally — project switching
-  // happens via ⌘1..9 shortcuts. Users can't manually re-show it; the toggle
-  // button is also suppressed below to avoid a dead affordance.
-  const effectiveSidebarHidden = isPinned || isSidebarHidden;
+  const effectiveSidebarHidden = isSidebarHidden;
   const [showPreviewLogs, setShowPreviewLogs] = useState(false);
 
   // Workspace-scoped palette commands (branch + PR flows).
@@ -720,7 +698,7 @@ export const WorkspaceView = memo(function WorkspaceView({
       </>
     ),
     isSidebarHidden: effectiveSidebarHidden,
-    onToggleSidebar: isPinned ? undefined : () => setIsSidebarHidden((v) => !v),
+    onToggleSidebar: () => setIsSidebarHidden((v) => !v),
     integrations,
     onGitHubStatusChange: handleGitHubStatusChange,
     onGitHubConnect: handleGitHubConnect,
@@ -747,27 +725,19 @@ export const WorkspaceView = memo(function WorkspaceView({
     <>
       <div className="app workspace">
         <UpdateBanner />
-        {header.titlebar}
+        {!isCompact && header.titlebar}
 
-        <div className={`workspace-body${effectiveSidebarHidden ? ' is-sidebar-hidden' : ''}`}>
-          <WorkspaceSidebar
-            isHomeActive={false}
-            onGoHome={onGoHome}
-            onOpenProjectPicker={onOpenProjectPicker}
-            projects={projectRows}
-            onCloseProject={onCloseProject}
-            currentProjectPath={currentProject.path}
-            currentProjectName={currentProject.name}
-            onSelectProject={onSelectProject}
-            onSelectProjectTab={onSelectProjectTab}
+        {isCompact ? (
+          <CompactWorkspace
+            currentProject={currentProject}
+            allSessions={allSessions}
             terminalTabs={terminalTabs}
             activeTerminalTab={activeTerminalTab}
+            terminalRefsMap={terminalRefsMap}
             tabTitles={tabTitles}
             attentionTabs={attentionTabs}
-            maxTabs={maxTerminalTabs}
+            maxTerminalTabs={maxTerminalTabs}
             onSelectTab={(tabId) => {
-              setShowDevServerLogs(false);
-              setShowHealthLogs(false);
               setActiveTerminalTab(tabId);
               setAttentionTabs((prev) => {
                 const next = new Set(prev);
@@ -776,443 +746,380 @@ export const WorkspaceView = memo(function WorkspaceView({
               });
               sessionRegistry.setTerminalTabAttention(currentProject.path, tabId, false);
             }}
-            onAddTab={addTerminalTab}
+            onAddTab={() => addTerminalTab()}
             onCloseTab={closeTerminalTab}
             hasDevServer={hasDevServer}
-            isRestartingDevServer={isRestartingDevServer}
-            devServerRunning={hasDevServer}
-            onOpenDevServerLogs={
-              isWebProject || hasDevServer
-                ? () => {
-                    setShowDevServerLogs(true);
-                    setShowHealthLogs(false);
-                  }
-                : undefined
-            }
-            onRestartDevServer={
-              isWebProject || customDevCommand ? () => void handleRestartDevServer() : undefined
-            }
-            isProjectDevServerRunning={isProjectDevServerRunning}
+            projectRows={projectRows}
+            onSelectProject={onSelectProject}
+            onGoHome={onGoHome}
+            autoAcceptMode={autoAcceptMode}
+            handleTerminalExit={handleTerminalExit}
+            createTabStatusHandler={createTabStatusHandler}
+            handleTabTitleChange={handleTabTitleChange}
           />
-          <div className="workspace-main">
-            {header.toolbar}
+        ) : (
+          <div className={`workspace-body${effectiveSidebarHidden ? ' is-sidebar-hidden' : ''}`}>
+            <WorkspaceSidebar
+              isHomeActive={false}
+              onGoHome={onGoHome}
+              onOpenProjectPicker={onOpenProjectPicker}
+              projects={projectRows}
+              onCloseProject={onCloseProject}
+              currentProjectPath={currentProject.path}
+              currentProjectName={currentProject.name}
+              onSelectProject={onSelectProject}
+              onSelectProjectTab={onSelectProjectTab}
+              terminalTabs={terminalTabs}
+              activeTerminalTab={activeTerminalTab}
+              tabTitles={tabTitles}
+              attentionTabs={attentionTabs}
+              maxTabs={maxTerminalTabs}
+              onSelectTab={(tabId) => {
+                setShowDevServerLogs(false);
+                setShowHealthLogs(false);
+                setActiveTerminalTab(tabId);
+                setAttentionTabs((prev) => {
+                  const next = new Set(prev);
+                  next.delete(tabId);
+                  return next;
+                });
+                sessionRegistry.setTerminalTabAttention(currentProject.path, tabId, false);
+              }}
+              onAddTab={addTerminalTab}
+              onCloseTab={closeTerminalTab}
+              hasDevServer={hasDevServer}
+              isRestartingDevServer={isRestartingDevServer}
+              devServerRunning={hasDevServer}
+              onOpenDevServerLogs={
+                isWebProject || hasDevServer
+                  ? () => {
+                      setShowDevServerLogs(true);
+                      setShowHealthLogs(false);
+                    }
+                  : undefined
+              }
+              onRestartDevServer={
+                isWebProject || customDevCommand ? () => void handleRestartDevServer() : undefined
+              }
+              devServerUrl={
+                isWebProject && devServerPort > 0 ? `http://localhost:${devServerPort}` : undefined
+              }
+              isProjectDevServerRunning={isProjectDevServerRunning}
+            />
+            <div className="workspace-main">
+              {header.toolbar}
 
-            {(currentBranch === 'main' || currentBranch === 'master') && (
-              <MainBranchBanner
-                projectPath={currentProject.path}
-                onCreateBranch={() => setWorkspaceTab('branches')}
-              />
-            )}
+              {(currentBranch === 'main' || currentBranch === 'master') && (
+                <MainBranchBanner
+                  projectPath={currentProject.path}
+                  onCreateBranch={() => setWorkspaceTab('branches')}
+                />
+              )}
 
-            {/* Full-width branch + tabs bar. Historically this lived inside
+              {/* Full-width branch + tabs bar. Historically this lived inside
                 the right pane of the SplitPane, but it was lifted up here
                 so the branch chip + workspace tabs span the full workspace
                 width and stay visible even when the preview pane is
                 hidden. The tabs still only control what's rendered in the
                 right pane — clicking "Code" / "Branches" / "PRs" swaps
                 that content, identical to before. */}
-            <div className="preview-tabs-bar">
-              {integrations.projectGithub?.status === 'connected' && currentBranch && (
-                <BranchIndicator
-                  currentBranch={currentBranch}
-                  hasUncommittedChanges={hasUncommittedChanges}
-                  changedFiles={changedFiles}
-                  projectPath={currentProject.path}
-                  isOnBranchesTab={workspaceTab === 'branches' || workspaceTab === 'prs'}
-                  isWebProject={isWebProject}
-                  onClick={() => {
-                    if (workspaceTab === 'branches' || workspaceTab === 'prs') {
-                      setWorkspaceTab(isWebProject ? 'preview' : 'code');
-                    } else {
-                      setWorkspaceTab('branches');
-                    }
-                  }}
-                  onDiscard={() => {
-                    void checkGitStatus(currentProject.path);
-                  }}
-                  onSave={() => setForcePublishOpen(true)}
-                />
-              )}
-              <div style={{ flex: 1 }} />
-              <div className="workspace-tabs">
-                {isWebProject && (
+              <div className="preview-tabs-bar">
+                {integrations.projectGithub?.status === 'connected' && currentBranch && (
+                  <BranchIndicator
+                    currentBranch={currentBranch}
+                    hasUncommittedChanges={hasUncommittedChanges}
+                    changedFiles={changedFiles}
+                    projectPath={currentProject.path}
+                    isOnBranchesTab={workspaceTab === 'branches' || workspaceTab === 'prs'}
+                    isWebProject={isWebProject}
+                    onClick={() => {
+                      if (workspaceTab === 'branches' || workspaceTab === 'prs') {
+                        setWorkspaceTab(isWebProject ? 'preview' : 'code');
+                      } else {
+                        setWorkspaceTab('branches');
+                      }
+                    }}
+                    onDiscard={() => {
+                      void checkGitStatus(currentProject.path);
+                    }}
+                    onSave={() => setForcePublishOpen(true)}
+                  />
+                )}
+                <div style={{ flex: 1 }} />
+                <div className="workspace-tabs">
+                  {isWebProject && (
+                    <button
+                      className={`workspace-tab ${workspaceTab === 'preview' ? 'active' : ''}`}
+                      onClick={() => setWorkspaceTab('preview')}
+                    >
+                      <EyeIcon size={14} />
+                      <span>Preview</span>
+                    </button>
+                  )}
                   <button
-                    className={`workspace-tab ${workspaceTab === 'preview' ? 'active' : ''}`}
-                    onClick={() => setWorkspaceTab('preview')}
+                    className={`workspace-tab ${workspaceTab === 'code' ? 'active' : ''}`}
+                    onClick={() => setWorkspaceTab('code')}
                   >
-                    <EyeIcon size={14} />
-                    <span>Preview</span>
+                    <CodeIcon size={14} />
+                    <span>Code</span>
                   </button>
-                )}
-                <button
-                  className={`workspace-tab ${workspaceTab === 'code' ? 'active' : ''}`}
-                  onClick={() => setWorkspaceTab('code')}
-                >
-                  <CodeIcon size={14} />
-                  <span>Code</span>
-                </button>
-                {integrations.projectGithub?.status === 'connected' && (
-                  <>
-                    <button
-                      className={`workspace-tab ${workspaceTab === 'branches' ? 'active' : ''}`}
-                      onClick={() => setWorkspaceTab('branches')}
-                      data-education-id="branches-tab"
-                    >
-                      <BranchIcon size={14} />
-                      <span>Branches</span>
-                    </button>
-                    <button
-                      className={`workspace-tab ${workspaceTab === 'prs' ? 'active' : ''}`}
-                      onClick={() => setWorkspaceTab('prs')}
-                      data-education-id="prs-tab"
-                    >
-                      <PullRequestIcon size={14} />
-                      <span>PRs</span>
-                    </button>
-                  </>
-                )}
+                  {integrations.projectGithub?.status === 'connected' && (
+                    <>
+                      <button
+                        className={`workspace-tab ${workspaceTab === 'branches' ? 'active' : ''}`}
+                        onClick={() => setWorkspaceTab('branches')}
+                        data-education-id="branches-tab"
+                      >
+                        <BranchIcon size={14} />
+                        <span>Branches</span>
+                      </button>
+                      <button
+                        className={`workspace-tab ${workspaceTab === 'prs' ? 'active' : ''}`}
+                        onClick={() => setWorkspaceTab('prs')}
+                        data-education-id="prs-tab"
+                      >
+                        <PullRequestIcon size={14} />
+                        <span>PRs</span>
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
-              {isWebProject && (
-                <>
-                  <div className="preview-tabs-divider" />
-                  <div className="preview-actions">
-                    <button
-                      className="preview-action-btn-icon"
-                      onClick={() => void handleEnterCompactMode()}
-                      title="Compact Mode"
-                      data-education-id="compact-button"
-                    >
-                      <CompactIcon size={12} />
-                    </button>
-                    <span data-education-id="browser-button">
-                      <BrowserDropdown
-                        url={`http://localhost:${devServerPort}`}
-                        buttonClassName="preview-action-btn-icon"
-                        iconOnly
-                      />
-                    </span>
-                  </div>
-                </>
-              )}
-            </div>
 
-            <div className="workspace-content">
-              <SplitPane
-                defaultSplit={28}
-                minLeft={20}
-                minRight={35}
-                rightCollapsed={isPreviewHidden}
-                left={
-                  <div className="terminal-pane">
-                    <HealthIndicatorBar
-                      projectPath={currentProject.path}
-                      healthPanelRef={healthPanelRef}
-                      onAskClaude={sendToClaude}
-                      onHealthOutput={handleHealthOutput}
-                    />
-                    {/* Terminal view - hidden in compact mode when viewing branches/PRs */}
-                    <div
-                      className={`compact-terminal-view ${compactView !== 'terminal' ? 'compact-hidden' : ''}`}
-                    >
-                      <div className="terminal-tabs-bar">
-                        {/* Restart-dev-server moved to the sidebar row
+              <div className="workspace-content">
+                <SplitPane
+                  defaultSplit={28}
+                  minLeft={20}
+                  minRight={35}
+                  rightCollapsed={isPreviewHidden}
+                  left={
+                    <div className="terminal-pane">
+                      <HealthIndicatorBar
+                        projectPath={currentProject.path}
+                        healthPanelRef={healthPanelRef}
+                        onAskClaude={sendToClaude}
+                        onHealthOutput={handleHealthOutput}
+                      />
+                      <div className="workspace-terminal-view">
+                        <div className="terminal-tabs-bar">
+                          {/* Restart-dev-server moved to the sidebar row
                             (Commands → Dev server). "Edit dev command" and
                             "Project settings" moved to the ⌘K palette. */}
-                        {/* Agent-settings dropdown (was here) moved to the
+                          {/* Agent-settings dropdown (was here) moved to the
                             top workspace header — see `agentSettings` prop
                             passed into WorkspaceHeader. The "View health
                             check logs" button was also removed while the
                             Health panel UI is hidden; see HealthIndicatorBar's
                             HEALTH_PANEL_VISIBLE experiment. */}
-
-                        {/* Compact mode controls - visible only at narrow widths via CSS */}
-                        <CompactModeToggle
-                          isPinned={isPinned}
-                          onPinToggle={handlePinToggle}
-                          onExpandToFull={handleExpandToFull}
-                        />
+                        </div>
+                        <div className="terminal-content" data-education-id="claude-terminal">
+                          {allSessions.flatMap((session) =>
+                            session.tabs.map((tab) => {
+                              const isCurrentProject = session.projectPath === currentProject.path;
+                              const isVisible =
+                                isCurrentProject &&
+                                !showDevServerLogs &&
+                                activeTerminalTab === tab.id;
+                              const refKey = `${session.projectPath}::${tab.id}`;
+                              // Background projects use the same `.terminal-tab-content`
+                              // visibility-based hide (position: absolute + visibility: hidden).
+                              // `display: none` would zero out xterm's container dims and leave
+                              // the renderer desynced when the tab became visible again.
+                              return (
+                                <div
+                                  key={`session-${session.sessionEpoch}-${refKey}`}
+                                  className={`terminal-tab-content ${isVisible ? 'active' : ''}`}
+                                  data-agent-id={tab.agentId}
+                                >
+                                  <Terminal
+                                    ref={(ref) => {
+                                      if (ref) {
+                                        terminalRefsMap.current.set(refKey, ref);
+                                      } else {
+                                        terminalRefsMap.current.delete(refKey);
+                                      }
+                                    }}
+                                    agent={getAgentById(tab.agentId)}
+                                    projectPath={session.projectPath}
+                                    onSpawn={(pid) => {
+                                      sessionRegistry.patchTerminalTab(
+                                        session.projectPath,
+                                        tab.id,
+                                        {
+                                          status: 'running',
+                                          pid,
+                                          exitCode: null,
+                                        }
+                                      );
+                                    }}
+                                    onExit={(code) => {
+                                      handleTerminalExit(code);
+                                      sessionRegistry.patchTerminalTab(
+                                        session.projectPath,
+                                        tab.id,
+                                        {
+                                          status:
+                                            code === 0 || code === null ? 'exited' : 'crashed',
+                                          pid: null,
+                                          exitCode: code,
+                                        }
+                                      );
+                                    }}
+                                    autoAcceptMode={autoAcceptMode}
+                                    onStatusChange={createTabStatusHandler(
+                                      session.projectPath,
+                                      tab.id
+                                    )}
+                                    onTitleChange={handleTabTitleChange(
+                                      session.projectPath,
+                                      tab.id
+                                    )}
+                                    sessionName={tab.sessionId}
+                                    isActive={isVisible}
+                                    shouldResume={tab.shouldResume}
+                                  />
+                                </div>
+                              );
+                            })
+                          )}
+                          {showDevServerLogs && !showHealthLogs && (
+                            <div className="terminal-tab-content active">
+                              <DevServerLogs
+                                output={devServerOutput}
+                                outputVersion={devServerOutputVersion}
+                              />
+                            </div>
+                          )}
+                          {showHealthLogs && (
+                            <div className="terminal-tab-content active">
+                              <DevServerLogs
+                                output={healthOutput}
+                                outputVersion={healthOutputVersion}
+                              />
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <div className="terminal-content" data-education-id="claude-terminal">
-                        {allSessions.flatMap((session) =>
-                          session.tabs.map((tab) => {
-                            const isCurrentProject = session.projectPath === currentProject.path;
-                            const isVisible =
-                              isCurrentProject &&
-                              !showDevServerLogs &&
-                              activeTerminalTab === tab.id;
-                            const refKey = `${session.projectPath}::${tab.id}`;
-                            // Background projects use the same `.terminal-tab-content`
-                            // visibility-based hide (position: absolute + visibility: hidden).
-                            // `display: none` would zero out xterm's container dims and leave
-                            // the renderer desynced when the tab became visible again.
-                            return (
-                              <div
-                                key={`session-${session.sessionEpoch}-${refKey}`}
-                                className={`terminal-tab-content ${isVisible ? 'active' : ''}`}
-                                data-agent-id={tab.agentId}
-                              >
-                                <Terminal
-                                  ref={(ref) => {
-                                    if (ref) {
-                                      terminalRefsMap.current.set(refKey, ref);
-                                    } else {
-                                      terminalRefsMap.current.delete(refKey);
-                                    }
-                                  }}
-                                  agent={getAgentById(tab.agentId)}
-                                  projectPath={session.projectPath}
-                                  onSpawn={(pid) => {
-                                    sessionRegistry.patchTerminalTab(session.projectPath, tab.id, {
-                                      status: 'running',
-                                      pid,
-                                      exitCode: null,
-                                    });
-                                  }}
-                                  onExit={(code) => {
-                                    handleTerminalExit(code);
-                                    sessionRegistry.patchTerminalTab(session.projectPath, tab.id, {
-                                      status: code === 0 || code === null ? 'exited' : 'crashed',
-                                      pid: null,
-                                      exitCode: code,
-                                    });
-                                  }}
-                                  autoAcceptMode={autoAcceptMode}
-                                  onStatusChange={createTabStatusHandler(
-                                    session.projectPath,
-                                    tab.id
-                                  )}
-                                  onTitleChange={handleTabTitleChange(session.projectPath, tab.id)}
-                                  sessionName={tab.sessionId}
-                                  isActive={isVisible}
-                                  shouldResume={tab.shouldResume}
-                                />
-                              </div>
-                            );
-                          })
-                        )}
-                        {showDevServerLogs && !showHealthLogs && (
-                          <div className="terminal-tab-content active">
-                            <DevServerLogs
-                              output={devServerOutput}
-                              outputVersion={devServerOutputVersion}
-                            />
-                          </div>
-                        )}
-                        {showHealthLogs && (
-                          <div className="terminal-tab-content active">
-                            <DevServerLogs
-                              output={healthOutput}
-                              outputVersion={healthOutputVersion}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    </div>
 
-                    <CompactBranchPRView
-                      compactView={compactView}
-                      setCompactView={setCompactView}
-                      isPinned={isPinned}
-                      onPinToggle={handlePinToggle}
-                      onExpandToFull={handleExpandToFull}
-                      projectPath={currentProject.path}
-                      currentBranch={currentBranch || ''}
-                      branches={branches}
-                      openPRs={openPRs}
-                      integrations={integrations}
-                      onBranchSwitchFromBranches={(branchName) =>
-                        void handleBranchSwitch(branchName)
-                      }
-                      onBranchSwitchFromPR={(branchName) => {
-                        void handleBranchSwitch(branchName);
-                        // TODO: chain off handleBranchSwitch promise instead of arbitrary timeout
-                        setTimeout(() => void handleRestartDevServer(), 1500);
-                      }}
-                      onSubmitForReview={(branchName) => setShowSubmitReview(branchName)}
-                      onRefresh={() => void fetchBranchInfo(currentProject.path)}
-                      onResolveConflicts={(headBranch, baseBranch) =>
-                        void handleResolveConflicts(headBranch, baseBranch)
-                      }
-                    />
-
-                    {/* Screenshot cluster. Only rendered when the
+                      {/* Screenshot cluster. Only rendered when the
                         Preview tab is the active workspace tab and the
                         project is a web project (same gate as the
                         Preview iframe itself) — the shortcuts these
                         buttons trigger only make sense when there's
                         something to screenshot. */}
-                    {workspaceTab === 'preview' && isWebProject && (
-                      <div className="terminal-pane-footer">
-                        <button
-                          className="toolbar-icon-btn"
-                          onClick={() => void handleCaptureScreenshot()}
-                          disabled={isCapturing || isCropMode}
-                          title="Screenshot preview for Claude (⌘⇧S)"
-                          data-education-id="screenshot-button"
-                        >
-                          {isCapturing ? (
-                            <div className="capture-spinner" />
-                          ) : (
-                            <CameraIcon size={14} />
-                          )}
-                          <span className="capture-label-full">Full Screenshot</span>
-                          <span className="capture-label-short">Full</span>
-                          <span className="capture-shortcut">&#8984;&#8679;S</span>
-                        </button>
-                        <button
-                          className={`toolbar-icon-btn ${isCropMode ? 'is-open' : ''}`}
-                          onClick={() => setIsCropMode(!isCropMode)}
-                          disabled={isCapturing || isCropCapturing}
-                          title="Crop screenshot for Claude (⌘⇧C)"
-                          data-education-id="crop-button"
-                        >
-                          {isCropCapturing ? (
-                            <div className="capture-spinner" />
-                          ) : (
-                            <CropIcon size={14} />
-                          )}
-                          <span className="capture-label-full">Crop Screenshot</span>
-                          <span className="capture-label-short">Crop</span>
-                          <span className="capture-shortcut">&#8984;&#8679;C</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                }
-                right={
-                  <div className="preview-pane">
-                    {/* The .preview-tabs-bar that used to live here was
+                      {workspaceTab === 'preview' && isWebProject && (
+                        <div className="terminal-pane-footer">
+                          <button
+                            className="toolbar-icon-btn"
+                            onClick={() => void handleCaptureScreenshot()}
+                            disabled={isCapturing || isCropMode}
+                            title="Screenshot preview for Claude (⌘⇧S)"
+                            data-education-id="screenshot-button"
+                          >
+                            {isCapturing ? (
+                              <div className="capture-spinner" />
+                            ) : (
+                              <CameraIcon size={14} />
+                            )}
+                            <span className="capture-label-full">Full Screenshot</span>
+                            <span className="capture-label-short">Full</span>
+                            <span className="capture-shortcut">&#8984;&#8679;S</span>
+                          </button>
+                          <button
+                            className={`toolbar-icon-btn ${isCropMode ? 'is-open' : ''}`}
+                            onClick={() => setIsCropMode(!isCropMode)}
+                            disabled={isCapturing || isCropCapturing}
+                            title="Crop screenshot for Claude (⌘⇧C)"
+                            data-education-id="crop-button"
+                          >
+                            {isCropCapturing ? (
+                              <div className="capture-spinner" />
+                            ) : (
+                              <CropIcon size={14} />
+                            )}
+                            <span className="capture-label-full">Crop Screenshot</span>
+                            <span className="capture-label-short">Crop</span>
+                            <span className="capture-shortcut">&#8984;&#8679;C</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  }
+                  right={
+                    <div className="preview-pane">
+                      {/* The .preview-tabs-bar that used to live here was
                         lifted up to the workspace-main level so it spans
                         the full workspace width. Tab switching behavior
                         is unchanged — the content below still swaps
                         based on `workspaceTab`. */}
 
-                    {/* Tab content */}
-                    {workspaceTab === 'preview' && isWebProject && (
-                      <div style={{ flex: 1, display: 'flex' }}>
-                        <Preview
-                          key={`${currentProject.path}-${devServerPort}`}
-                          ref={previewRef}
-                          port={devServerPort}
-                          projectPath={currentProject.path}
-                          isStaticProject={projectType === 'statichtml'}
-                          onServerReady={handlePreviewReady}
-                          onPageChange={setCurrentPreviewPage}
-                          isCropMode={isCropMode}
-                          onCropStart={handleCropStart}
-                          onCropComplete={handleCropComplete}
-                          onCropCancel={handleCropCancel}
-                          isBranchSwitching={isBranchSwitching}
-                          isDevServerRestarting={isRestartingDevServer}
-                          onSendToClaude={sendToClaude}
-                          showLogs={showPreviewLogs}
-                          onToggleLogs={
-                            hasDevServer ? () => setShowPreviewLogs((s) => !s) : undefined
-                          }
-                          devServerOutput={devServerOutput}
-                          devServerOutputVersion={devServerOutputVersion}
-                          previewPlugins={
-                            <PluginSlot
-                              name="preview"
-                              plugins={getSlotPlugins('preview')}
-                              project={pluginProject}
-                              actions={pluginActions}
-                              theme={pluginTheme}
-                            />
-                          }
-                        />
-                      </div>
-                    )}
-                    {workspaceTab === 'code' && (
-                      <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
-                        <CodeTab projectPath={currentProject.path} onSendToAgent={sendToClaude} />
-                      </div>
-                    )}
-                    <BranchPRTabContainer
-                      workspaceTab={workspaceTab}
-                      setWorkspaceTab={setWorkspaceTab}
-                      isWebProject={isWebProject}
-                      integrations={integrations}
-                      branches={branches}
-                      openPRs={openPRs}
-                      currentBranch={currentBranch}
-                      projectPath={currentProject.path}
-                      handleBranchSwitch={handleBranchSwitch}
-                      handleRestartDevServer={handleRestartDevServer}
-                      setShowSubmitReview={setShowSubmitReview}
-                      fetchBranchInfo={fetchBranchInfo}
-                      handleResolveConflicts={handleResolveConflicts}
-                      handleGitHubConnect={handleGitHubConnect}
-                    />
-                  </div>
-                }
-              />
-            </div>
-
-            {/* Compact footer - visible only at narrow window widths via CSS */}
-            <div className="compact-footer-container">
-              {/* Compact publish dropdown - uses controlled mode (forceOpen synced with state)
-              The button is hidden via CSS; only the dropdown menu appears */}
-              <div className="compact-publish-dropdown">
-                <PublishBranchDropdown
-                  currentBranch={currentBranch || 'main'}
-                  projectGithubStatus={integrations.projectGithub}
-                  projectPath={currentProject.path}
-                  hasChangesToSync={hasUncommittedChanges}
-                  onStatusChange={() => {
-                    void handleGitHubStatusChange();
-                    void fetchBranchInfo(currentProject.path);
-                  }}
-                  onModalClose={() => {
-                    setIsCompactPublishOpen(false);
-                    focusActiveTerminal();
-                  }}
-                  isPublishing={isPublishing}
-                  setIsPublishing={setIsPublishing}
-                  onPublishError={handlePublishError}
-                  onCreatePR={() => setShowSubmitReview(currentBranch || 'main')}
-                  forceOpen={isCompactPublishOpen}
-                  onForceOpenHandled={() => {}}
-                  excludeClickOutsideSelector=".compact-publish-btn"
+                      {/* Tab content */}
+                      {workspaceTab === 'preview' && isWebProject && (
+                        <div style={{ flex: 1, display: 'flex' }}>
+                          <Preview
+                            key={`${currentProject.path}-${devServerPort}`}
+                            ref={previewRef}
+                            port={devServerPort}
+                            projectPath={currentProject.path}
+                            isStaticProject={projectType === 'statichtml'}
+                            onServerReady={handlePreviewReady}
+                            onPageChange={setCurrentPreviewPage}
+                            isCropMode={isCropMode}
+                            onCropStart={handleCropStart}
+                            onCropComplete={handleCropComplete}
+                            onCropCancel={handleCropCancel}
+                            isBranchSwitching={isBranchSwitching}
+                            isDevServerRestarting={isRestartingDevServer}
+                            onSendToClaude={sendToClaude}
+                            showLogs={showPreviewLogs}
+                            onToggleLogs={
+                              hasDevServer ? () => setShowPreviewLogs((s) => !s) : undefined
+                            }
+                            devServerOutput={devServerOutput}
+                            devServerOutputVersion={devServerOutputVersion}
+                            previewPlugins={
+                              <PluginSlot
+                                name="preview"
+                                plugins={getSlotPlugins('preview')}
+                                project={pluginProject}
+                                actions={pluginActions}
+                                theme={pluginTheme}
+                              />
+                            }
+                          />
+                        </div>
+                      )}
+                      {workspaceTab === 'code' && (
+                        <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
+                          <CodeTab projectPath={currentProject.path} onSendToAgent={sendToClaude} />
+                        </div>
+                      )}
+                      <BranchPRTabContainer
+                        workspaceTab={workspaceTab}
+                        setWorkspaceTab={setWorkspaceTab}
+                        isWebProject={isWebProject}
+                        integrations={integrations}
+                        branches={branches}
+                        openPRs={openPRs}
+                        currentBranch={currentBranch}
+                        projectPath={currentProject.path}
+                        handleBranchSwitch={handleBranchSwitch}
+                        handleRestartDevServer={handleRestartDevServer}
+                        setShowSubmitReview={setShowSubmitReview}
+                        fetchBranchInfo={fetchBranchInfo}
+                        handleResolveConflicts={handleResolveConflicts}
+                        handleGitHubConnect={handleGitHubConnect}
+                      />
+                    </div>
+                  }
                 />
               </div>
-              <CompactActionsRow
-                serverHealth={
-                  projectType === 'statichtml' || projectType === 'generic' || hasDevServer
-                    ? 'healthy'
-                    : isRestartingDevServer
-                      ? 'starting'
-                      : 'unhealthy'
-                }
-                currentBranch={currentBranch}
-                hasUncommittedChanges={hasUncommittedChanges}
-                prStatus={openPRs.find((pr) => pr.headRef === currentBranch) ? 'open' : 'none'}
-                isGitHubConnected={integrations.projectGithub?.status === 'connected'}
-                isSynced={!hasUncommittedChanges}
-                onRestartServer={() => void handleRestartDevServer()}
-                onOpenAssets={assetsPanelModal.open}
-                onOpenEnvEditor={envEditorModal.open}
-                onCreateRepo={() => {
-                  // Button only shows when GitHub not connected, so prompt GitHub connection
-                  void handleGitHubConnect();
-                }}
-                onSwitchBranch={() => {
-                  // Toggle between terminal and branches view in compact mode
-                  setCompactView(compactView === 'branches' ? 'terminal' : 'branches');
-                }}
-                onCreatePR={() => {
-                  // Toggle between terminal and PRs view in compact mode
-                  setCompactView(compactView === 'prs' ? 'terminal' : 'prs');
-                }}
-                onPublish={() => setIsCompactPublishOpen((prev) => !prev)}
-              />
             </div>
+            {/* .workspace-main */}
           </div>
-          {/* .workspace-main */}
-        </div>
-        {/* .workspace-body */}
+        )}
 
-        {header.supportPanel}
+        {!isCompact && header.supportPanel}
         <WorkspaceModals
           projectPath={currentProject.path}
           currentProjectPath={currentProject.path}

@@ -34,6 +34,7 @@ import { useIntegrationStatus } from './hooks/useIntegrationStatus';
 import { useScreenshotManagement } from './hooks/useScreenshotManagement';
 import { useDevServer } from './hooks/useDevServer';
 import { useWorkspaceLayout } from './hooks/useWorkspaceLayout';
+import { useIsCompact } from './hooks/useIsCompact';
 import { usePluginState } from './hooks/usePluginState';
 import { useWorkspaceModals } from './hooks/useWorkspaceModals';
 import { useBranchManagement } from './hooks/useBranchManagement';
@@ -106,6 +107,7 @@ const noop = () => {};
 function AppContents({ initialProjectPath }: AppProps) {
   const [view, setView] = useState<AppView>('loading');
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
+  const isCompact = useIsCompact();
   const setPaletteContext = useSetPaletteContext();
   useEffect(() => {
     if (view === 'workspace' || view === 'project-loading') {
@@ -272,12 +274,6 @@ function AppContents({ initialProjectPath }: AppProps) {
     isPreviewHidden,
     workspaceTab,
     setWorkspaceTab,
-    compactView,
-    setCompactView,
-    isPinned,
-    handlePinToggle,
-    handleEnterCompactMode: enterCompact,
-    handleExpandToFull,
     resetLayout,
   } = useWorkspaceLayout({
     isGitHubConnected: integrations.projectGithub?.status === 'connected',
@@ -356,8 +352,6 @@ function AppContents({ initialProjectPath }: AppProps) {
     setIsPublishing,
     forcePublishOpen,
     setForcePublishOpen,
-    isCompactPublishOpen,
-    setIsCompactPublishOpen,
     showAutoAcceptWarning,
     setShowAutoAcceptWarning,
     handleSelectProject,
@@ -368,7 +362,6 @@ function AppContents({ initialProjectPath }: AppProps) {
     handleImportLocalFolder,
     handleCreateProject,
     handleRestartDevServer,
-    handleEnterCompactMode: enterCompactMode,
     handleGitHubStatusChange,
     handlePreviewReady,
     sendToClaude,
@@ -380,12 +373,10 @@ function AppContents({ initialProjectPath }: AppProps) {
     setCurrentProject,
     currentProjectPathRef,
     setView,
-    devServerPort,
     setDevServerPort,
     startServerForProject,
     isServerRunning,
     restartDevServer,
-    enterCompact,
     pasteToActiveTerminal,
     terminalTabs,
     activeTerminalTab,
@@ -424,12 +415,6 @@ function AppContents({ initialProjectPath }: AppProps) {
     [currentProject, restartDevServer, showToast, setDevServerPort]
   );
 
-  // Wrapper for compact mode that also clears education mode (UI state stays in App)
-  const handleEnterCompactMode = async () => {
-    setIsEducationMode(false);
-    await enterCompactMode();
-  };
-
   // Register palette commands with real handlers — see src/commands/useAppCommands.tsx
   // `pinnedPaths` is passed after the rail hook runs; done below.
 
@@ -461,7 +446,6 @@ function AppContents({ initialProjectPath }: AppProps) {
     handleImportLocalFolder,
     handleGitHubConnect: handleGitHubConnectFromOverlay,
     handleRestartDevServer,
-    handleEnterCompactMode,
     isEducationMode,
     setIsEducationMode,
     showToast,
@@ -755,11 +739,6 @@ function AppContents({ initialProjectPath }: AppProps) {
       isPreviewHidden,
       workspaceTab,
       setWorkspaceTab,
-      compactView,
-      setCompactView,
-      isPinned,
-      handlePinToggle,
-      handleExpandToFull,
     }),
     [
       showDevServerLogs,
@@ -769,11 +748,6 @@ function AppContents({ initialProjectPath }: AppProps) {
       isPreviewHidden,
       workspaceTab,
       setWorkspaceTab,
-      compactView,
-      setCompactView,
-      isPinned,
-      handlePinToggle,
-      handleExpandToFull,
     ]
   );
 
@@ -911,8 +885,6 @@ function AppContents({ initialProjectPath }: AppProps) {
       setIsPublishing,
       forcePublishOpen,
       setForcePublishOpen,
-      isCompactPublishOpen,
-      setIsCompactPublishOpen,
       showAutoAcceptWarning,
       setShowAutoAcceptWarning,
       handleBackToProjects,
@@ -933,8 +905,6 @@ function AppContents({ initialProjectPath }: AppProps) {
       setIsPublishing,
       forcePublishOpen,
       setForcePublishOpen,
-      isCompactPublishOpen,
-      setIsCompactPublishOpen,
       showAutoAcceptWarning,
       setShowAutoAcceptWarning,
       handleBackToProjects,
@@ -1013,33 +983,35 @@ function AppContents({ initialProjectPath }: AppProps) {
   if (view === 'projects') {
     return (
       <>
-        <div className="projects-with-rail" key="view-projects">
-          <WorkspaceSidebar
-            key="sidebar-projects"
-            isHomeActive={true}
-            onGoHome={() => {
-              /* already on Home */
-            }}
-            onOpenProjectPicker={openProjectPicker}
-            projects={pinnedProjects.rows}
-            currentProjectPath={null}
-            currentProjectName={null}
-            onSelectProject={handleRailClick}
-            onCloseProject={handleCloseProject}
-            onSelectProjectTab={handleSelectProjectTab}
-            terminalTabs={[]}
-            activeTerminalTab={0}
-            tabTitles={EMPTY_TAB_TITLES}
-            attentionTabs={EMPTY_ATTENTION_TABS}
-            maxTabs={5}
-            onSelectTab={noop}
-            onAddTab={noop}
-            onCloseTab={noop}
-            hasDevServer={false}
-            isRestartingDevServer={false}
-            devServerRunning={false}
-            isProjectDevServerRunning={isServerRunning}
-          />
+        <div className={`projects-with-rail${isCompact ? ' is-compact' : ''}`} key="view-projects">
+          {!isCompact && (
+            <WorkspaceSidebar
+              key="sidebar-projects"
+              isHomeActive={true}
+              onGoHome={() => {
+                /* already on Home */
+              }}
+              onOpenProjectPicker={openProjectPicker}
+              projects={pinnedProjects.rows}
+              currentProjectPath={null}
+              currentProjectName={null}
+              onSelectProject={handleRailClick}
+              onCloseProject={handleCloseProject}
+              onSelectProjectTab={handleSelectProjectTab}
+              terminalTabs={[]}
+              activeTerminalTab={0}
+              tabTitles={EMPTY_TAB_TITLES}
+              attentionTabs={EMPTY_ATTENTION_TABS}
+              maxTabs={5}
+              onSelectTab={noop}
+              onAddTab={noop}
+              onCloseTab={noop}
+              hasDevServer={false}
+              isRestartingDevServer={false}
+              devServerRunning={false}
+              isProjectDevServerRunning={isServerRunning}
+            />
+          )}
           <ProjectsView
             onSelectProject={handleSelectProjectCallback}
             onCreateProject={handleCreateProject}
@@ -1159,7 +1131,6 @@ function AppContents({ initialProjectPath }: AppProps) {
         pluginProject={pluginProject}
         pluginActions={pluginActions}
         pluginTheme={pluginTheme}
-        handleEnterCompactMode={handleEnterCompactMode}
         projectRows={pinnedProjects.rows}
         onSelectProject={handleRailClick}
         onCloseProject={handleCloseProject}

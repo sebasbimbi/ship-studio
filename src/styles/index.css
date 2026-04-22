@@ -20,7 +20,7 @@
 @import './features/workspace/terminal.css';
 @import './features/workspace/sidebar.css';
 @import './features/workspace/connect-overlay.css';
-@import './features/workspace/compact.css';
+@import './features/workspace/compact-workspace.css';
 @import './features/toolbar.css';
 @import './features/preview.css';
 @import './features/browser-tools.css';
@@ -57,6 +57,5 @@
 @import './features/project-rail.css';
 
 /* Modes */
-@import './modes/compact-mode.css';
 @import './modes/education-mode.css';
 @import './modes/code-mode.css';

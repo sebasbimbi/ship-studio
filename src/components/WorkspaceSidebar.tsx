@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 import { SearchIcon, ChevronIcon, ResetIcon } from './icons';
+import { BrowserDropdown } from './BrowserDropdown';
 import { useOpenPalette } from './CommandPalette/paletteContext';
 import { ALL_AGENTS, TERMINAL, getAgentById, type AgentConfig } from '../lib/agent';
 import type { TerminalTab } from '../hooks/useTerminalManagement';
@@ -39,6 +40,10 @@ interface SidebarItem {
   actionIcon?: ReactNode;
   actionLabel?: string;
   actionBusy?: boolean;
+  /** Optional trailing element rendered after the action button (before the
+   *  close button). Used by the Dev server row to host the BrowserDropdown
+   *  icon — click opens default browser, hover reveals a picker. */
+  trailing?: ReactNode;
 }
 
 interface Props {
@@ -83,6 +88,11 @@ interface Props {
    *  Commands → Dev server row renders a refresh icon-button that fires
    *  this handler (disabled while `isRestartingDevServer` is true). */
   onRestartDevServer?: () => void;
+  /** URL of the current project's dev server (e.g. `http://localhost:3000`).
+   *  When set, the Commands → Dev server row shows an inline "open in
+   *  browser" icon next to the restart button. Click opens the default
+   *  browser; hover reveals a picker of installed browsers. */
+  devServerUrl?: string;
   /** Predicate: is a dev server currently tracked for the given project path?
    *  Used for background (non-current) project rows so their Commands section
    *  can reflect the live state. Evaluated on each render. */
@@ -208,6 +218,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebar({
   devServerRunning,
   onOpenDevServerLogs,
   onRestartDevServer,
+  devServerUrl,
   isProjectDevServerRunning,
 }: Props) {
   // Filter state retained as a constant — the sidebar used to own a
@@ -326,6 +337,11 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebar({
         actionIcon: <ResetIcon size={11} />,
         actionLabel: 'Restart dev server',
         actionBusy: isRestartingDevServer,
+        trailing: devServerUrl ? (
+          <span data-education-id="browser-button">
+            <BrowserDropdown url={devServerUrl} buttonClassName="sidebar-row-action" iconOnly />
+          </span>
+        ) : undefined,
       });
     }
 
@@ -343,6 +359,7 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebar({
     onCloseTab,
     onOpenDevServerLogs,
     onRestartDevServer,
+    devServerUrl,
   ]);
 
   const filterLower = filter.trim().toLowerCase();
@@ -1026,6 +1043,15 @@ function SidebarRow({ item }: { item: SidebarItem }) {
         >
           {item.actionIcon}
         </button>
+      )}
+      {item.trailing && (
+        <span
+          className="sidebar-row-trailing"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          {item.trailing}
+        </span>
       )}
       {item.onClose && (
         <button
