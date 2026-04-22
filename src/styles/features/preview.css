@@ -32,13 +32,6 @@
   overflow: visible;
 }
 
-.preview-toolbar-center {
-  flex: 1;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
 /* Page Switcher */
 .page-switcher {
   position: relative;
@@ -121,7 +114,9 @@
 
 .page-item {
   position: relative;
-  display: block;
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-sm);
   width: 100%;
   padding: 10px 12px;
   background: transparent;
@@ -157,6 +152,13 @@
   width: 3px;
   background: var(--accent);
   border-radius: 0 2px 2px 0;
+}
+
+.page-item-hint {
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .preview-url {

@@ -128,8 +128,6 @@ interface PreviewProps {
   isDevServerRestarting?: boolean;
   /** Whether this is a static HTML project (changes loading/error messaging) */
   isStaticProject?: boolean;
-  /** Extra toolbar elements to render in the center */
-  toolbarExtra?: React.ReactNode;
   /** Callback to send prompt to Claude terminal */
   onSendToClaude?: (prompt: string) => void;
   /** Plugin components rendered in the preview toolbar */
@@ -174,7 +172,6 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     isBranchSwitching = false,
     isDevServerRestarting = false,
     isStaticProject = false,
-    toolbarExtra,
     onSendToClaude,
     previewPlugins,
     showLogs = false,
@@ -357,7 +354,8 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
                       className={`page-item ${page.route === conn.currentPage ? 'active' : ''}`}
                       onClick={() => conn.handlePageSelect(page.route)}
                     >
-                      {page.route}
+                      <span className="page-item-route">{page.route}</span>
+                      {page.route === '/' && <span className="page-item-hint">Home</span>}
                     </button>
                   ))
                 )}
@@ -374,8 +372,6 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
         >
           ↻
         </button>
-
-        {toolbarExtra && <div className="preview-toolbar-center">{toolbarExtra}</div>}
 
         {previewPlugins}
 

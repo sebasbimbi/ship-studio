@@ -849,33 +849,59 @@ function SidebarSection({
   const headerId = `sidebar-section-${id}`;
   const [pickerOpen, setPickerOpen] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
+  const closeTimerRef = useRef<number | null>(null);
+
+  /* Show the agent picker only when the user has multiple options.
+     With a single agent configured, `+` is an unambiguous "add the
+     default agent" button — a one-item dropdown would just be noise. */
+  const hasMultipleOptions = (addOptions?.length ?? 0) > 1;
+
+  const cancelClose = () => {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  };
+
+  /* Grace period so the user can move their mouse from the `+` button
+     into the picker (there's a tiny gap between them) without the
+     picker snapping shut. */
+  const scheduleClose = () => {
+    cancelClose();
+    closeTimerRef.current = window.setTimeout(() => {
+      setPickerOpen(false);
+      closeTimerRef.current = null;
+    }, 120);
+  };
+
+  const openPicker = () => {
+    if (!hasMultipleOptions) return;
+    cancelClose();
+    setPickerOpen(true);
+  };
 
   useEffect(() => {
     if (!pickerOpen) return;
-    const handleClickOutside = (e: globalThis.MouseEvent) => {
-      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
-        setPickerOpen(false);
-      }
-    };
     const handleKey = (e: globalThis.KeyboardEvent) => {
       if (e.key === 'Escape') setPickerOpen(false);
     };
-    document.addEventListener('mousedown', handleClickOutside);
     window.addEventListener('keydown', handleKey);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
       window.removeEventListener('keydown', handleKey);
     };
   }, [pickerOpen]);
 
+  useEffect(() => () => cancelClose(), []);
+
+  /* Click always opens the default agent immediately — the picker is
+     strictly for the power user who wants a non-default. `onAdd()` with
+     no agentId falls through to `getDefaultAgentId()` downstream. */
   const handleAddClick = (e: MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     if (!onAdd) return;
-    if (addOptions && addOptions.length > 0) {
-      setPickerOpen((v) => !v);
-    } else {
-      onAdd();
-    }
+    cancelClose();
+    setPickerOpen(false);
+    onAdd();
   };
 
   return (
@@ -899,6 +925,8 @@ function SidebarSection({
                 type="button"
                 className="sidebar-section-add"
                 onClick={handleAddClick}
+                onMouseEnter={openPicker}
+                onMouseLeave={scheduleClose}
                 title={addLabel}
                 aria-label={addLabel}
               >
@@ -911,8 +939,13 @@ function SidebarSection({
               )}
             </>
           )}
-          {pickerOpen && addOptions && (
-            <div className="sidebar-section-picker" role="menu">
+          {pickerOpen && addOptions && hasMultipleOptions && (
+            <div
+              className="sidebar-section-picker"
+              role="menu"
+              onMouseEnter={cancelClose}
+              onMouseLeave={scheduleClose}
+            >
               {addOptions.map((agent) => (
                 <button
                   key={agent.id}

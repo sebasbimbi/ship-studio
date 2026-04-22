@@ -1034,6 +1034,49 @@ export const WorkspaceView = memo(function WorkspaceView({
                         void handleResolveConflicts(headBranch, baseBranch)
                       }
                     />
+
+                    {/* Screenshot cluster. Only rendered when the
+                        Preview tab is the active workspace tab and the
+                        project is a web project (same gate as the
+                        Preview iframe itself) — the shortcuts these
+                        buttons trigger only make sense when there's
+                        something to screenshot. */}
+                    {workspaceTab === 'preview' && isWebProject && (
+                      <div className="terminal-pane-footer">
+                        <button
+                          className="toolbar-icon-btn"
+                          onClick={() => void handleCaptureScreenshot()}
+                          disabled={isCapturing || isCropMode}
+                          title="Screenshot preview for Claude (⌘⇧S)"
+                          data-education-id="screenshot-button"
+                        >
+                          {isCapturing ? (
+                            <div className="capture-spinner" />
+                          ) : (
+                            <CameraIcon size={14} />
+                          )}
+                          <span className="capture-label-full">Full Screenshot</span>
+                          <span className="capture-label-short">Full</span>
+                          <span className="capture-shortcut">&#8984;&#8679;S</span>
+                        </button>
+                        <button
+                          className={`toolbar-icon-btn ${isCropMode ? 'is-open' : ''}`}
+                          onClick={() => setIsCropMode(!isCropMode)}
+                          disabled={isCapturing || isCropCapturing}
+                          title="Crop screenshot for Claude (⌘⇧C)"
+                          data-education-id="crop-button"
+                        >
+                          {isCropCapturing ? (
+                            <div className="capture-spinner" />
+                          ) : (
+                            <CropIcon size={14} />
+                          )}
+                          <span className="capture-label-full">Crop Screenshot</span>
+                          <span className="capture-label-short">Crop</span>
+                          <span className="capture-shortcut">&#8984;&#8679;C</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 }
                 right={
@@ -1076,38 +1119,6 @@ export const WorkspaceView = memo(function WorkspaceView({
                               actions={pluginActions}
                               theme={pluginTheme}
                             />
-                          }
-                          toolbarExtra={
-                            <div className="agent-toolbar">
-                              <button
-                                className="agent-capture-btn"
-                                onClick={() => void handleCaptureScreenshot()}
-                                disabled={isCapturing || isCropMode}
-                                title="Screenshot preview for Claude (⌘⇧S)"
-                                data-education-id="screenshot-button"
-                              >
-                                {isCapturing ? (
-                                  <div className="capture-spinner" />
-                                ) : (
-                                  <CameraIcon size={14} />
-                                )}
-                                <span className="capture-shortcut">&#8984;&#8679;S</span>
-                              </button>
-                              <button
-                                className={`agent-capture-btn ${isCropMode ? 'active' : ''}`}
-                                onClick={() => setIsCropMode(!isCropMode)}
-                                disabled={isCapturing || isCropCapturing}
-                                title="Crop screenshot for Claude (⌘⇧C)"
-                                data-education-id="crop-button"
-                              >
-                                {isCropCapturing ? (
-                                  <div className="capture-spinner" />
-                                ) : (
-                                  <CropIcon size={14} />
-                                )}
-                                <span className="capture-shortcut">&#8984;&#8679;C</span>
-                              </button>
-                            </div>
                           }
                         />
                       </div>
