@@ -43,6 +43,7 @@ import { homeDir } from '@tauri-apps/api/path';
 import { loadNerdFonts } from '../lib/fonts';
 import { isWindows } from '../lib/setup';
 import { logger } from '../lib/logger';
+import { getTerminalGpuEnabled } from '../lib/settings';
 import type { AgentConfig } from '../lib/agent';
 import '@xterm/xterm/css/xterm.css';
 
@@ -342,16 +343,25 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     // Open terminal in container
     term.open(container);
 
-    // Use WebGL renderer for GPU-accelerated rendering (reduces flickering)
-    try {
-      const webglAddon = new WebglAddon();
-      webglAddon.onContextLoss(() => {
-        webglAddon.dispose();
-      });
-      term.loadAddon(webglAddon);
-    } catch {
-      logger.warn('[Terminal] WebGL not available, using canvas renderer');
-    }
+    // Use WebGL renderer for GPU-accelerated rendering (reduces flickering).
+    // Gated by a user setting — some macOS beta / GPU-driver combinations render corrupted
+    // glyphs through WebGL, so users can opt out via Settings → Preferences.
+    void (async () => {
+      const gpuEnabled = await getTerminalGpuEnabled();
+      if (!gpuEnabled) {
+        logger.info('[Terminal] GPU rendering disabled by user, using canvas renderer');
+        return;
+      }
+      try {
+        const webglAddon = new WebglAddon();
+        webglAddon.onContextLoss(() => {
+          webglAddon.dispose();
+        });
+        term.loadAddon(webglAddon);
+      } catch {
+        logger.warn('[Terminal] WebGL not available, using canvas renderer');
+      }
+    })();
 
     // Initial fit
     setTimeout(() => {

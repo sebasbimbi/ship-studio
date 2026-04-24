@@ -6,6 +6,11 @@ These notes appear in the update dialog that users see when a new version is ava
 Write clear, user-friendly notes about what changed in this version.
 -->
 
+## What's New in v0.5.1
+
+- **Fixed garbled terminal output on some macOS betas** — new "Terminal GPU acceleration" toggle in Settings → Preferences lets you fall back to the canvas renderer if agent output looks fragmented or corrupted
+
+
 ## What's New in v0.5.0
 
 - **Multi-project multitasking** — Run multiple projects at once with live Claude Code / Codex / Opencode sessions and dev servers in each. Switching projects is instant — nothing tears down until you explicitly close it.

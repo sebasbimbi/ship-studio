@@ -38,3 +38,20 @@ pub fn set_slack_cta_hidden(hidden: bool) -> Result<(), CommandError> {
     state.slack_cta_hidden = Some(hidden);
     write_app_state(&state).map_err(CommandError::from)
 }
+
+/// Get whether the terminal uses WebGL (GPU-accelerated) rendering. Defaults to true.
+#[tauri::command]
+#[tracing::instrument]
+pub fn get_terminal_gpu_enabled() -> Result<bool, CommandError> {
+    let state = read_app_state();
+    Ok(state.terminal_gpu_enabled.unwrap_or(true))
+}
+
+/// Set whether the terminal uses WebGL rendering (persisted to app state).
+#[tauri::command]
+#[tracing::instrument]
+pub fn set_terminal_gpu_enabled(enabled: bool) -> Result<(), CommandError> {
+    let mut state = read_app_state();
+    state.terminal_gpu_enabled = Some(enabled);
+    write_app_state(&state).map_err(CommandError::from)
+}

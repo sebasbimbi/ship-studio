@@ -25,6 +25,12 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.5.1', // v0.5.1
+    items: [
+      'Fix terminal rendering corruption on some macOS betas — new "Terminal GPU acceleration" toggle in Settings → Preferences lets you fall back to the canvas renderer if agent output looks garbled or fragmented',
+    ],
+  },
+  {
     version: '0.5.0', // v0.5.0
     items: [
       'Multi-project multitasking — run multiple projects at once with live agents and dev servers in each',

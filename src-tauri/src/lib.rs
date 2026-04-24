@@ -351,6 +351,8 @@ pub fn run() {
             commands::settings::set_calendar_hidden,
             commands::settings::get_slack_cta_hidden,
             commands::settings::set_slack_cta_hidden,
+            commands::settings::get_terminal_gpu_enabled,
+            commands::settings::set_terminal_gpu_enabled,
             // AI generation
             commands::ai::generate_pr_description,
             // Claude integration

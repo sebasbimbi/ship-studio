@@ -694,6 +694,11 @@ pub struct AppState {
     /// Whether the Slack community CTA banner is hidden on the dashboard
     #[serde(skip_serializing_if = "Option::is_none")]
     pub slack_cta_hidden: Option<bool>,
+    /// Whether the terminal uses WebGL (GPU-accelerated) rendering. Defaults to true.
+    /// Disable if the terminal renders corrupted/fragmented characters (known issue on some
+    /// macOS beta / GPU-driver combinations).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub terminal_gpu_enabled: Option<bool>,
 }
 
 // ============ Compact Mode ============

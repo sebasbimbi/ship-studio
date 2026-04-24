@@ -51,3 +51,28 @@ export async function setSlackCtaHidden(hidden: boolean): Promise<void> {
     // Silently fail
   }
 }
+
+/**
+ * Check whether the terminal uses WebGL (GPU-accelerated) rendering. Defaults to true.
+ * Users on macOS beta builds or certain GPU drivers may see corrupted glyphs with WebGL
+ * and should disable this.
+ */
+export async function getTerminalGpuEnabled(): Promise<boolean> {
+  try {
+    return await invoke<boolean>('get_terminal_gpu_enabled');
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Set whether the terminal uses WebGL rendering (persisted across sessions).
+ * Takes effect for newly opened terminals.
+ */
+export async function setTerminalGpuEnabled(enabled: boolean): Promise<void> {
+  try {
+    await invoke('set_terminal_gpu_enabled', { enabled });
+  } catch {
+    // Silently fail
+  }
+}

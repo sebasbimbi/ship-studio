@@ -15,6 +15,8 @@ import {
   setCalendarHidden,
   getSlackCtaHidden,
   setSlackCtaHidden,
+  getTerminalGpuEnabled,
+  setTerminalGpuEnabled,
 } from '../lib/settings';
 
 interface SettingsModalProps {
@@ -33,21 +35,24 @@ export function SettingsModal({
   const [analyticsEnabled, setLocalAnalyticsEnabled] = useState(true);
   const [calendarVisible, setLocalCalendarVisible] = useState(true);
   const [slackCtaVisible, setLocalSlackCtaVisible] = useState(true);
+  const [terminalGpuEnabled, setLocalTerminalGpuEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
     void (async () => {
-      const [enabled, calHidden, slackHidden] = await Promise.all([
+      const [enabled, calHidden, slackHidden, gpuEnabled] = await Promise.all([
         getAnalyticsEnabled(),
         getCalendarHidden(),
         getSlackCtaHidden(),
+        getTerminalGpuEnabled(),
       ]);
       if (!cancelled) {
         setLocalAnalyticsEnabled(enabled);
         setLocalCalendarVisible(!calHidden);
         setLocalSlackCtaVisible(!slackHidden);
+        setLocalTerminalGpuEnabled(gpuEnabled);
         setLoading(false);
       }
     })();
@@ -83,6 +88,16 @@ export function SettingsModal({
     void setSlackCtaHidden(!newVisible);
     onSlackCtaHiddenChange?.(!newVisible);
   }, [slackCtaVisible, onSlackCtaHiddenChange]);
+
+  const handleTerminalGpuToggle = useCallback(() => {
+    const newEnabled = !terminalGpuEnabled;
+    setLocalTerminalGpuEnabled(newEnabled);
+    void setTerminalGpuEnabled(newEnabled);
+    void trackEvent('terminal_gpu_toggled', {
+      enabled: newEnabled,
+      $screen_name: 'Settings',
+    });
+  }, [terminalGpuEnabled]);
 
   return (
     <ModalFrame isOpen={isOpen} onClose={onClose} title="Settings" className="settings-modal">
@@ -120,6 +135,27 @@ export function SettingsModal({
               disabled={loading}
               role="switch"
               aria-checked={slackCtaVisible}
+            >
+              <span className="settings-toggle-track">
+                <span className="settings-toggle-thumb" />
+              </span>
+            </button>
+          </div>
+          <div className="settings-row">
+            <div className="settings-row-info">
+              <span className="settings-row-label">Terminal GPU acceleration</span>
+              <span className="settings-row-description">
+                Use GPU rendering for faster, smoother terminals. Turn off if agent output looks
+                garbled or fragmented (a known issue on some macOS beta builds). Applies to newly
+                opened terminals.
+              </span>
+            </div>
+            <button
+              className={`settings-toggle ${terminalGpuEnabled ? 'on' : 'off'}`}
+              onClick={handleTerminalGpuToggle}
+              disabled={loading}
+              role="switch"
+              aria-checked={terminalGpuEnabled}
             >
               <span className="settings-toggle-track">
                 <span className="settings-toggle-thumb" />
