@@ -322,16 +322,56 @@
   flex: 1;
   display: flex;
   justify-content: center;
+  align-items: center;
   background: var(--bg-tertiary);
   overflow: hidden;
   padding: 0;
   position: relative;
 }
 
+/* Grid layout that pairs the iframe with its right + bottom resize handles.
+   The 1fr cell auto-sizes to whatever space remains after the 8px handles,
+   so dragging either handle resizes the iframe AND the perpendicular handle
+   together (right handle's height tracks iframe height, etc.). */
+.preview-frame-grid {
+  /* Handle thickness — must match `RESIZE_HANDLE_PX` in usePreviewResize.ts.
+     JS uses it for drag math, CSS uses it for grid track sizing. */
+  --handle-size: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--handle-size);
+  grid-template-rows: minmax(0, 1fr) var(--handle-size);
+  grid-template-areas:
+    'iframe right'
+    'bottom .';
+  min-width: 0;
+  min-height: 0;
+}
+
+/* When the iframe is shrunk in BOTH dimensions, frame the whole grid as a
+   floating panel: outer border, rounded corners, shared bg fills the empty
+   bottom-right cell. The handles drop their own outer borders so the grid's
+   border is the single outer line. */
+.preview-frame-grid--floating {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+
+.preview-frame-grid--floating .preview-resize-handle {
+  border-right: none;
+}
+
+.preview-frame-grid--floating .preview-resize-handle--vertical {
+  border-bottom: none;
+}
+
 .preview-iframe-wrapper {
-  height: 100%;
+  grid-area: iframe;
   overflow: hidden;
   position: relative;
+  min-width: 0;
+  min-height: 0;
 }
 
 .preview-iframe {
@@ -352,10 +392,13 @@
   cursor: ew-resize;
 }
 
-/* Preview resize handle */
+.preview-resize-overlay--vertical {
+  cursor: ns-resize;
+}
+
+/* Preview resize handle (right edge by default; placed by grid). */
 .preview-resize-handle {
-  width: 8px;
-  height: 100%;
+  grid-area: right;
   background: var(--bg-secondary);
   border-left: 1px solid var(--border);
   border-right: 1px solid var(--border);
@@ -363,7 +406,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
   transition:
     background 0.15s,
     border-color 0.15s;
@@ -383,6 +425,21 @@
 
 .preview-resize-handle:hover .preview-resize-handle-bar {
   background: var(--accent);
+}
+
+/* Vertical (bottom) resize handle — flips the right-handle layout */
+.preview-resize-handle--vertical {
+  grid-area: bottom;
+  border-left: none;
+  border-right: none;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  cursor: ns-resize;
+}
+
+.preview-resize-handle-bar--vertical {
+  width: 40px;
+  height: 2px;
 }
 
 /* Dev server logs toggle (toolbar button) */

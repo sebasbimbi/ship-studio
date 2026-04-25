@@ -28,6 +28,11 @@ const BREAKPOINT_WIDTHS: number[] = [1440, 1024, 768, 375];
 /** Space reserved for the resize handle on the right side of the viewport */
 const VIEWPORT_PADDING_PX = 12;
 
+/** Resize handle thickness in pixels. MUST stay in sync with the
+ *  `--handle-size` custom property in `src/styles/features/preview.css`
+ *  — JS uses it for drag math, CSS uses it for grid track sizing. */
+export const RESIZE_HANDLE_PX = 8;
+
 interface UsePreviewResizeParams {
   /** Ref to the iframe wrapper element, used to read its offsetWidth during resize drag */
   iframeWrapperRef: React.RefObject<HTMLDivElement | null>;
@@ -35,6 +40,7 @@ interface UsePreviewResizeParams {
 
 export function usePreviewResize({ iframeWrapperRef }: UsePreviewResizeParams) {
   const [customWidth, setCustomWidth] = useState<number | null>(null); // null = 100% (desktop)
+  const [customHeight, setCustomHeight] = useState<number | null>(null); // null = full available height
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
 
@@ -56,6 +62,7 @@ export function usePreviewResize({ iframeWrapperRef }: UsePreviewResizeParams) {
 
   // Resize state
   const [isResizing, setIsResizing] = useState(false);
+  const [isVerticalResizing, setIsVerticalResizing] = useState(false);
 
   // Track viewport width to hide breakpoints that won't fit
   // ResizeObserver fires efficiently (not on every frame) so no debouncing needed
@@ -142,10 +149,62 @@ export function usePreviewResize({ iframeWrapperRef }: UsePreviewResizeParams) {
     [iframeWrapperRef]
   );
 
+  // Handle vertical (height) resize drag. The `* 2` is required because
+  // `.preview-viewport` uses `align-items: center` (preview.css) — the iframe
+  // grows centered, so the bottom handle's screen-Y only shifts by half the
+  // height delta. If the CSS centering changes, this math changes too.
+  // Min height is lower than the horizontal min (320) because portrait mobile
+  // viewports are taller than they are wide, so 200 is a fair small-screen floor.
+  const handleVerticalResizeStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      setIsVerticalResizing(true);
+      document.body.style.cursor = 'ns-resize';
+      document.body.style.userSelect = 'none';
+
+      const startY = e.clientY;
+      const startHeight = iframeWrapperRef.current?.offsetHeight || 0;
+
+      let rafId: number | null = null;
+      const handleMouseMove = (e: MouseEvent) => {
+        if (!viewportRef.current) return;
+        if (rafId !== null) return;
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          if (!viewportRef.current) return;
+
+          const deltaY = e.clientY - startY;
+          const newHeight = startHeight + deltaY * 2;
+          const maxHeight = viewportRef.current.offsetHeight - RESIZE_HANDLE_PX;
+
+          if (newHeight >= maxHeight - 10) {
+            setCustomHeight(null);
+          } else {
+            setCustomHeight(Math.max(200, Math.min(newHeight, maxHeight)));
+          }
+        });
+      };
+
+      const handleMouseUp = () => {
+        if (rafId !== null) cancelAnimationFrame(rafId);
+        setIsVerticalResizing(false);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    },
+    [iframeWrapperRef]
+  );
+
   // Handle breakpoint button click
   const handleBreakpointClick = useCallback((bp: Breakpoint) => {
     if (bp === 'full') {
       setCustomWidth(null);
+      setCustomHeight(null);
     } else if (bp === 'desktop') {
       setCustomWidth(1440);
     } else if (bp === 'laptop') {
@@ -160,11 +219,14 @@ export function usePreviewResize({ iframeWrapperRef }: UsePreviewResizeParams) {
 
   return {
     customWidth,
+    customHeight,
     isResizing,
+    isVerticalResizing,
     viewportWidth,
     getActiveBreakpoint,
     setViewportRefs,
     handleResizeStart,
+    handleVerticalResizeStart,
     handleBreakpointClick,
   };
 }

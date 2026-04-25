@@ -15,7 +15,12 @@
 import { useRef, forwardRef, useImperativeHandle, useCallback, useState } from 'react';
 import { usePreviewConnection, SERVER_MAX_RETRIES } from '../hooks/usePreviewConnection';
 import { usePreviewCapture } from '../hooks/usePreviewCapture';
-import { usePreviewResize, BREAKPOINTS, type Breakpoint } from '../hooks/usePreviewResize';
+import {
+  usePreviewResize,
+  BREAKPOINTS,
+  RESIZE_HANDLE_PX,
+  type Breakpoint,
+} from '../hooks/usePreviewResize';
 import { useOptionalToast } from '../contexts/ToastContext';
 import { DevServerLogs } from './DevServerLogs';
 import { BrowserTools } from './BrowserTools';
@@ -411,76 +416,100 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
         data-education-id="preview-viewport"
       >
         {/* Overlay to capture mouse events during resize */}
-        {resize.isResizing && <div className="preview-resize-overlay" />}
+        {(resize.isResizing || resize.isVerticalResizing) && (
+          <div
+            className={`preview-resize-overlay${
+              resize.isVerticalResizing ? ' preview-resize-overlay--vertical' : ''
+            }`}
+          />
+        )}
         <div
-          ref={capture.iframeWrapperRef}
-          className="preview-iframe-wrapper"
+          className={`preview-frame-grid${
+            resize.customWidth !== null && resize.customHeight !== null
+              ? ' preview-frame-grid--floating'
+              : ''
+          }`}
           style={{
-            width: resize.customWidth === null ? 'calc(100% - 12px)' : `${resize.customWidth}px`,
-            maxWidth: 'calc(100% - 12px)',
+            width:
+              resize.customWidth === null
+                ? 'calc(100% - 4px)'
+                : `${resize.customWidth + RESIZE_HANDLE_PX}px`,
+            maxWidth: 'calc(100% - 4px)',
+            height:
+              resize.customHeight === null ? '100%' : `${resize.customHeight + RESIZE_HANDLE_PX}px`,
+            maxHeight: '100%',
           }}
         >
-          <iframe
-            key={projectPath}
-            ref={iframeRef}
-            src={conn.serverReady ? conn.currentUrl : 'about:blank'}
-            className="preview-iframe"
-            title="Preview"
-          />
-          {/* Branch switching overlay */}
-          {isBranchSwitching && (
-            <div className="preview-branch-switching-overlay">
-              <div className="preview-branch-switching-spinner" />
-              <span>Switching branch...</span>
-            </div>
-          )}
-          {/* Dev server restarting overlay */}
-          {isDevServerRestarting && (
-            <div className="preview-branch-switching-overlay">
-              <div className="preview-branch-switching-spinner" />
-              <span>Restarting dev server...</span>
-            </div>
-          )}
-          {/* Crop selection overlay */}
-          {isCropMode && (
-            <div
-              ref={capture.cropOverlayRef}
-              className="crop-overlay"
-              onMouseDown={capture.handleCropMouseDown}
-              onMouseMove={capture.handleCropMouseMove}
-              onMouseUp={() => void capture.handleCropMouseUp()}
-              onMouseLeave={() => {
-                if (capture.isSelecting) {
-                  void capture.handleCropMouseUp();
-                }
-              }}
-            >
-              {/* Selection rectangle */}
-              {/* Selection box with box-shadow creating the dark overlay */}
-              {capture.selectionStart && capture.selectionEnd && (
-                <div
-                  className="crop-selection"
-                  style={{
-                    left: Math.min(capture.selectionStart.x, capture.selectionEnd.x),
-                    top: Math.min(capture.selectionStart.y, capture.selectionEnd.y),
-                    width: Math.abs(capture.selectionEnd.x - capture.selectionStart.x),
-                    height: Math.abs(capture.selectionEnd.y - capture.selectionStart.y),
-                  }}
-                />
-              )}
-              {/* Instructions */}
-              {!capture.selectionStart && (
-                <div className="crop-instructions">
-                  Click and drag to select area
-                  <span className="crop-hint">Press Esc to cancel</span>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-        {/* Resize handle */}
-        <div className="preview-resize-handle" onMouseDown={resize.handleResizeStart}>
-          <div className="preview-resize-handle-bar" />
+          <div ref={capture.iframeWrapperRef} className="preview-iframe-wrapper">
+            <iframe
+              key={projectPath}
+              ref={iframeRef}
+              src={conn.serverReady ? conn.currentUrl : 'about:blank'}
+              className="preview-iframe"
+              title="Preview"
+            />
+            {/* Branch switching overlay */}
+            {isBranchSwitching && (
+              <div className="preview-branch-switching-overlay">
+                <div className="preview-branch-switching-spinner" />
+                <span>Switching branch...</span>
+              </div>
+            )}
+            {/* Dev server restarting overlay */}
+            {isDevServerRestarting && (
+              <div className="preview-branch-switching-overlay">
+                <div className="preview-branch-switching-spinner" />
+                <span>Restarting dev server...</span>
+              </div>
+            )}
+            {/* Crop selection overlay */}
+            {isCropMode && (
+              <div
+                ref={capture.cropOverlayRef}
+                className="crop-overlay"
+                onMouseDown={capture.handleCropMouseDown}
+                onMouseMove={capture.handleCropMouseMove}
+                onMouseUp={() => void capture.handleCropMouseUp()}
+                onMouseLeave={() => {
+                  if (capture.isSelecting) {
+                    void capture.handleCropMouseUp();
+                  }
+                }}
+              >
+                {/* Selection rectangle */}
+                {/* Selection box with box-shadow creating the dark overlay */}
+                {capture.selectionStart && capture.selectionEnd && (
+                  <div
+                    className="crop-selection"
+                    style={{
+                      left: Math.min(capture.selectionStart.x, capture.selectionEnd.x),
+                      top: Math.min(capture.selectionStart.y, capture.selectionEnd.y),
+                      width: Math.abs(capture.selectionEnd.x - capture.selectionStart.x),
+                      height: Math.abs(capture.selectionEnd.y - capture.selectionStart.y),
+                    }}
+                  />
+                )}
+                {/* Instructions */}
+                {!capture.selectionStart && (
+                  <div className="crop-instructions">
+                    Click and drag to select area
+                    <span className="crop-hint">Press Esc to cancel</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          {/* Right (horizontal) resize handle — height tracks iframe via grid */}
+          <div className="preview-resize-handle" onMouseDown={resize.handleResizeStart}>
+            <div className="preview-resize-handle-bar" />
+          </div>
+          {/* Bottom (vertical) resize handle — width tracks iframe via grid */}
+          <div
+            className="preview-resize-handle preview-resize-handle--vertical"
+            onMouseDown={resize.handleVerticalResizeStart}
+          >
+            <div className="preview-resize-handle-bar preview-resize-handle-bar--vertical" />
+          </div>
         </div>
       </div>
       <InspectPanel
