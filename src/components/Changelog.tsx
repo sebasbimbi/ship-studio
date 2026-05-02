@@ -25,6 +25,15 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.6.1', // v0.6.1
+    items: [
+      'Health tab in the Inspect panel — Code Health moved into the Inspect panel with a tab-native layout: status rows for Test / Lint / Types / Format and inline output for the selected check',
+      'Open in Browser button — preview toolbar now has an "Open in Browser" button next to the breakpoint icons. Click to open the default browser, hover to pick a specific one (Safari, Chrome, Firefox, Arc, Brave, Edge)',
+      'Dev server row shows the port — sidebar "Dev server" row now shows `localhost:3001` inline instead of a separate "running" badge',
+      'Security hardening — CI now scans high-trust config files (eslint, vite, package.json, workflows) for obfuscated-payload signatures and runs with a read-only GITHUB_TOKEN scope by default',
+    ],
+  },
+  {
     version: '0.6.0', // v0.6.0
     items: [
       'Cmd+K command palette — switch projects, open modals, run actions; Cmd+1..9 jumps to pinned projects',
