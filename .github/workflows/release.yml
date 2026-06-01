@@ -244,17 +244,33 @@ jobs:
           python3 -c "import json; json.load(open('latest.json'))" && echo "JSON is valid"
 
       # Carry forward Windows manifest so Windows auto-update keeps working
-      # when this macOS release flips the "latest" alias
+      # when this macOS release flips the "latest" alias.
+      #
+      # NOTE: latest-windows.json only lives on the most recent *-win release,
+      # NOT on the implicit "latest" release (which is a macOS release without
+      # it). Always resolve the newest -win tag explicitly. This step is
+      # best-effort: a missing/unavailable Windows manifest must never block
+      # the macOS release from publishing (that regression shipped a broken
+      # auto-update chain in v0.6.4).
       - name: Carry forward Windows manifest file
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.RELEASES_PAT }}
         run: |
           mkdir -p carry-forward
-          gh release download \
+          WIN_TAG=$(gh release list --repo ship-studio/releases --limit 50 \
+            --json tagName --jq '[.[] | select(.tagName | endswith("-win"))][0].tagName // empty')
+          if [ -z "$WIN_TAG" ]; then
+            echo "::warning::No -win release found; skipping Windows manifest carry-forward"
+            exit 0
+          fi
+          echo "Carrying forward Windows manifest from $WIN_TAG"
+          gh release download "$WIN_TAG" \
             --repo ship-studio/releases \
             --pattern "latest-windows.json" \
-            --dir carry-forward
-          ls -la carry-forward/
+            --dir carry-forward \
+            || echo "::warning::No latest-windows.json on $WIN_TAG; skipping carry-forward"
+          ls -la carry-forward/ || true
 
       # Upload to the PRIVATE main repo (for reference/backup)
       - name: Upload updater tarballs to main repo release
@@ -276,14 +292,25 @@ jobs:
           TAG="${{ github.ref_name }}"
           VERSION="${{ steps.version.outputs.version }}"
 
+          # Required macOS assets + manifest. The Windows manifest is appended
+          # only if the carry-forward step actually produced it, so a missing
+          # Windows manifest can never block the macOS auto-update release.
+          ASSETS=(
+            artifacts/updater-darwin-aarch64/ShipStudio_darwin-aarch64.app.tar.gz
+            artifacts/updater-darwin-x86_64/ShipStudio_darwin-x86_64.app.tar.gz
+            artifacts/updater-darwin-aarch64/ShipStudio_darwin-aarch64.dmg
+            artifacts/updater-darwin-x86_64/ShipStudio_darwin-x86_64.dmg
+            latest.json
+          )
+          if [ -f carry-forward/latest-windows.json ]; then
+            ASSETS+=(carry-forward/latest-windows.json)
+          else
+            echo "::warning::latest-windows.json missing; publishing macOS release without it. Windows auto-update may need a manual re-publish of the latest -win manifest."
+          fi
+
           # Create the release in the public repo (auto-published, no draft)
           gh release create "$TAG" \
             --repo ship-studio/releases \
             --title "Ship Studio v${VERSION}" \
             --notes "Auto-updater release for Ship Studio v${VERSION}. See the main repository for full release notes." \
-            artifacts/updater-darwin-aarch64/ShipStudio_darwin-aarch64.app.tar.gz \
-            artifacts/updater-darwin-x86_64/ShipStudio_darwin-x86_64.app.tar.gz \
-            artifacts/updater-darwin-aarch64/ShipStudio_darwin-aarch64.dmg \
-            artifacts/updater-darwin-x86_64/ShipStudio_darwin-x86_64.dmg \
-            latest.json \
-            carry-forward/latest-windows.json
+            "${ASSETS[@]}"
