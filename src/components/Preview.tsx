@@ -877,6 +877,8 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
               // applies at all widths, so leave the canvas where it is.
               if (bp.minPx > 0) resize.previewAtWidth(bp.minPx);
             }}
+            autoSave={editor.autoSave}
+            onToggleAutoSave={editor.toggleAutoSave}
             onStepGap={(dir) => editor.stepSpacing('gap', dir)}
             onSetSide={editor.setBoxSide}
             onApplyEnum={editor.applyEnum}

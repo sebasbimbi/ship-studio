@@ -42,6 +42,12 @@ interface PreviewRule {
   decls: Record<string, string>;
 }
 
+/** Persisted opt-in for auto-save (off by default). */
+const AUTOSAVE_KEY = 'ss:visualEditor:autoSave';
+/** Quiet period after the last edit before an auto-save fires — long enough that a
+ *  drag (many rapid mutations) saves once when it settles, not on every frame. */
+const AUTOSAVE_DEBOUNCE_MS = 700;
+
 interface Params {
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
   projectPath: string;
@@ -79,6 +85,27 @@ export function useVisualEditor({
 
   // Known breakpoint prefixes, for scoping a class string to one variant layer.
   const known = useMemo(() => breakpointPrefixes(breakpoints), [breakpoints]);
+
+  // Auto-save: when on, edits persist to source automatically (debounced). Off by
+  // default; the choice is remembered across sessions.
+  const [autoSave, setAutoSave] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(AUTOSAVE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggleAutoSave = useCallback(() => {
+    setAutoSave((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(AUTOSAVE_KEY, next ? '1' : '0');
+      } catch {
+        /* ignore storage failures */
+      }
+      return next;
+    });
+  }, []);
 
   const [selection, setSelection] = useState<Selection | null>(null);
   /** The class string currently applied live in the iframe (merge baseline). */
@@ -203,27 +230,45 @@ export function useVisualEditor({
     [applyToken, activeBreakpoint, known]
   );
 
-  /** Persist the current live class to source. */
-  const commit = useCallback(async () => {
+  /** Persist the current live class to source. `silent` suppresses the success
+   *  toast (used by auto-save, which shouldn't toast on every debounced write —
+   *  errors still surface). */
+  const commit = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      const sel = selection;
+      if (!sel || sel.resolution?.status !== 'resolved') return;
+      const next = currentClassRef.current;
+      const { file, line, class_name } = sel.resolution;
+      if (next === class_name) return; // nothing changed
+      try {
+        await applyClassnameEdit(projectPath, file, line, class_name, next);
+        // Advance the drift baseline so consecutive edits keep working.
+        setSelection({ ...sel, resolution: { ...sel.resolution, class_name: next } });
+        // Tell the in-iframe script this live state is now the saved baseline, so
+        // deactivating (closing the panel) doesn't revert the just-saved edit
+        // before HMR re-renders it from source.
+        post({ type: 'ss:commit' });
+        if (!opts?.silent) onToast?.('Saved to source', 'success');
+      } catch (err) {
+        logger.error('[VisualEditor] write-back failed', { error: String(err) });
+        onToast?.(String(err), 'error');
+      }
+    },
+    [selection, projectPath, onToast, post]
+  );
+
+  // Auto-save: debounce a silent commit after edits settle. Re-running on every
+  // class change clears the prior timer (so a drag saves once, when it stops); the
+  // resolved-and-dirty guard means it never fires on selection alone, and the
+  // baseline-advance inside `commit` makes the next run a no-op (no loop).
+  useEffect(() => {
+    if (!autoSave) return;
     const sel = selection;
-    if (!sel || sel.resolution?.status !== 'resolved') return;
-    const next = currentClassRef.current;
-    const { file, line, class_name } = sel.resolution;
-    if (next === class_name) return; // nothing changed
-    try {
-      await applyClassnameEdit(projectPath, file, line, class_name, next);
-      // Advance the drift baseline so consecutive edits keep working.
-      setSelection({ ...sel, resolution: { ...sel.resolution, class_name: next } });
-      // Tell the in-iframe script this live state is now the saved baseline, so
-      // deactivating (closing the panel) doesn't revert the just-saved edit
-      // before HMR re-renders it from source.
-      post({ type: 'ss:commit' });
-      onToast?.('Saved to source', 'success');
-    } catch (err) {
-      logger.error('[VisualEditor] write-back failed', { error: String(err) });
-      onToast?.(String(err), 'error');
-    }
-  }, [selection, projectPath, onToast, post]);
+    if (sel?.resolution?.status !== 'resolved') return;
+    if (currentClass === sel.resolution.class_name) return; // clean
+    const id = window.setTimeout(() => void commit({ silent: true }), AUTOSAVE_DEBOUNCE_MS);
+    return () => window.clearTimeout(id);
+  }, [autoSave, currentClass, selection, commit]);
 
   const toggleEditMode = useCallback(() => {
     setEditModeOn((prev) => {
@@ -242,6 +287,8 @@ export function useVisualEditor({
     toggleEditMode,
     selection,
     currentClass,
+    autoSave,
+    toggleAutoSave,
     stepSpacing,
     setBoxSide,
     // Enum controls apply an absolute token (twMerge swaps the prior one) plus an

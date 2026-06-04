@@ -25,7 +25,9 @@ function renderPanel(
   currentClass = 'p-3',
   activeBreakpoint: Breakpoint = BASE_BREAKPOINT,
   onSelectBreakpoint = vi.fn(),
-  breakpointTooWide = false
+  breakpointTooWide = false,
+  autoSave = false,
+  onToggleAutoSave = vi.fn()
 ) {
   return render(
     <VisualEditorPanel
@@ -35,6 +37,8 @@ function renderPanel(
       activeBreakpoint={activeBreakpoint}
       breakpointTooWide={breakpointTooWide}
       onSelectBreakpoint={onSelectBreakpoint}
+      autoSave={autoSave}
+      onToggleAutoSave={onToggleAutoSave}
       onStepGap={vi.fn()}
       onSetSide={vi.fn()}
       onApplyEnum={vi.fn()}
@@ -80,6 +84,30 @@ describe('VisualEditorPanel', () => {
   it('warns when multiple elements share the source', () => {
     renderPanel({ ...resolvedSelection, instanceCount: 4 });
     expect(screen.getByText(/Editing 4 elements/)).toBeInTheDocument();
+  });
+
+  it('shows the manual Save button when auto-save is off and there are edits', () => {
+    renderPanel(resolvedSelection, 'p-9'); // dirty (≠ source p-3), auto-save off
+    expect(screen.getByRole('button', { name: 'Save to source' })).toBeInTheDocument();
+    const toggle = screen.getByRole('switch', { name: /auto-save/i });
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('toggling auto-save calls the handler', () => {
+    const onToggle = vi.fn();
+    renderPanel(resolvedSelection, 'p-9', BASE_BREAKPOINT, vi.fn(), false, false, onToggle);
+    screen.getByRole('switch', { name: /auto-save/i }).click();
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides the Save button and shows "Saving…" while auto-save has pending edits', () => {
+    renderPanel(resolvedSelection, 'p-9', BASE_BREAKPOINT, vi.fn(), false, true);
+    expect(screen.queryByRole('button', { name: 'Save to source' })).not.toBeInTheDocument();
+    expect(screen.getByText('Saving…')).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: /auto-save/i })).toHaveAttribute(
+      'aria-checked',
+      'true'
+    );
   });
 
   it('renders the breakpoint dropdown showing the active breakpoint', () => {

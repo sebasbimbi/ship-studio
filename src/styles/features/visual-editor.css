@@ -100,9 +100,71 @@
 /* Pinned footer — Save / Saved is always visible regardless of scroll. */
 .ss-edit-panel__footer {
   flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
   padding: var(--spacing-sm) var(--spacing-md);
   border-top: 1px solid var(--border);
   background: var(--bg-secondary);
+}
+
+/* Subtle auto-save toggle (off by default). A small pill switch + label. */
+.ss-edit-panel__autosave {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.ss-edit-panel__autosave:hover {
+  /* Only brighten the label — override the global button:hover background. */
+  background: none;
+  color: var(--text-secondary);
+}
+.ss-edit-panel__switch {
+  position: relative;
+  display: inline-block;
+  width: 22px;
+  height: 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  transition:
+    background var(--transition),
+    border-color var(--transition);
+}
+.ss-edit-panel__switch::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 8px;
+  height: 8px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  transition:
+    transform var(--transition),
+    background var(--transition);
+}
+.ss-edit-panel__switch.is-on {
+  background: var(--action);
+  border-color: var(--action);
+}
+.ss-edit-panel__switch.is-on::after {
+  transform: translateX(10px);
+  background: #ffffff;
+}
+
+/* Debounced auto-save in-progress hint. */
+.ss-edit-panel__saving {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 /* Segmented control — a tray with inset, individually-rounded segments so the
@@ -540,6 +602,7 @@
   justify-content: center;
   gap: 6px;
   height: 28px;
+  padding: 0 var(--spacing-md);
   font-size: 12px;
   font-weight: 500;
   color: var(--text-muted);

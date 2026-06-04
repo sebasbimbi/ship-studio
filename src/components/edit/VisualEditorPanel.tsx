@@ -69,6 +69,29 @@ function GapField({ value, onSet }: { value: number | null; onSet: (n: number) =
   );
 }
 
+/** "Saved" confirmation badge (checkmark + label), shared by the manual and
+ *  auto-save footers. */
+function SavedBadge() {
+  return (
+    <div className="ss-edit-panel__saved" aria-live="polite">
+      <svg
+        width="13"
+        height="13"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <polyline points="20 6 9 17 4 12" />
+      </svg>
+      Saved
+    </div>
+  );
+}
+
 interface Props {
   selection: Selection | null;
   /** The class string currently applied live (what "Save" will persist). */
@@ -82,6 +105,10 @@ interface Props {
   breakpointTooWide: boolean;
   /** Switch the edited breakpoint — resizes the preview canvas to match. */
   onSelectBreakpoint: (bp: Breakpoint) => void;
+  /** Whether edits auto-save to source (debounced). */
+  autoSave: boolean;
+  /** Toggle auto-save on/off. */
+  onToggleAutoSave: () => void;
   /** Step the gap utility one notch up (1) or down (-1). */
   onStepGap: (dir: 1 | -1) => void;
   /** Set one side of padding/margin to an absolute value (box-model editor). */
@@ -108,6 +135,8 @@ export function VisualEditorPanel({
   activeBreakpoint,
   breakpointTooWide,
   onSelectBreakpoint,
+  autoSave,
+  onToggleAutoSave,
   onStepGap,
   onSetSide,
   onApplyEnum,
@@ -335,27 +364,31 @@ export function VisualEditorPanel({
 
       {resolution?.status === 'resolved' && (
         <div className="ss-edit-panel__footer">
-          {dirty ? (
-            <Button size="sm" variant="primary" block onClick={onCommit}>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={autoSave}
+            className="ss-edit-panel__autosave"
+            onClick={onToggleAutoSave}
+            title="Automatically save edits to source as you go"
+          >
+            <span className={`ss-edit-panel__switch${autoSave ? ' is-on' : ''}`} aria-hidden />
+            Auto-save
+          </button>
+          {autoSave ? (
+            dirty ? (
+              <span className="ss-edit-panel__saving" aria-live="polite">
+                Saving…
+              </span>
+            ) : (
+              <SavedBadge />
+            )
+          ) : dirty ? (
+            <Button size="sm" variant="primary" onClick={onCommit}>
               Save to source
             </Button>
           ) : (
-            <div className="ss-edit-panel__saved" aria-live="polite">
-              <svg
-                width="13"
-                height="13"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-              Saved
-            </div>
+            <SavedBadge />
           )}
         </div>
       )}
