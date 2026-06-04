@@ -6,6 +6,12 @@ The latest entry is rendered inside the in-app update dialog, so write user-
 facing language — what changed, in plain English — not commit subjects.
 -->
 
+## What's New in v0.6.5
+
+- **Visual editor (Beta)** - Toggle "Edit (Beta)" in the preview to click any element and fine-tune its Tailwind classes visually — padding/margin (drag-to-scrub box model), gap, alignment, size, weight, radius, display, flex, border, and opacity — with instant live preview and one-click Save to source.
+- **Color picker** - Edit text/background colors with a HEX/RGB/HSL/OKLCH picker and opacity slider; edits keep the element's existing color format (OKLCH stays OKLCH).
+
+
 ## What's New in v0.6.4
 
 - **Monorepo support** — Ship Studio now detects pnpm/npm workspaces when you import a repo (or first open an existing project) and asks which app you want to work on. The dev server, preview, and `/public` asset tools all run inside that workspace, while git and PRs stay at the repo root. Choose "Use the whole repo" to skip the picker.
