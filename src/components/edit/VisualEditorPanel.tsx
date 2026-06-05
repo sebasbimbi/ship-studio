@@ -84,6 +84,80 @@ function HelpHint({ text }: { text: string }) {
   );
 }
 
+/** Empty-state intro shown before any element is selected — explains what the
+ *  visual editor is and how it works, instead of a bare one-line hint. */
+function IntroCheck() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M20 6 9 17l-5-5"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function EditorIntro() {
+  return (
+    <div className="ss-edit-intro">
+      <p className="ss-edit-intro__lead">
+        Click any element in the preview to fine-tune its Tailwind styles — spacing, size, type,
+        color, layout, and more — without using any tokens.
+      </p>
+      <ul className="ss-edit-intro__list">
+        <li>
+          <IntroCheck />
+          <span>
+            Works with any <strong>Next.js</strong> or <strong>Astro</strong> project that uses
+            Tailwind
+          </span>
+        </li>
+        <li>
+          <IntroCheck />
+          <span>
+            Free — uses <strong>0 tokens</strong>
+          </span>
+        </li>
+        <li>
+          <IntroCheck />
+          <span>Updates live and saves to your source instantly</span>
+        </li>
+      </ul>
+    </div>
+  );
+}
+
+/** Subtle info dot shown by the source line when the element is styled by a custom
+ *  CSS class — its tooltip explains that edits use `!important` to win the cascade. */
+function CustomCssHint() {
+  return (
+    <span
+      className="ss-edit-panel__csshint"
+      tabIndex={0}
+      role="img"
+      aria-label="Styled by a custom CSS class — edits use !important so they take effect"
+    >
+      <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+        <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" strokeWidth="1.2" />
+        <circle cx="8" cy="4.6" r="0.8" fill="currentColor" />
+        <path
+          d="M8 7v4.4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.4"
+          strokeLinecap="round"
+        />
+      </svg>
+      <span className="ss-edit-panel__csshint-tip" role="tooltip">
+        Styled by a custom CSS class — edits use <code>!important</code> so they take effect.
+      </span>
+    </span>
+  );
+}
+
 interface Props {
   selection: Selection | null;
   /** The class string currently applied live (what "Save" will persist). */
@@ -245,43 +319,43 @@ export function VisualEditorPanel({
       </div>
 
       <div className="ss-edit-panel__body">
-        {/* Breakpoint dropdown — picking one resizes the canvas; the active value
-            tracks the live preview width. Tailwind is mobile-first: edits cascade
-            up, so a value set on a breakpoint applies at that width and larger. */}
-        <div className="ss-edit-panel__control">
-          {/* The "?" reveals the mobile-first explainer — styles set on a breakpoint
-              apply at that width AND LARGER, which surprises desktop-first users. */}
-          <label className="ss-edit-panel__label">
-            Breakpoint
-            <HelpHint text={breakpointHelp} />
-          </label>
-          <EnumDropdown
-            label="Breakpoint"
-            value={activeBreakpoint.name}
-            options={breakpoints.map((bp) => ({
-              label: bp.minPx > 0 ? `${bp.name} · ≥${bp.minPx}px` : 'Base · all widths',
-              token: bp.name,
-            }))}
-            onChange={(name) => {
-              const bp = breakpoints.find((b) => b.name === name);
-              if (bp) onSelectBreakpoint(bp);
-            }}
-          />
-        </div>
+        {controlsVisible && (
+          <>
+            {/* Breakpoint dropdown — picking one resizes the canvas; the active value
+                tracks the live preview width. Tailwind is mobile-first: edits cascade
+                up, so a value set on a breakpoint applies at that width and larger. */}
+            <div className="ss-edit-panel__control">
+              {/* The "?" reveals the mobile-first explainer — styles set on a breakpoint
+                  apply at that width AND LARGER, which surprises desktop-first users. */}
+              <label className="ss-edit-panel__label">
+                Breakpoint
+                <HelpHint text={breakpointHelp} />
+              </label>
+              <EnumDropdown
+                label="Breakpoint"
+                value={activeBreakpoint.name}
+                options={breakpoints.map((bp) => ({
+                  label: bp.minPx > 0 ? `${bp.name} · ≥${bp.minPx}px` : 'Base · all widths',
+                  token: bp.name,
+                }))}
+                onChange={(name) => {
+                  const bp = breakpoints.find((b) => b.name === name);
+                  if (bp) onSelectBreakpoint(bp);
+                }}
+              />
+            </div>
 
-        {breakpointTooWide && (
-          <p className="ss-edit-panel__bp-note" role="note">
-            Preview is too narrow to show <strong>{activeBreakpoint.name}</strong> (≥
-            {activeBreakpoint.minPx}px). Edits still apply at this breakpoint — widen the preview to
-            see them.
-          </p>
+            {breakpointTooWide && (
+              <p className="ss-edit-panel__bp-note" role="note">
+                Preview is too narrow to show <strong>{activeBreakpoint.name}</strong> (≥
+                {activeBreakpoint.minPx}px). Edits still apply at this breakpoint — widen the
+                preview to see them.
+              </p>
+            )}
+          </>
         )}
 
-        {!selection && (
-          <p className="ss-edit-panel__hint">
-            Click any element in the preview to edit its spacing.
-          </p>
-        )}
+        {!selection && <EditorIntro />}
 
         {resolution?.status === 'read_only' && (
           <p className="ss-edit-panel__readonly">{resolution.reason}</p>
@@ -317,6 +391,7 @@ export function VisualEditorPanel({
                       approx.
                     </span>
                   )}
+                  {(selection?.signature.unlayeredProps?.length ?? 0) > 0 && <CustomCssHint />}
                 </div>
 
                 {selection && selection.instanceCount > 1 && (
@@ -352,6 +427,11 @@ export function VisualEditorPanel({
             </div>
           </>
         )}
+
+        <p className="ss-edit-panel__beta">
+          Visual editor is in <strong>beta</strong> and works best with Next.js. Hit a bug or have
+          feedback? We'd genuinely appreciate hearing about it.
+        </p>
       </div>
 
       {controlsVisible && (

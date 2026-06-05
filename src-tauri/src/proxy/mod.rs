@@ -54,6 +54,28 @@ const SELECT_SCRIPT: &str = include_str!("select_script.html");
 /// the visual bar is suppressed. `scrollbar-width:none` covers Windows WebView2.
 const SCROLLBAR_STYLE: &str = r#"<style id="ss-hide-scrollbars">::-webkit-scrollbar{width:0;height:0;background:transparent}html{scrollbar-width:none}</style>"#;
 
+/// Keeps the preview scroll position across full page reloads. Astro reloads the
+/// WHOLE document on a `.astro` save (no in-place HMR like React Fast Refresh), so
+/// without this the preview snaps to the top on every save — and restoring *after*
+/// first paint just makes it visibly jerk (top → back). So we inject this at the
+/// very start of `<head>`, take over scroll restoration, and HOLD the repaint
+/// (`visibility:hidden`) until the saved position is restored — then reveal. The
+/// net effect: a save reloads but the preview stays put, with no visible jump.
+/// Keyed by pathname, so a real navigation still starts at the top.
+const SCROLL_RESTORE: &str = r#"<script id="ss-scroll-restore">(function(){try{if(window.__ssScroll)return;window.__ssScroll=1;if('scrollRestoration' in history)history.scrollRestoration='manual';var K='ssScroll:'+location.pathname;var de=document.documentElement;var save=function(){try{sessionStorage.setItem(K,String(window.scrollY||window.pageYOffset||0));}catch(e){}};window.addEventListener('scroll',save,{passive:true});window.addEventListener('pagehide',save);window.addEventListener('beforeunload',save);var y=sessionStorage.getItem(K);if(y==null)return;var n=parseFloat(y)||0;if(n<=0)return;de.style.visibility='hidden';var done=false;var reveal=function(){if(done)return;done=true;window.scrollTo(0,n);de.style.visibility='';};document.addEventListener('DOMContentLoaded',function(){window.scrollTo(0,n);requestAnimationFrame(reveal);});window.addEventListener('load',function(){window.scrollTo(0,n);reveal();});setTimeout(reveal,1200);}catch(e){try{document.documentElement.style.visibility='';}catch(_){}}})();</script>"#;
+
+/// Makes the editor's OWN save feel like Next's in-place Fast Refresh. Astro
+/// full-reloads the whole document on a `.astro` save (which is what makes the
+/// preview jerk), but the edit is ALREADY shown live and Tailwind pushes its new
+/// CSS over a SEPARATE css-update HMR message. So we wrap Vite's HMR WebSocket and
+/// swallow just the `full-reload` message — but ONLY in the brief window right after
+/// the editor commits a save (`window.__ssSuppressUntil`, set on `ss:commit`).
+/// Outside that window full-reloads pass through normally, so an agent editing files
+/// still reloads the preview. CSS updates always pass, so the real compiled CSS
+/// applies. Gated to Vite's `vite-hmr` subprotocol so it never touches a site's own
+/// sockets. Injected at head start so it wraps WebSocket before `@vite/client` connects.
+const RELOAD_SUPPRESS: &str = r#"<script id="ss-reload-suppress">(function(){try{var O=window.WebSocket;if(!O)return;function drop(d){if(!(window.__ssSuppressUntil&&Date.now()<window.__ssSuppressUntil))return false;try{var m=JSON.parse(d);return !!(m&&m.type==='full-reload');}catch(e){return false;}}function W(url,protocols){var ws=arguments.length>1?new O(url,protocols):new O(url);var isVite=protocols==='vite-hmr'||(protocols&&(''+protocols).indexOf('vite-hmr')>=0);if(!isVite)return ws;var add=ws.addEventListener.bind(ws);function flt(h){return function(ev){if(ev&&typeof ev.data==='string'&&drop(ev.data))return;return h.call(ws,ev);};}ws.addEventListener=function(t,h,o){return (t==='message'&&typeof h==='function')?add(t,flt(h),o):add(t,h,o);};var _om=null;try{Object.defineProperty(ws,'onmessage',{configurable:true,get:function(){return _om;},set:function(h){_om=h;if(typeof h==='function')add('message',flt(h));}});}catch(e){}return ws;}W.prototype=O.prototype;try{W.CONNECTING=O.CONNECTING;W.OPEN=O.OPEN;W.CLOSING=O.CLOSING;W.CLOSED=O.CLOSED;}catch(e){}window.WebSocket=W;}catch(e){}})();</script>"#;
+
 /// Boxed body type that can be either a full buffered body or a streamed body.
 type ProxyBody = BoxBody<Bytes, hyper::Error>;
 

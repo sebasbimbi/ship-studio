@@ -3,18 +3,22 @@
 //! Functions for injecting scripts and error overlays into HTML responses.
 //! Used by the preview proxy to add navigation tracking and error display.
 
-use super::{NAV_SCRIPT, SCROLLBAR_STYLE, SELECT_SCRIPT};
+use super::{NAV_SCRIPT, RELOAD_SUPPRESS, SCROLLBAR_STYLE, SCROLL_RESTORE, SELECT_SCRIPT};
 
 /// Inject the navigation tracking script + the (inert until activated) visual-
 /// editor selection layer into an HTML response body, plus the scrollbar-hiding
-/// style.
+/// style and the scroll-position restorer.
 ///
 /// The scripts go at the *end* of `<head>` (latest, so they see the final DOM);
-/// the scrollbar style goes at the *start* of `<head>` (earliest, so the site's
-/// own scrollbar styling overrides it — see `SCROLLBAR_STYLE`).
+/// the scrollbar style + scroll-restore go at the *start* of `<head>` (earliest:
+/// the site's own scrollbar styling overrides ours, and the scroll-restore must
+/// run before first paint to avoid a visible jump — see those consts).
 pub fn inject_nav_script(html: &[u8]) -> Vec<u8> {
     let with_scripts = inject_into_html(html, &format!("{NAV_SCRIPT}{SELECT_SCRIPT}"));
-    inject_at_head_start(&with_scripts, SCROLLBAR_STYLE)
+    inject_at_head_start(
+        &with_scripts,
+        &format!("{RELOAD_SUPPRESS}{SCROLLBAR_STYLE}{SCROLL_RESTORE}"),
+    )
 }
 
 /// Insert a snippet immediately *after* the opening `<head>` tag (falling back to

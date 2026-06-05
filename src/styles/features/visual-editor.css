@@ -316,6 +316,71 @@
   color: var(--text-primary);
 }
 
+/* Subtle info dot by the source line when the element is styled by custom CSS.
+   Its tooltip (right-aligned so it never overflows the panel) explains the edits
+   use the important modifier. Mirrors the breakpoint "?" hint pattern. */
+.ss-edit-panel__csshint {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  color: var(--text-muted);
+  cursor: help;
+  transition: color var(--transition);
+}
+.ss-edit-panel__csshint:hover,
+.ss-edit-panel__csshint:focus-visible {
+  color: var(--action);
+  outline: none;
+}
+.ss-edit-panel__csshint-tip {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: max-content;
+  max-width: 210px;
+  padding: 6px 9px;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.45;
+  text-align: left;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--transition);
+  z-index: var(--z-tooltip);
+}
+.ss-edit-panel__csshint:hover .ss-edit-panel__csshint-tip,
+.ss-edit-panel__csshint:focus-visible .ss-edit-panel__csshint-tip {
+  opacity: 1;
+  visibility: visible;
+}
+.ss-edit-panel__csshint-tip code {
+  font-size: 10px;
+  padding: 1px 4px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+}
+
+/* Beta + feedback note at the very bottom of the editor panel. */
+.ss-edit-panel__beta {
+  margin: var(--spacing-xs) 0 0;
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid var(--border);
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.ss-edit-panel__beta strong {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
 /* Set-vs-inherited indicator: a filled dot when the value is set on the active
    breakpoint, a hollow ring when inherited from a smaller one. */
 .ss-layer-dot {
@@ -502,6 +567,45 @@
   margin: 0;
   color: var(--text-secondary);
   line-height: 1.5;
+}
+
+/* Empty-state intro (before any element is selected). */
+.ss-edit-intro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  padding: var(--spacing-xs) 0 var(--spacing-sm);
+}
+.ss-edit-intro__lead {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.ss-edit-intro__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+.ss-edit-intro__list li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+.ss-edit-intro__list svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--success-light);
+}
+.ss-edit-intro__list strong {
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 .ss-edit-panel__muted {

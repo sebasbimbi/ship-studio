@@ -30,6 +30,8 @@ import {
   parseSpacingInput,
   stepSpacingValue,
   removeAtLayer,
+  competesWithUnlayered,
+  markImportant,
   type Breakpoint,
 } from './edit';
 
@@ -342,5 +344,31 @@ describe('SPACING_CONTROLS', () => {
       prefix: 'gap',
       css: 'gap',
     });
+  });
+});
+
+describe('cascade-winning (important modifier for custom CSS)', () => {
+  it('markImportant appends ! once (idempotent), before any variant', () => {
+    expect(markImportant('p-8')).toBe('p-8!');
+    expect(markImportant('text-[#fff]')).toBe('text-[#fff]!');
+    expect(markImportant('p-8!')).toBe('p-8!'); // idempotent
+    expect(withVariant('md', markImportant('p-8'))).toBe('md:p-8!');
+  });
+
+  it('competesWithUnlayered: direct property match', () => {
+    expect(competesWithUnlayered(['color'], ['color', 'font-size'])).toBe(true);
+    expect(competesWithUnlayered(['opacity'], ['color'])).toBe(false);
+  });
+
+  it('competesWithUnlayered: a longhand edit matches a shorthand in the unlayered set', () => {
+    // Custom CSS writes `margin: 0`; the box edits `margin-top`.
+    expect(competesWithUnlayered(['margin-top'], ['margin'])).toBe(true);
+    expect(competesWithUnlayered(['padding-left'], ['padding'])).toBe(true);
+    expect(competesWithUnlayered(['background-color'], ['background'])).toBe(true);
+  });
+
+  it('competesWithUnlayered: no unlayered props → never competes', () => {
+    expect(competesWithUnlayered(['color'], [])).toBe(false);
+    expect(competesWithUnlayered(['color'], undefined)).toBe(false);
   });
 });

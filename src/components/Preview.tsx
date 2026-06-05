@@ -38,7 +38,7 @@ import { HealthTabPanel, type HealthTabPanelRef } from './HealthTabPanel';
 import { BrowserDropdown } from './BrowserDropdown';
 import { useVisualEditor } from '../hooks/useVisualEditor';
 import { useBreakpoints } from '../hooks/useBreakpoints';
-import { BASE_BREAKPOINT, type Breakpoint as TwBreakpoint } from '../lib/edit';
+import { BASE_BREAKPOINT, isTailwindActive, type Breakpoint as TwBreakpoint } from '../lib/edit';
 import { VisualEditorPanel } from './edit/VisualEditorPanel';
 import type { ProjectType } from '../lib/static-server';
 
@@ -381,9 +381,28 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   }, [showLogs, computeMaxPanelHeight]);
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  // The editor only works when Tailwind actually compiles in the project — a bare
+  // `@import "tailwindcss"` without the Vite/PostCSS plugin produces dead classes.
+  // Gate on a backend check so projects without Tailwind never show the edit button.
+  const [tailwindActive, setTailwindActive] = useState(false);
+  const editorFramework = projectType === 'nextjs' || projectType === 'astro';
+  useEffect(() => {
+    if (!projectPath || !editorFramework) {
+      setTailwindActive(false);
+      return;
+    }
+    let cancelled = false;
+    isTailwindActive(projectPath)
+      .then((active) => !cancelled && setTailwindActive(active))
+      .catch(() => !cancelled && setTailwindActive(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [projectPath, editorFramework]);
+
   // Visual editor supports className/class string resolution for React (Next.js)
   // and Astro templates. Both resolve the same way in the Rust backend.
-  const editorEnabled = conn.serverReady && (projectType === 'nextjs' || projectType === 'astro');
+  const editorEnabled = conn.serverReady && editorFramework && tailwindActive;
 
   // The project's Tailwind breakpoints (Base + detected), and the layer edits
   // currently target — DERIVED from the live canvas width (never set on its own,

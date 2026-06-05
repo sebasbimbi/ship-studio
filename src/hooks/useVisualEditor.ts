@@ -29,6 +29,8 @@ import {
   tokensForVariant,
   removeAtLayer,
   breakpointPrefixes,
+  competesWithUnlayered,
+  markImportant,
   SPACING_CONTROLS,
   type SpacingKind,
   type BoxType,
@@ -130,6 +132,14 @@ export function useVisualEditor({
     setCurrentClass(value);
   }, []);
 
+  // CSS properties the selected element gets from unlayered custom CSS (which beats
+  // Tailwind utilities). Edits touching these get the important modifier so the saved
+  // class wins the cascade — matching what the !important live preview already shows.
+  const unlayeredPropsRef = useRef<string[] | undefined>(undefined);
+  useEffect(() => {
+    unlayeredPropsRef.current = selection?.signature.unlayeredProps;
+  }, [selection]);
+
   // For a 'multi' resolution (one class string at several source spots): which to
   // write — 'all' (default) or a single location index. Reset on each new selection.
   const [multiTarget, setMultiTargetState] = useState<'all' | number>('all');
@@ -218,7 +228,13 @@ export function useVisualEditor({
    */
   const applyToken = useCallback(
     (token: string, style?: Record<string, string>) => {
-      const merged = twMerge(currentClassRef.current, withVariant(activeBreakpoint.prefix, token));
+      // Mark important when the edited property is set by unlayered custom CSS, so
+      // the saved utility wins the cascade (the live preview already wins via !important).
+      const bare =
+        style && competesWithUnlayered(Object.keys(style), unlayeredPropsRef.current)
+          ? markImportant(token)
+          : token;
+      const merged = twMerge(currentClassRef.current, withVariant(activeBreakpoint.prefix, bare));
       setLiveClass(merged);
       const rules: PreviewRule[] = style ? [{ minPx: activeBreakpoint.minPx, decls: style }] : [];
       post({ type: 'ss:mutate', className: merged, rules });
@@ -231,7 +247,10 @@ export function useVisualEditor({
    *  (so unset sides fall through to the real, already-compiled base CSS). */
   const setBoxSide = useCallback(
     (type: BoxType, side: Side, value: SpacingValue) => {
-      const token = spacingTokenFor(boxSidePrefix(type, side), value);
+      const bare = spacingTokenFor(boxSidePrefix(type, side), value);
+      const token = competesWithUnlayered([`${type}-${side}`], unlayeredPropsRef.current)
+        ? markImportant(bare)
+        : bare;
       const merged = twMerge(currentClassRef.current, withVariant(activeBreakpoint.prefix, token));
       setLiveClass(merged);
       const scoped = tokensForVariant(merged, activeBreakpoint.prefix, known);
@@ -293,6 +312,11 @@ export function useVisualEditor({
       if (!res || (res.status !== 'resolved' && res.status !== 'multi')) return;
       const next = currentClassRef.current;
       if (next === res.class_name) return; // nothing changed
+      // Arm the reload-suppression window BEFORE writing: Astro's full-reload fires
+      // the instant the file changes, which can beat the post-write ss:commit. Setting
+      // it here means the reload our own save triggers is reliably swallowed (so the
+      // live preview doesn't briefly revert), while agent edits still reload.
+      post({ type: 'ss:suppressReload' });
       try {
         if (res.status === 'resolved') {
           await applyClassnameEdit(projectPath, res.file, res.line, res.class_name, next);

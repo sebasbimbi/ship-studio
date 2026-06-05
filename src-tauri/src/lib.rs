@@ -349,6 +349,7 @@ pub fn run() {
             commands::edit::apply_classname_edit_multi,
             commands::edit::find_component_usage,
             commands::edit::detect_breakpoints,
+            commands::edit::is_tailwind_active,
             commands::projects::get_terminal_state,
             commands::projects::set_terminal_state,
             commands::projects::extract_template_zip,

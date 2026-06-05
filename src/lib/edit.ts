@@ -21,6 +21,9 @@ export interface ElementSignature {
    *  inheritance (not an arbitrary `text-[#…]`). */
   computedColor?: string;
   computedBackgroundColor?: string;
+  /** CSS properties this element gets from UNLAYERED rules (custom CSS that beats
+   *  Tailwind utilities). Edits touching these need the important modifier to win. */
+  unlayeredProps?: string[];
 }
 
 /** A source location of a className literal. */
@@ -93,6 +96,12 @@ export const DEFAULT_BREAKPOINTS: Breakpoint[] = [
  *  caller prepends `BASE_BREAKPOINT`). */
 export function detectBreakpoints(projectPath: string): Promise<Breakpoint[]> {
   return invoke<Breakpoint[]>('detect_breakpoints', { projectPath });
+}
+
+/** Whether Tailwind is actually wired into the project's build (so the utility
+ *  classes the editor writes will compile). Gates the editor — no Tailwind, no editor. */
+export function isTailwindActive(projectPath: string): Promise<boolean> {
+  return invoke<boolean>('is_tailwind_active', { projectPath });
 }
 
 /** The set of breakpoint prefixes used to recognize variant tokens. */
@@ -907,6 +916,54 @@ export function listArbitraryProps(className: string): ArbitraryProp[] {
     out.push({ token: m[1], prop: m[2], value: m[3].replace(/_/g, ' ') });
   }
   return out;
+}
+
+// ───────────────── Winning the cascade against custom CSS ────────────────────
+//
+// Tailwind utilities live in the `utilities` cascade layer. CSS a site writes
+// OUTSIDE any `@layer` (plain `.hero-headline { color }`) beats *all* layered
+// styles regardless of specificity. So when an element's property is set by such
+// an unlayered rule, a plain utility we add loses — the saved edit doesn't show
+// even though the `!important` live preview did. The fix: mark just those edits
+// with Tailwind's important modifier so they win. We append `!` (Tailwind v4
+// syntax, e.g. `text-[#fff]!`); v3 projects would need a leading `!` instead.
+
+/** Map an edited longhand to the shorthand(s) that could set it in custom CSS, so
+ *  `padding: 0` (shorthand) is recognized as competing with a `padding-top` edit. */
+const SHORTHAND_ROOTS: Record<string, string[]> = {
+  'padding-top': ['padding'],
+  'padding-right': ['padding'],
+  'padding-bottom': ['padding'],
+  'padding-left': ['padding'],
+  'margin-top': ['margin'],
+  'margin-right': ['margin'],
+  'margin-bottom': ['margin'],
+  'margin-left': ['margin'],
+  'background-color': ['background'],
+  'border-color': ['border'],
+  'border-width': ['border'],
+  'font-size': ['font'],
+  'font-weight': ['font'],
+  'font-style': ['font'],
+  'line-height': ['font'],
+  'text-decoration-line': ['text-decoration'],
+};
+
+/** Whether any of the CSS properties an edit sets is controlled by an unlayered
+ *  rule (so a plain utility would lose the cascade and the edit needs `!`). */
+export function competesWithUnlayered(cssProps: string[], unlayered?: string[]): boolean {
+  if (!unlayered || unlayered.length === 0) return false;
+  const set = new Set(unlayered);
+  return cssProps.some(
+    (p) => set.has(p) || (SHORTHAND_ROOTS[p]?.some((root) => set.has(root)) ?? false)
+  );
+}
+
+/** Add Tailwind's important modifier to a bare utility token (`p-8` → `p-8!`),
+ *  idempotently. Applied before any variant prefix, so `withVariant` yields
+ *  `md:p-8!` (v4 places `!` at the end). */
+export function markImportant(token: string): string {
+  return token.endsWith('!') ? token : `${token}!`;
 }
 
 /**

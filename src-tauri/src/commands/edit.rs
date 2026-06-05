@@ -660,6 +660,61 @@ fn apply_v3_screens(config: &str, map: &mut std::collections::BTreeMap<String, u
 /// is the primary source (scanned from the project's CSS); v3 `theme.screens` is a
 /// best-effort fallback; a missing/unparseable config yields Tailwind's defaults.
 /// Returns only the real responsive breakpoints — the frontend prepends the base layer.
+/// Whether Tailwind is actually wired into the project's build — so the utility
+/// classes the visual editor writes will compile. A bare `@import "tailwindcss"`
+/// in a CSS file does NOTHING without the Vite/PostCSS plugin (or a v3 config), so
+/// we require a real integration. Used to gate the editor: no Tailwind → no editor.
+#[tauri::command]
+#[tracing::instrument(fields(project = %project_path))]
+pub fn is_tailwind_active(project_path: String) -> Result<bool, CommandError> {
+    let root = validate_project_path(&project_path)?;
+    Ok(tailwind_active_at(&root))
+}
+
+/// Core of [`is_tailwind_active`], split out (no path validation) for unit testing.
+fn tailwind_active_at(root: &Path) -> bool {
+    // A v3-style config file present is a definitive signal.
+    for name in [
+        "tailwind.config.js",
+        "tailwind.config.ts",
+        "tailwind.config.cjs",
+        "tailwind.config.mjs",
+    ] {
+        if root.join(name).exists() {
+            return true;
+        }
+    }
+
+    // Otherwise a build config must wire Tailwind in (the Vite/PostCSS plugin or the
+    // Astro integration). We look for any mention of "tailwind" in the build configs.
+    for name in [
+        "astro.config.mjs",
+        "astro.config.ts",
+        "astro.config.js",
+        "vite.config.ts",
+        "vite.config.js",
+        "vite.config.mjs",
+        "next.config.js",
+        "next.config.mjs",
+        "next.config.ts",
+        "postcss.config.js",
+        "postcss.config.cjs",
+        "postcss.config.mjs",
+        "postcss.config.json",
+        ".postcssrc.json",
+        ".postcssrc.js",
+        ".postcssrc",
+    ] {
+        if let Ok(contents) = std::fs::read_to_string(root.join(name)) {
+            if contents.contains("tailwind") {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
 #[tauri::command]
 #[tracing::instrument(fields(project = %project_path))]
 pub fn detect_breakpoints(project_path: String) -> Result<Vec<Breakpoint>, CommandError> {
@@ -1309,5 +1364,36 @@ const items = [];
         let cfg = r#"export default { theme: { screens: require('./bp') } }"#;
         apply_v3_screens(cfg, &mut map);
         assert_eq!(map, default_map());
+    }
+
+    #[test]
+    fn tailwind_active_requires_a_real_integration() {
+        let dir = std::env::temp_dir().join(format!("ss-tw-{}", std::process::id()));
+        let chk = tailwind_active_at;
+
+        // Astro WITHOUT the Vite plugin — a bare `@import "tailwindcss"` doesn't compile.
+        let a = dir.join("no-tw");
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::write(a.join("astro.config.mjs"), "export default {{ }}").unwrap();
+        std::fs::write(a.join("global.css"), "@import \"tailwindcss\";").unwrap();
+        assert!(!chk(&a), "import alone, no plugin → not active");
+
+        // Astro WITH the Vite plugin wired in → active.
+        let b = dir.join("astro-tw");
+        std::fs::create_dir_all(&b).unwrap();
+        std::fs::write(
+            b.join("astro.config.mjs"),
+            "import tailwindcss from '@tailwindcss/vite';\nexport default {{ vite: {{ plugins: [tailwindcss()] }} }}",
+        )
+        .unwrap();
+        assert!(chk(&b), "astro.config wires tailwind → active");
+
+        // A v3-style config file present → active.
+        let c = dir.join("v3");
+        std::fs::create_dir_all(&c).unwrap();
+        std::fs::write(c.join("tailwind.config.js"), "module.exports = {{}}").unwrap();
+        assert!(chk(&c), "tailwind.config.js present → active");
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
