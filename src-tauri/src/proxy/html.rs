@@ -17,7 +17,7 @@ pub fn inject_nav_script(html: &[u8]) -> Vec<u8> {
     let with_scripts = inject_into_html(html, &format!("{NAV_SCRIPT}{SELECT_SCRIPT}"));
     inject_at_head_start(
         &with_scripts,
-        &format!("{RELOAD_SUPPRESS}{SCROLLBAR_STYLE}{SCROLL_RESTORE}"),
+        &format!("{SCROLLBAR_STYLE}{RELOAD_SUPPRESS}{SCROLL_RESTORE}"),
     )
 }
 
