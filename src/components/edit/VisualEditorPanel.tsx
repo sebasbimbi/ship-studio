@@ -15,89 +15,23 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { Button } from '../primitives/Button';
-import { SpacingBox } from './SpacingBox';
-import { EnumControls } from './EnumControls';
 import { EnumDropdown } from './EnumDropdown';
-import { ColorControls } from './ColorControls';
-import { ResettableLabel } from './ResettableLabel';
 import { MultiSourceControl } from './MultiSourceControl';
 import { UsageScope } from './UsageScope';
 import { CodeIcon } from './CodeIcon';
-import { type UsageReport } from '../../lib/edit';
-import {
-  scaleValue,
-  spacingValue,
-  spacingCss,
-  spacingDisplay,
-  spacingTokenFor,
-  parseSpacingInput,
-  spacingResetSpec,
-  readLayer,
-  breakpointPrefixes,
-  type BoxType,
-  type Side,
-  type Breakpoint,
-  type LayerContext,
-  type SpacingValue,
-  type ResetSpec,
+import { PropSection } from './PropSection';
+import { PropControlRenderer, type ControlRenderCtx } from './PropControlRenderer';
+import { CONTROL_SECTIONS } from '../../lib/editControls';
+import { breakpointPrefixes, type UsageReport } from '../../lib/edit';
+import type {
+  BoxType,
+  Side,
+  Breakpoint,
+  LayerContext,
+  SpacingValue,
+  ResetSpec,
 } from '../../lib/edit';
 import type { Selection } from '../../hooks/useVisualEditor';
-
-/** Editable gap value: a Tailwind scale step or any valid CSS length (10rem, 50%).
- *  Click to type, Enter/blur to apply; bad input marks the field invalid. Stays in
- *  sync when the +/- steppers change the value externally (prev-value pattern). */
-function GapField({
-  value,
-  onSet,
-}: {
-  value: SpacingValue | null;
-  onSet: (v: SpacingValue) => void;
-}) {
-  const display = spacingDisplay(value);
-  const [text, setText] = useState(display);
-  const [lastDisplay, setLastDisplay] = useState(display);
-  const [invalid, setInvalid] = useState(false);
-  if (display !== lastDisplay && !invalid) {
-    setLastDisplay(display);
-    setText(display);
-  }
-
-  const commit = () => {
-    const parsed = parseSpacingInput(text, 'gap');
-    if (parsed.kind === 'invalid') {
-      setInvalid(true);
-      return false;
-    }
-    setInvalid(false);
-    onSet(parsed);
-    return true;
-  };
-
-  return (
-    <input
-      className={`ss-edit-panel__num${invalid ? ' ss-edit-panel__num--invalid' : ''}`}
-      inputMode="text"
-      aria-label="Gap"
-      aria-invalid={invalid}
-      title={invalid ? 'Use a valid value or unit (e.g. 8, 10rem, 50%)' : undefined}
-      value={text}
-      onChange={(e) => {
-        setText(e.target.value);
-        if (invalid) setInvalid(false);
-      }}
-      onFocus={(e) => e.target.select()}
-      onBlur={() => {
-        if (!commit()) {
-          setText(display);
-          setInvalid(false);
-        }
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' && commit()) e.currentTarget.blur();
-      }}
-    />
-  );
-}
 
 /** Save-status badge — the SAME box whether saving or saved, so the footer never
  *  shifts height between the two (auto-save) states. */
@@ -186,7 +120,7 @@ interface Props {
   onClose: () => void;
 }
 
-const PANEL_WIDTH = 240;
+const PANEL_WIDTH = 264;
 
 /** Initial top-right resting spot (clears the toolbar). Lazy so it reads the
  *  window once on mount; drag takes over from there. */
@@ -230,8 +164,23 @@ export function VisualEditorPanel({
     () => ({ bp: activeBreakpoint, ordered: breakpoints, known: breakpointPrefixes(breakpoints) }),
     [activeBreakpoint, breakpoints]
   );
-  const gap = readLayer(currentClass, layer, (s) => spacingValue(s, 'gap'));
-  const opacity = readLayer(currentClass, layer, (s) => scaleValue(s, 'opacity'));
+
+  // Shared render context for every control row (the registry renders generically).
+  const controlCtx = useMemo<ControlRenderCtx>(
+    () => ({
+      currentClass,
+      layer,
+      onApplyEnum,
+      onReset,
+      onSetSide,
+      onStepGap,
+      computed: {
+        color: selection?.signature.computedColor,
+        'background-color': selection?.signature.computedBackgroundColor,
+      },
+    }),
+    [currentClass, layer, onApplyEnum, onReset, onSetSide, onStepGap, selection]
+  );
 
   // Contextual mobile-first explainer (shown in the "?" tooltip by the label).
   const breakpointHelp =
@@ -390,78 +339,13 @@ export function VisualEditorPanel({
               />
             )}
 
-            <SpacingBox currentClass={currentClass} layer={layer} onSetSide={onSetSide} />
-
-            <div className="ss-edit-panel__control">
-              <ResettableLabel
-                label="Gap"
-                definedAt={gap.definedAt}
-                active={activeBreakpoint}
-                onReset={() => onReset(spacingResetSpec('gap', 'gap'))}
-              />
-              <div className="ss-edit-panel__stepper">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  aria-label="Decrease gap"
-                  onClick={() => onStepGap(-1)}
-                >
-                  −
-                </Button>
-                <GapField
-                  value={gap.value}
-                  onSet={(v) => onApplyEnum(spacingTokenFor('gap', v), { gap: spacingCss(v) })}
-                />
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  aria-label="Increase gap"
-                  onClick={() => onStepGap(1)}
-                >
-                  ＋
-                </Button>
-              </div>
-            </div>
-
-            <EnumControls
-              currentClass={currentClass}
-              layer={layer}
-              onApplyEnum={onApplyEnum}
-              onReset={onReset}
-            />
-
-            <div className="ss-edit-panel__control">
-              <ResettableLabel
-                label="Opacity"
-                definedAt={opacity.definedAt}
-                active={activeBreakpoint}
-                onReset={() => onReset(spacingResetSpec('opacity', 'opacity'))}
-              />
-              <input
-                type="range"
-                className="ss-edit-panel__slider"
-                aria-label="Opacity"
-                min={0}
-                max={100}
-                step={5}
-                value={opacity.value ?? 100}
-                onChange={(e) => {
-                  const n = Number(e.target.value);
-                  onApplyEnum(`opacity-${n}`, { opacity: String(n / 100) });
-                }}
-              />
-            </div>
-
-            <ColorControls
-              currentClass={currentClass}
-              layer={layer}
-              onApplyEnum={onApplyEnum}
-              onReset={onReset}
-              computed={{
-                color: selection?.signature.computedColor,
-                'background-color': selection?.signature.computedBackgroundColor,
-              }}
-            />
+            {CONTROL_SECTIONS.map((section) => (
+              <PropSection key={section.id} title={section.title} defaultOpen={section.defaultOpen}>
+                {section.controls.map((control) => (
+                  <PropControlRenderer key={control.key} control={control} ctx={controlCtx} />
+                ))}
+              </PropSection>
+            ))}
 
             <div className="ss-edit-panel__classes" title={currentClass}>
               {currentClass}

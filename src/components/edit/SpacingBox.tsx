@@ -13,7 +13,6 @@ import {
   readLayer,
   spacingDisplay,
   parseSpacingInput,
-  stepSpacingValue,
   type BoxType,
   type Side,
   type LayerContext,
@@ -134,12 +133,15 @@ function SideField({ value, onSet, cssProp, label, className, dir, inherited }: 
           : `${label} (drag, scroll, or type)`
       }
       inputMode="text"
+      autoCorrect="off"
+      autoCapitalize="off"
+      autoComplete="off"
+      spellCheck={false}
       value={text}
       onChange={(e) => {
         setText(e.target.value);
         if (invalid) setInvalid(false);
       }}
-      onWheel={(e) => onSet(stepSpacingValue(value, e.deltaY < 0 ? 1 : -1))}
       onFocus={(e) => e.target.select()}
       onKeyDown={(e) => {
         if (e.key === 'Enter') commit();

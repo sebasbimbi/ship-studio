@@ -11,7 +11,6 @@ import {
   activeEnumToken,
   readLayer,
   enumResetSpec,
-  ENUM_CONTROLS,
   type EnumControl,
   type LayerContext,
   type ResetSpec,
@@ -151,7 +150,9 @@ interface Props {
   onReset: (spec: ResetSpec) => void;
 }
 
-function Control({
+/** One enum control row (icons / dropdown / segmented) with its resettable label.
+ *  Placed individually by the control registry, so each can live in any section. */
+export function EnumControlRow({
   control,
   currentClass,
   layer,
@@ -208,22 +209,5 @@ function Control({
       />
       {body}
     </div>
-  );
-}
-
-export function EnumControls({ currentClass, layer, onApplyEnum, onReset }: Props) {
-  return (
-    <>
-      {ENUM_CONTROLS.map((control) => (
-        <Control
-          key={control.label}
-          control={control}
-          currentClass={currentClass}
-          layer={layer}
-          onApplyEnum={onApplyEnum}
-          onReset={onReset}
-        />
-      ))}
-    </>
   );
 }

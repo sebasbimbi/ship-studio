@@ -9,7 +9,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  COLOR_CONTROLS,
   arbitraryColorRaw,
   colorClassToken,
   colorFormatOf,
@@ -36,7 +35,9 @@ interface Props {
   computed?: Record<string, string | undefined>;
 }
 
-function ColorField({
+/** One color control (text / background / border …): a swatch + popover picker.
+ *  Exported so the control registry can place each color in its own section. */
+export function ColorField({
   label,
   css,
   prefix,
@@ -155,25 +156,5 @@ function ColorField({
           document.body
         )}
     </div>
-  );
-}
-
-export function ColorControls({ currentClass, layer, onApplyEnum, onReset, computed }: Props) {
-  return (
-    <>
-      {COLOR_CONTROLS.map((c) => (
-        <ColorField
-          key={c.prefix}
-          label={c.label}
-          css={c.css}
-          prefix={c.prefix}
-          currentClass={currentClass}
-          layer={layer}
-          onApplyEnum={onApplyEnum}
-          onReset={onReset}
-          computed={computed}
-        />
-      ))}
-    </>
   );
 }

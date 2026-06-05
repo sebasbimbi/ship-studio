@@ -556,12 +556,195 @@ export const ENUM_CONTROLS: EnumControl[] = [
       },
     ],
   },
+  {
+    label: 'Position',
+    variant: 'dropdown',
+    options: [
+      { label: 'Static', token: 'static', style: { position: 'static' } },
+      { label: 'Relative', token: 'relative', style: { position: 'relative' } },
+      { label: 'Absolute', token: 'absolute', style: { position: 'absolute' } },
+      { label: 'Fixed', token: 'fixed', style: { position: 'fixed' } },
+      { label: 'Sticky', token: 'sticky', style: { position: 'sticky' } },
+    ],
+  },
+  {
+    label: 'Direction',
+    variant: 'dropdown',
+    options: [
+      { label: 'Row', token: 'flex-row', style: { 'flex-direction': 'row' } },
+      {
+        label: 'Row reverse',
+        token: 'flex-row-reverse',
+        style: { 'flex-direction': 'row-reverse' },
+      },
+      { label: 'Column', token: 'flex-col', style: { 'flex-direction': 'column' } },
+      {
+        label: 'Column reverse',
+        token: 'flex-col-reverse',
+        style: { 'flex-direction': 'column-reverse' },
+      },
+    ],
+  },
+  {
+    label: 'Wrap',
+    variant: 'dropdown',
+    options: [
+      { label: 'No wrap', token: 'flex-nowrap', style: { 'flex-wrap': 'nowrap' } },
+      { label: 'Wrap', token: 'flex-wrap', style: { 'flex-wrap': 'wrap' } },
+      { label: 'Wrap reverse', token: 'flex-wrap-reverse', style: { 'flex-wrap': 'wrap-reverse' } },
+    ],
+  },
+  {
+    label: 'Overflow',
+    variant: 'dropdown',
+    options: [
+      { label: 'Visible', token: 'overflow-visible', style: { overflow: 'visible' } },
+      { label: 'Auto', token: 'overflow-auto', style: { overflow: 'auto' } },
+      { label: 'Hidden', token: 'overflow-hidden', style: { overflow: 'hidden' } },
+      { label: 'Scroll', token: 'overflow-scroll', style: { overflow: 'scroll' } },
+    ],
+  },
+  {
+    label: 'Z-index',
+    variant: 'dropdown',
+    options: [
+      { label: 'Auto', token: 'z-auto', style: { 'z-index': 'auto' } },
+      { label: '0', token: 'z-0', style: { 'z-index': '0' } },
+      { label: '10', token: 'z-10', style: { 'z-index': '10' } },
+      { label: '20', token: 'z-20', style: { 'z-index': '20' } },
+      { label: '30', token: 'z-30', style: { 'z-index': '30' } },
+      { label: '40', token: 'z-40', style: { 'z-index': '40' } },
+      { label: '50', token: 'z-50', style: { 'z-index': '50' } },
+    ],
+  },
+  {
+    label: 'Line height',
+    variant: 'dropdown',
+    options: [
+      { label: 'None', token: 'leading-none', style: { 'line-height': '1' } },
+      { label: 'Tight', token: 'leading-tight', style: { 'line-height': '1.25' } },
+      { label: 'Snug', token: 'leading-snug', style: { 'line-height': '1.375' } },
+      { label: 'Normal', token: 'leading-normal', style: { 'line-height': '1.5' } },
+      { label: 'Relaxed', token: 'leading-relaxed', style: { 'line-height': '1.625' } },
+      { label: 'Loose', token: 'leading-loose', style: { 'line-height': '2' } },
+    ],
+  },
+  {
+    label: 'Letter spacing',
+    variant: 'dropdown',
+    options: [
+      { label: 'Tighter', token: 'tracking-tighter', style: { 'letter-spacing': '-0.05em' } },
+      { label: 'Tight', token: 'tracking-tight', style: { 'letter-spacing': '-0.025em' } },
+      { label: 'Normal', token: 'tracking-normal', style: { 'letter-spacing': '0em' } },
+      { label: 'Wide', token: 'tracking-wide', style: { 'letter-spacing': '0.025em' } },
+      { label: 'Wider', token: 'tracking-wider', style: { 'letter-spacing': '0.05em' } },
+      { label: 'Widest', token: 'tracking-widest', style: { 'letter-spacing': '0.1em' } },
+    ],
+  },
+  {
+    label: 'Transform',
+    variant: 'dropdown',
+    options: [
+      { label: 'None', token: 'normal-case', style: { 'text-transform': 'none' } },
+      { label: 'Uppercase', token: 'uppercase', style: { 'text-transform': 'uppercase' } },
+      { label: 'Lowercase', token: 'lowercase', style: { 'text-transform': 'lowercase' } },
+      { label: 'Capitalize', token: 'capitalize', style: { 'text-transform': 'capitalize' } },
+    ],
+  },
+  {
+    label: 'Style',
+    variant: 'dropdown',
+    options: [
+      { label: 'Normal', token: 'not-italic', style: { 'font-style': 'normal' } },
+      { label: 'Italic', token: 'italic', style: { 'font-style': 'italic' } },
+    ],
+  },
+  {
+    label: 'Decoration',
+    variant: 'dropdown',
+    options: [
+      { label: 'None', token: 'no-underline', style: { 'text-decoration-line': 'none' } },
+      { label: 'Underline', token: 'underline', style: { 'text-decoration-line': 'underline' } },
+      {
+        label: 'Line through',
+        token: 'line-through',
+        style: { 'text-decoration-line': 'line-through' },
+      },
+    ],
+  },
+  {
+    label: 'Shadow',
+    variant: 'dropdown',
+    options: [
+      { label: 'None', token: 'shadow-none', style: { 'box-shadow': 'none' } },
+      {
+        label: 'SM',
+        token: 'shadow-sm',
+        style: { 'box-shadow': '0 1px 2px 0 rgb(0 0 0 / 0.05)' },
+      },
+      {
+        label: 'MD',
+        token: 'shadow',
+        style: { 'box-shadow': '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)' },
+      },
+      {
+        label: 'LG',
+        token: 'shadow-md',
+        style: { 'box-shadow': '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' },
+      },
+      {
+        label: 'XL',
+        token: 'shadow-lg',
+        style: {
+          'box-shadow': '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
+        },
+      },
+      {
+        label: '2XL',
+        token: 'shadow-xl',
+        style: {
+          'box-shadow': '0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)',
+        },
+      },
+      {
+        label: '3XL',
+        token: 'shadow-2xl',
+        style: { 'box-shadow': '0 25px 50px -12px rgb(0 0 0 / 0.25)' },
+      },
+    ],
+  },
+  {
+    label: 'Blur',
+    variant: 'dropdown',
+    options: [
+      { label: 'None', token: 'blur-none', style: { filter: 'blur(0)' } },
+      { label: 'SM', token: 'blur-sm', style: { filter: 'blur(4px)' } },
+      { label: 'MD', token: 'blur', style: { filter: 'blur(8px)' } },
+      { label: 'LG', token: 'blur-md', style: { filter: 'blur(12px)' } },
+      { label: 'XL', token: 'blur-lg', style: { filter: 'blur(16px)' } },
+      { label: '2XL', token: 'blur-xl', style: { filter: 'blur(24px)' } },
+    ],
+  },
+  {
+    label: 'Cursor',
+    variant: 'dropdown',
+    options: [
+      { label: 'Auto', token: 'cursor-auto', style: { cursor: 'auto' } },
+      { label: 'Default', token: 'cursor-default', style: { cursor: 'default' } },
+      { label: 'Pointer', token: 'cursor-pointer', style: { cursor: 'pointer' } },
+      { label: 'Text', token: 'cursor-text', style: { cursor: 'text' } },
+      { label: 'Move', token: 'cursor-move', style: { cursor: 'move' } },
+      { label: 'Wait', token: 'cursor-wait', style: { cursor: 'wait' } },
+      { label: 'Not allowed', token: 'cursor-not-allowed', style: { cursor: 'not-allowed' } },
+    ],
+  },
 ];
 
 /** Text / background color controls — arbitrary hex via a native color picker. */
 export const COLOR_CONTROLS = [
   { label: 'Text', prefix: 'text', css: 'color' },
   { label: 'Background', prefix: 'bg', css: 'background-color' },
+  { label: 'Border color', prefix: 'border', css: 'border-color' },
 ] as const;
 
 export type ColorPrefix = (typeof COLOR_CONTROLS)[number]['prefix'];
@@ -615,6 +798,115 @@ export function activeEnumToken(className: string, control: EnumControl): string
     if (tokens.has(option.token)) return option.token;
   }
   return null;
+}
+
+// ───────────────────── Sizing (width / height / max-width / …) ───────────────
+//
+// A length control edits a sizing utility (`w`, `h`, `max-w`, `min-h`). Its value
+// can be a named keyword (`full`, `screen`, `auto`), a fraction (`1/2`), a Tailwind
+// scale step (`64`), or any arbitrary CSS length (`480px`, `clamp(…)` → `w-[…]`).
+
+/** Named size keywords → the CSS they resolve to. `screen` depends on the axis
+ *  (`w-screen` = 100vw, `h-screen` = 100vh), so it's a function of the prop. */
+const LENGTH_KEYWORDS: Record<string, (axis: 'w' | 'h') => string> = {
+  full: () => '100%',
+  screen: (a) => (a === 'h' ? '100vh' : '100vw'),
+  auto: () => 'auto',
+  min: () => 'min-content',
+  max: () => 'max-content',
+  fit: () => 'fit-content',
+  none: () => 'none',
+};
+
+/** Common presets a length field offers as autocomplete (still free-form). */
+export const LENGTH_PRESETS = ['full', 'screen', 'auto', '1/2', '1/3', '2/3', '1/4', '3/4'];
+
+/** Which axis a sizing prop sits on, so `screen`/etc. resolve correctly. */
+function lengthAxis(css: string): 'w' | 'h' {
+  return css.includes('height') ? 'h' : 'w';
+}
+
+/** The current value of a sizing utility as a display string (`full`, `1/2`,
+ *  `64`, `480px`), or null when unset. Reads arbitrary first, then named/scale. */
+export function lengthValue(className: string, prefix: string): string | null {
+  const arb = arbitraryValue(className, prefix);
+  if (arb !== null) return arb;
+  const m = new RegExp(`(?:^|\\s)${prefix}-([\\w./%-]+)`).exec(className);
+  return m ? m[1] : null;
+}
+
+/** Parse a typed length value into a Tailwind token + its preview CSS. Accepts a
+ *  keyword, a fraction, a bare scale integer, or an arbitrary CSS length; anything
+ *  else (a bad unit) is invalid. */
+export type ParsedLength = { kind: 'ok'; token: string; css: string } | { kind: 'invalid' };
+export function parseLengthInput(input: string, prefix: string, css: string): ParsedLength {
+  let s = input.trim();
+  if (s === '') return { kind: 'invalid' };
+  const axis = lengthAxis(css);
+  const kw = LENGTH_KEYWORDS[s.toLowerCase()];
+  if (kw) return { kind: 'ok', token: `${prefix}-${s.toLowerCase()}`, css: kw(axis) };
+  const frac = /^(\d+)\/(\d+)$/.exec(s);
+  if (frac) {
+    const pct = (Number(frac[1]) / Number(frac[2])) * 100;
+    return { kind: 'ok', token: `${prefix}-${s}`, css: `${Number(pct.toFixed(4))}%` };
+  }
+  // Forgive a space between number and unit ("3 rem" → "3rem").
+  s = s.replace(/^(-?\d*\.?\d+)\s+([a-z%]+)$/i, '$1$2');
+  if (/^\d+$/.test(s)) {
+    return { kind: 'ok', token: `${prefix}-${s}`, css: `${Number(s) * SPACING_REM}rem` };
+  }
+  return cssSupports(css, s)
+    ? { kind: 'ok', token: arbitraryToken(prefix, s), css: s }
+    : { kind: 'invalid' };
+}
+
+/** Reset spec for a sizing utility — removes any token for this prefix at the
+ *  active layer (`w-full`, `w-64`, `w-[…]`) and neutralizes its CSS. */
+export function lengthResetSpec(prefix: string, css: string): ResetSpec {
+  return { match: (t) => t === prefix || t.startsWith(`${prefix}-`), cssProps: [css] };
+}
+
+// ───────────────────── Custom CSS (arbitrary properties) ─────────────────────
+//
+// Tailwind's native escape hatch for any CSS property is the arbitrary *property*
+// `[prop:value]` (e.g. `[mask-type:luminance]`). The custom box types `prop: value`
+// and emits a real Tailwind class — spaces in the value escaped to `_`.
+
+export interface ArbitraryProp {
+  prop: string;
+  value: string;
+  /** The bare (unprefixed) Tailwind token, e.g. `[clip-path:circle(50%)]`. */
+  token: string;
+}
+
+/** Build an arbitrary-property token from a CSS prop + value (`clip-path`,
+ *  `circle(50%)` → `[clip-path:circle(50%)]`), escaping spaces as Tailwind needs. */
+export function arbitraryPropToken(prop: string, value: string): string {
+  return `[${prop.trim()}:${value.trim().replace(/\s+/g, '_')}]`;
+}
+
+/** Parse a typed `prop: value` (or `prop:value`) line into a validated arbitrary
+ *  property, or null when the property/value isn't real CSS. */
+export function parseArbitraryProp(input: string): ArbitraryProp | null {
+  const i = input.indexOf(':');
+  if (i < 0) return null;
+  const prop = input.slice(0, i).trim().toLowerCase();
+  const value = input.slice(i + 1).trim();
+  if (!/^-{0,2}[a-z][a-z0-9-]*$/.test(prop) || value === '') return null;
+  if (!cssSupports(prop, value)) return null;
+  return { prop, value, token: arbitraryPropToken(prop, value) };
+}
+
+/** Every arbitrary-property token in a (variant-scoped) class string, decoded back
+ *  to `{prop, value}` for display in the custom-CSS list. */
+export function listArbitraryProps(className: string): ArbitraryProp[] {
+  const out: ArbitraryProp[] = [];
+  const re = /(?:^|\s)(\[([a-z-]+):([^\]]+)\])/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(className)) !== null) {
+    out.push({ token: m[1], prop: m[2], value: m[3].replace(/_/g, ' ') });
+  }
+  return out;
 }
 
 /**
