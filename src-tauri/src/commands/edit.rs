@@ -23,8 +23,25 @@ use crate::utils::validate_project_path;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-/// Source file extensions we index for className literals.
-const SOURCE_EXTS: &[&str] = &["tsx", "jsx"];
+/// Source file extensions we index for class literals.
+const SOURCE_EXTS: &[&str] = &["tsx", "jsx", "astro"];
+
+/// Class-bearing attribute names to scan, by file extension. React/JSX
+/// (`.tsx`/`.jsx`) authors write `className`; Astro `.astro` templates use the
+/// HTML `class` attribute, while React/Preact islands embedded in `.astro` still
+/// use `className` — so Astro files scan for both.
+fn attrs_for_ext(ext: &str) -> &'static [&'static str] {
+    match ext {
+        "astro" => &["className", "class"],
+        _ => &["className"],
+    }
+}
+
+/// Same as [`attrs_for_ext`] but from a path/filename (uses the trailing extension).
+fn attrs_for_path(file: &str) -> &'static [&'static str] {
+    let ext = file.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+    attrs_for_ext(&ext)
+}
 
 /// Signature of the clicked element, reported by the in-iframe selection script.
 /// Fields are camelCase to match the script's `postMessage` payload verbatim.
@@ -113,90 +130,109 @@ fn is_ident_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_' || b == b'$'
 }
 
-/// Find every static `className` string literal in a source file. Handles
-/// `className="..."`, `className={"..."}`, single quotes, and backtick literals
-/// with no `${...}` interpolation. Dynamic forms are skipped (left unindexed →
-/// read-only). Hand-written rather than regex to avoid catastrophic backtracking
-/// and an extra dependency.
+/// React/JSX `className` only. Production callers use [`find_attr_spans`] with the
+/// attribute set chosen by file extension; this thin wrapper keeps the className
+/// unit tests terse.
+#[cfg(test)]
 fn find_classname_spans(src: &str) -> Vec<Span> {
+    find_attr_spans(src, &["className"])
+}
+
+/// Find every static class string literal in a source file for the given attribute
+/// names (`className` for JSX, plus `class` for Astro). Handles `attr="..."`,
+/// `attr={"..."}`, single quotes, and backtick literals with no `${...}`
+/// interpolation. Dynamic forms (`clsx(...)`, `class:list`, ternaries, variables)
+/// are skipped — left unindexed → read-only. Hand-written rather than regex to
+/// avoid catastrophic backtracking and an extra dependency.
+///
+/// Scanning `class` and `className` over the same source never double-counts: the
+/// `=`-after-the-name check rejects the `class` prefix of a `className=` attribute
+/// (the next char is `N`, not `=`), so each literal is found by exactly one needle.
+fn find_attr_spans(src: &str, attrs: &[&str]) -> Vec<Span> {
     let bytes = src.as_bytes();
     let mut spans = Vec::new();
-    let needle = "className";
-    let mut search_from = 0;
-
-    while let Some(rel) = src[search_from..].find(needle) {
-        let i = search_from + rel;
-        search_from = i + needle.len();
-
-        // Must be a standalone identifier (not `myClassName`, `setClassName`).
-        if i > 0 && is_ident_byte(bytes[i - 1]) {
-            continue;
-        }
-
-        let mut j = i + needle.len();
-        let skip_ws = |mut k: usize| {
-            while k < bytes.len() && (bytes[k] as char).is_whitespace() {
-                k += 1;
-            }
-            k
-        };
-        j = skip_ws(j);
-        if j >= bytes.len() || bytes[j] != b'=' {
-            continue;
-        }
-        j = skip_ws(j + 1);
-        // Optional JSXExpressionContainer wrapper: `={ "..." }`.
-        if j < bytes.len() && bytes[j] == b'{' {
-            j = skip_ws(j + 1);
-        }
-        if j >= bytes.len() {
-            continue;
-        }
-        let quote = bytes[j];
-        if quote != b'"' && quote != b'\'' && quote != b'`' {
-            // Dynamic expression (clsx(...), a variable, cn(...)) — skip.
-            continue;
-        }
-        let value_start = j + 1;
-        // Find the matching closing quote. For " and ' there are effectively no
-        // escaped quotes inside Tailwind class strings; for ` we also reject
-        // interpolation.
-        let mut k = value_start;
-        let mut dynamic = false;
-        while k < bytes.len() {
-            let b = bytes[k];
-            if quote == b'`' && b == b'$' && k + 1 < bytes.len() && bytes[k + 1] == b'{' {
-                dynamic = true;
-                break;
-            }
-            if b == quote {
-                break;
-            }
+    let skip_ws = |mut k: usize| {
+        while k < bytes.len() && (bytes[k] as char).is_whitespace() {
             k += 1;
         }
-        if dynamic || k >= bytes.len() || bytes[k] != quote {
-            continue;
+        k
+    };
+
+    for needle in attrs {
+        let needle = *needle;
+        let mut search_from = 0;
+        while let Some(rel) = src[search_from..].find(needle) {
+            let i = search_from + rel;
+            search_from = i + needle.len();
+
+            // Must be a standalone identifier (not `myClassName`, `setClassName`,
+            // and for the `class` needle not `class Foo {}` / `classList`).
+            if i > 0 && is_ident_byte(bytes[i - 1]) {
+                continue;
+            }
+
+            let mut j = i + needle.len();
+            j = skip_ws(j);
+            if j >= bytes.len() || bytes[j] != b'=' {
+                continue;
+            }
+            j = skip_ws(j + 1);
+            // Optional JSXExpressionContainer wrapper: `={ "..." }`.
+            if j < bytes.len() && bytes[j] == b'{' {
+                j = skip_ws(j + 1);
+            }
+            if j >= bytes.len() {
+                continue;
+            }
+            let quote = bytes[j];
+            if quote != b'"' && quote != b'\'' && quote != b'`' {
+                // Dynamic expression (clsx(...), a variable, cn(...)) — skip.
+                continue;
+            }
+            let value_start = j + 1;
+            // Find the matching closing quote. For " and ' there are effectively no
+            // escaped quotes inside Tailwind class strings; for ` we also reject
+            // interpolation.
+            let mut k = value_start;
+            let mut dynamic = false;
+            while k < bytes.len() {
+                let b = bytes[k];
+                if quote == b'`' && b == b'$' && k + 1 < bytes.len() && bytes[k + 1] == b'{' {
+                    dynamic = true;
+                    break;
+                }
+                if b == quote {
+                    break;
+                }
+                k += 1;
+            }
+            if dynamic || k >= bytes.len() || bytes[k] != quote {
+                continue;
+            }
+            let value_end = k;
+            let value = src[value_start..value_end].to_string();
+
+            // 1-based line/column of value_start.
+            let prefix = &src[..value_start];
+            let line = prefix.bytes().filter(|&b| b == b'\n').count() + 1;
+            let column = value_start - prefix.rfind('\n').map(|p| p + 1).unwrap_or(0) + 1;
+
+            // Nearest opening tag before the attribute, for soft tag matching.
+            let tag = nearest_tag(&src[..i]);
+
+            spans.push(Span {
+                value,
+                value_start,
+                value_end,
+                line,
+                column,
+                tag,
+            });
         }
-        let value_end = k;
-        let value = src[value_start..value_end].to_string();
-
-        // 1-based line/column of value_start.
-        let prefix = &src[..value_start];
-        let line = prefix.bytes().filter(|&b| b == b'\n').count() + 1;
-        let column = value_start - prefix.rfind('\n').map(|p| p + 1).unwrap_or(0) + 1;
-
-        // Nearest opening tag before the className, for soft tag matching.
-        let tag = nearest_tag(&src[..i]);
-
-        spans.push(Span {
-            value,
-            value_start,
-            value_end,
-            line,
-            column,
-            tag,
-        });
     }
+    // Multiple needles scan independently; keep source order for deterministic
+    // resolution and write-back.
+    spans.sort_by_key(|s| s.value_start);
     spans
 }
 
@@ -260,12 +296,12 @@ fn index_occurrences(root: &Path) -> Vec<Occurrence> {
         .build();
     for entry in walker.flatten() {
         let path = entry.path();
-        let is_source = path
+        let ext = path
             .extension()
             .and_then(|e| e.to_str())
-            .map(|e| SOURCE_EXTS.contains(&e))
-            .unwrap_or(false);
-        if !is_source {
+            .map(|e| e.to_ascii_lowercase())
+            .unwrap_or_default();
+        if !SOURCE_EXTS.contains(&ext.as_str()) {
             continue;
         }
         let Ok(src) = std::fs::read_to_string(path) else {
@@ -276,7 +312,7 @@ fn index_occurrences(root: &Path) -> Vec<Occurrence> {
             .unwrap_or(path)
             .to_string_lossy()
             .replace('\\', "/");
-        for span in find_classname_spans(&src) {
+        for span in find_attr_spans(&src, attrs_for_ext(&ext)) {
             out.push(Occurrence {
                 class_name: span.value,
                 file: rel.clone(),
@@ -419,7 +455,7 @@ pub fn apply_classname_edit(
     }
 
     let src = std::fs::read_to_string(&abs).map_err(CommandError::from)?;
-    let span = find_classname_spans(&src)
+    let span = find_attr_spans(&src, attrs_for_path(&file))
         .into_iter()
         .find(|s| s.line == line && s.value == old_class)
         .ok_or_else(|| CommandError::Validation {
@@ -459,7 +495,7 @@ fn try_replace_classname(
     let Ok(src) = std::fs::read_to_string(&abs) else {
         return false;
     };
-    let Some(span) = find_classname_spans(&src)
+    let Some(span) = find_attr_spans(&src, attrs_for_path(file))
         .into_iter()
         .find(|s| s.line == line && s.value == old_class)
     else {
@@ -702,9 +738,25 @@ impl FileKind {
     }
 }
 
-/// Classify a project-relative path by Next.js conventions (App + Pages router).
+/// Classify a project-relative path by framework routing conventions
+/// (Astro file-based routing, then Next.js App + Pages router).
 fn classify_file(rel: &str) -> FileKind {
     let base = rel.rsplit('/').next().unwrap_or(rel).to_ascii_lowercase();
+
+    // Astro: file-based routing. An `.astro` under `pages/` is a route; one under
+    // `layouts/` wraps the pages that import it; everything else is a component.
+    if base.ends_with(".astro") {
+        let lower = rel.to_ascii_lowercase();
+        if lower.contains("pages/") {
+            return FileKind::Page;
+        }
+        if lower.contains("layouts/") {
+            return FileKind::Layout;
+        }
+        return FileKind::Component;
+    }
+
+    // Next.js (App + Pages router).
     if base.starts_with("page.") {
         return FileKind::Page; // App Router route segment
     }
@@ -739,6 +791,17 @@ fn decl_name(line: &str) -> Option<String> {
     } else {
         None
     }
+}
+
+/// An `.astro` file *is* a component — there's no `function Foo` to scan for. Its
+/// name is the PascalCase basename used at import sites (`Header.astro` → `Header`),
+/// so `<Header` usage scanning can find it. Returns None for `index.astro`-style
+/// route files only in the sense that the name is still derived; callers gate on
+/// `self_kind` (a page isn't rendered as `<Component>` anywhere).
+fn astro_component_name(file: &str) -> Option<String> {
+    let base = file.rsplit('/').next().unwrap_or(file);
+    let stem = base.rsplit_once('.').map(|(s, _)| s).unwrap_or(base);
+    (!stem.is_empty()).then(|| stem.to_string())
 }
 
 /// The component that encloses `line` (1-based): the nearest component declaration
@@ -805,7 +868,14 @@ pub fn find_component_usage(
 ) -> Result<UsageReport, CommandError> {
     let root = validate_project_path(&project_path)?;
     let src = std::fs::read_to_string(root.join(&file)).unwrap_or_default();
-    let component = enclosing_component(&src, line);
+    // `.astro` files have no JS component declaration to scan for — the component
+    // name is the filename (used verbatim at `<Header>` import sites).
+    let component = enclosing_component(&src, line).or_else(|| {
+        file.to_ascii_lowercase()
+            .ends_with(".astro")
+            .then(|| astro_component_name(&file))
+            .flatten()
+    });
     let self_kind = classify_file(&file).as_str().to_string();
 
     let mut sites = Vec::new();
@@ -911,6 +981,63 @@ mod tests {
         assert_eq!(spans[1].value, "c");
         assert_eq!(spans[1].line, 2);
         assert_eq!(spans[1].tag, "div");
+    }
+
+    #[test]
+    fn astro_scans_both_class_and_classname() {
+        // An .astro file: HTML `class` in the template, plus `className` on an
+        // embedded React island, plus dynamic forms that must stay read-only.
+        let src = r#"---
+import Card from '../components/Card.astro';
+const items = [];
+---
+<section class="flex p-4">
+  <h1 class="text-2xl font-bold">Hi</h1>
+  <ul class:list={["a", "b"]}>
+    <li class={items.length ? "on" : "off"}>x</li>
+  </ul>
+  <ReactWidget className="grid gap-2" />
+</section>"#;
+        let spans = find_attr_spans(src, attrs_for_ext("astro"));
+        let values: Vec<&str> = spans.iter().map(|s| s.value.as_str()).collect();
+        assert!(values.contains(&"flex p-4"));
+        assert!(values.contains(&"text-2xl font-bold"));
+        assert!(values.contains(&"grid gap-2")); // island className
+                                                 // class:list and the ternary class={...} are dynamic — not indexed.
+        assert!(!values.contains(&"on"));
+        assert!(!values.contains(&"off"));
+        assert_eq!(values.len(), 3);
+    }
+
+    #[test]
+    fn class_needle_does_not_double_count_classname() {
+        // Scanning both names over `className="..."` must yield exactly one span:
+        // the `class` prefix is rejected because the next char is `N`, not `=`.
+        let src = r#"<div className="flex" />"#;
+        let spans = find_attr_spans(src, attrs_for_ext("astro"));
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].value, "flex");
+    }
+
+    #[test]
+    fn class_needle_ignores_js_class_declarations() {
+        // Astro frontmatter is JS/TS — a `class Foo {}` must not be picked up.
+        let src = "---\nclass Foo { bar = 1; }\n---\n<div class=\"p-2\" />";
+        let spans = find_attr_spans(src, attrs_for_ext("astro"));
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].value, "p-2");
+    }
+
+    #[test]
+    fn astro_component_name_from_filename() {
+        assert_eq!(
+            astro_component_name("src/components/Header.astro").as_deref(),
+            Some("Header")
+        );
+        assert_eq!(
+            astro_component_name("Footer.astro").as_deref(),
+            Some("Footer")
+        );
     }
 
     fn occ(class: &str, file: &str, line: usize, tag: &str) -> Occurrence {
@@ -1086,6 +1213,17 @@ mod tests {
         assert_eq!(classify_file("components/Header.tsx"), FileKind::Component);
         assert_eq!(classify_file("pages/about.tsx"), FileKind::Page);
         assert_eq!(classify_file("pages/_app.tsx"), FileKind::Layout);
+    }
+
+    #[test]
+    fn classify_file_by_astro_conventions() {
+        assert_eq!(classify_file("src/pages/index.astro"), FileKind::Page);
+        assert_eq!(classify_file("src/pages/blog/[slug].astro"), FileKind::Page);
+        assert_eq!(classify_file("src/layouts/Base.astro"), FileKind::Layout);
+        assert_eq!(
+            classify_file("src/components/Header.astro"),
+            FileKind::Component
+        );
     }
 
     #[test]

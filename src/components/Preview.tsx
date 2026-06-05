@@ -381,7 +381,9 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   }, [showLogs, computeMaxPanelHeight]);
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const editorEnabled = conn.serverReady && projectType === 'nextjs';
+  // Visual editor supports className/class string resolution for React (Next.js)
+  // and Astro templates. Both resolve the same way in the Rust backend.
+  const editorEnabled = conn.serverReady && (projectType === 'nextjs' || projectType === 'astro');
 
   // The project's Tailwind breakpoints (Base + detected), and the layer edits
   // currently target — DERIVED from the live canvas width (never set on its own,
@@ -410,7 +412,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     resize.viewportWidth > 0 &&
     resize.viewportWidth < activeBreakpoint.minPx;
 
-  // Visual editor (v1: Next.js only). Inert until the user toggles edit mode.
+  // Visual editor (Next.js + Astro). Inert until the user toggles edit mode.
   const editor = useVisualEditor({
     iframeRef,
     projectPath,
@@ -564,7 +566,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
       }
     >
       <div className="preview-toolbar">
-        {conn.serverReady && projectType === 'nextjs' && (
+        {editorEnabled && (
           <button
             type="button"
             className={`preview-edit-toggle${editor.editMode ? ' active' : ''}`}
