@@ -19,10 +19,17 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { GitHubButton } from './GitHubButton';
 import { ClientEditorButton } from './ClientEditorButton';
 import { openInFinder } from '../lib/ide';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { PublishBranchDropdown } from './PublishBranchDropdown';
 import { PluginSlot } from './PluginSlot';
-import { ImageIcon, HelpIcon, PanelLeftIcon } from './icons';
+import { ImageIcon, SlackIcon, PanelLeftIcon } from './icons';
+// SupportPanel is hidden for now (the Support button links straight to Slack) but
+// intentionally kept around so we can bring the panel back later.
 import { SupportPanel } from './support/SupportPanel';
+
+/** Ship Studio community Slack invite — the Support button opens this directly. */
+const SLACK_INVITE_URL =
+  'https://join.slack.com/t/shipstudiocommunity/shared_invite/zt-3ommmu2w4-jtYZzzc9T~9lsEeKQ4E2AQ';
 import type { IntegrationState } from '../hooks/useIntegrationStatus';
 import type { LoadedPlugin } from '../hooks/usePlugins';
 import type { PluginThemeData } from '../contexts/PluginContext';
@@ -196,11 +203,11 @@ export function WorkspaceHeader({
         </button>
         <button
           className="toolbar-icon-btn"
-          onClick={() => setIsSupportPanelOpen(true)}
-          title="Support"
+          onClick={() => void openUrl(SLACK_INVITE_URL)}
+          title="Join the Ship Studio community on Slack"
           data-education-id="support-button"
         >
-          <HelpIcon size={12} />
+          <SlackIcon size={12} />
           <span className="toolbar-btn-label">Support</span>
         </button>
         {headerExtras}
