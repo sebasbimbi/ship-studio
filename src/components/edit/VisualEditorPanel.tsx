@@ -429,7 +429,7 @@ export function VisualEditorPanel({
         )}
 
         <p className="ss-edit-panel__beta">
-          Visual editor is in <strong>beta</strong> and works best with Next.js. Hit a bug or have
+          <strong>Visual editor is in beta and works best with Next.js.</strong> Hit a bug or have
           feedback? We'd genuinely appreciate hearing about it.
         </p>
       </div>

@@ -6,6 +6,14 @@ The latest entry is rendered inside the in-app update dialog, so write user-
 facing language — what changed, in plain English — not commit subjects.
 -->
 
+## What's New in v0.6.7
+
+- **Visual editor works on Astro + Tailwind** - Edit pages built with custom CSS classes too; edits win the cascade and save to your .astro source. The editor only appears when Tailwind is actually set up in the project
+- **Smoother Astro editing** - Saving no longer snaps the preview back to the top of the page
+- **Clearer editor** - An intro explains what it does before you select anything (Next.js/Astro + Tailwind, free, 0 tokens, live + instant saves)
+- **Support button opens Slack** - The toolbar Support button now opens the Ship Studio community Slack directly
+
+
 ## What's New in v0.6.6
 
 - **Responsive breakpoint editing** - Edit Tailwind classes per breakpoint in the visual editor; the preview canvas resizes to match and edits preview truthfully across widths
