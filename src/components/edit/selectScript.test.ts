@@ -20,12 +20,16 @@ function send(data: unknown) {
 }
 
 /** Resolve with the next `ss:select` the script posts to the parent. */
-function nextSelect(): Promise<{ signature: Record<string, unknown>; count: number }> {
+function nextSelect(): Promise<{
+  signature: Record<string, unknown>;
+  count: number;
+  leafText?: boolean;
+}> {
   return new Promise((res) => {
     const handler = (e: MessageEvent) => {
       if ((e.data as { type?: string })?.type === 'ss:select') {
         window.removeEventListener('message', handler);
-        res(e.data as { signature: Record<string, unknown>; count: number });
+        res(e.data as { signature: Record<string, unknown>; count: number; leafText?: boolean });
       }
     };
     window.addEventListener('message', handler);
@@ -104,15 +108,30 @@ it('wraps a breakpoint edit in a min-width media query, base before variant', ()
   expect(sheet.indexOf('padding:3.5rem')).toBeLessThan(sheet.indexOf('@media'));
 });
 
-it('walks up to the nearest classed ancestor when a bare child is clicked', async () => {
-  document.body.innerHTML = '<a class="link"><svg><span>icon</span></svg></a>';
+it('walks up to the nearest classed ancestor when a bare non-text child is clicked', async () => {
+  // The clicked <div> is classless and holds an element child (not plain text), so
+  // it isn't a text leaf — selection resolves to the nearest classed ancestor.
+  document.body.innerHTML = '<a class="link"><div><svg></svg></div></a>';
   send({ type: 'ss:activate' });
   const selected = nextSelect();
-  // Click the inner <span>, which has no class — should resolve to <a class="link">.
-  document.querySelector('span')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  document.querySelector('div')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   const msg = await selected;
   expect(msg.signature.className).toBe('link');
   expect(msg.signature.tagName).toBe('a');
+});
+
+it('selects a classless text leaf directly (so its text is editable)', async () => {
+  // A classless heading with text + <br> is a text leaf — clicking selects it
+  // directly (not its classed wrapper), flagged leafText so the parent resolves text.
+  document.body.innerHTML =
+    '<section class="hero"><h2>Trusted Where Failure Is<br>Not An Option.</h2></section>';
+  send({ type: 'ss:activate' });
+  const selected = nextSelect();
+  document.querySelector('h2')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  const msg = await selected;
+  expect(msg.signature.className).toBe('');
+  expect(msg.signature.tagName).toBe('h2');
+  expect(msg.leafText).toBe(true);
 });
 
 it('reports the count of, and live-mutates, ALL elements sharing the class', async () => {

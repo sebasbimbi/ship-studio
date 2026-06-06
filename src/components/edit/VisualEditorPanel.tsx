@@ -19,7 +19,6 @@ import { EnumDropdown } from './EnumDropdown';
 import { MultiSourceControl } from './MultiSourceControl';
 import { UsageScope } from './UsageScope';
 import { CodeIcon } from './CodeIcon';
-import { CursorTextIcon } from './CursorTextIcon';
 import { PropSection } from './PropSection';
 import { PropControlRenderer, type ControlRenderCtx } from './PropControlRenderer';
 import { CONTROL_SECTIONS } from '../../lib/editControls';
@@ -31,7 +30,6 @@ import type {
   LayerContext,
   SpacingValue,
   ResetSpec,
-  TextResolution,
 } from '../../lib/edit';
 import type { Selection } from '../../hooks/useVisualEditor';
 
@@ -164,8 +162,6 @@ interface Props {
   selection: Selection | null;
   /** The class string currently applied live (what "Save" will persist). */
   currentClass: string;
-  /** Text-editability of the selection — drives the "double-click to edit" hint. */
-  textResolution: TextResolution | null;
   /** All breakpoints (Base + detected), ascending by min-width. */
   breakpoints: Breakpoint[];
   /** The breakpoint layer currently being edited (derived from the canvas width). */
@@ -210,7 +206,6 @@ function initialPos() {
 export function VisualEditorPanel({
   selection,
   currentClass,
-  textResolution,
   breakpoints,
   activeBreakpoint,
   breakpointTooWide,
@@ -409,12 +404,6 @@ export function VisualEditorPanel({
                   instanceCount={selection?.instanceCount ?? 1}
                   onOpenInCode={onOpenInCode}
                 />
-                {textResolution?.status === 'resolved' && (
-                  <p className="ss-edit-panel__texthint">
-                    <CursorTextIcon size={12} />
-                    <span>Double-click to edit text</span>
-                  </p>
-                )}
               </>
             )}
             {resolution?.status === 'multi' && (

@@ -21,7 +21,7 @@ var pvDecls={},curMark=null,pendingMark=null,pvId=0,styleEl=null;
    txtEditable is the parent's verdict for the current selection (optimistic true
    until ss:textInfo arrives — commit re-validates anyway). last* keep a one-deep
    handle so the parent can revert if the source write is rejected. */
-var txtEditing=false,txtEl=null,txtOrig='',txtEditable=true,lastTxtEl=null,lastTxtOrig='';
+var txtEditing=false,txtEl=null,txtOrig='',txtOrigHtml='',txtEditable=true,lastTxtEl=null,lastTxtHtml='';
 function mk(c){var d=document.createElement('div');d.style.cssText='position:fixed;pointer-events:none;z-index:2147483646;border:2px solid '+c+';box-sizing:border-box;border-radius:2px';d.setAttribute('data-ss-overlay','1');document.body.appendChild(d);return d;}
 function ensureHover(){if(!hoverBox)hoverBox=mk('rgba(96,165,250,.8)');}
 function ensureSel(n){while(selBoxes.length<n)selBoxes.push(mk('rgba(217,119,87,.95)'));}
@@ -30,13 +30,13 @@ function place(box,el){if(!box)return;if(!el){box.style.display='none';return;}v
 function placeSet(){ensureSel(selectedSet.length);for(var i=0;i<selBoxes.length;i++)place(selBoxes[i],selectedSet[i]||null);}
 /* All elements whose class attribute is identical to the clicked element's — these
    render from the same source literal (e.g. a .map), so a source edit changes all. */
-function matching(el){var c=el.getAttribute('class'),out=[],all=document.querySelectorAll('[class]');for(var i=0;i<all.length;i++){if(all[i].getAttribute('class')===c)out.push(all[i]);}return out;}
+function matching(el){var c=el.getAttribute('class');if(!c||!c.trim())return [el];var out=[],all=document.querySelectorAll('[class]');for(var i=0;i<all.length;i++){if(all[i].getAttribute('class')===c)out.push(all[i]);}return out;}
 /* CSS properties `el` gets from UNLAYERED rules — those beat Tailwind's layered
    utilities, so edits to these need the important modifier to take effect. Walks
    top-level rules only (descends media/supports and non-layered @imports, but skips
    @layer blocks — i.e. all the Tailwind utilities). Cross-origin sheets throw → skipped. */
 function uLayered(el){var props={};function scan(rules){for(var i=0;i<rules.length;i++){var r=rules[i];if(r.type===1){try{if(el.matches(r.selectorText)){var st=r.style;for(var j=0;j<st.length;j++)props[st[j]]=1;}}catch(e){}}else if(r.cssRules&&!(r.constructor&&r.constructor.name==='CSSLayerBlockRule')){try{scan(r.cssRules);}catch(e){}}else if(r.type===3&&r.styleSheet&&r.layerName==null){try{scan(r.styleSheet.cssRules);}catch(e){}}}}var s=document.styleSheets;for(var i=0;i<s.length;i++){try{var rr=s[i].cssRules;if(rr)scan(rr);}catch(e){}}var out=[];for(var k in props)out.push(k);return out;}
-function sig(el){var anc=[],p=el.parentElement,n=0;while(p&&p!==document.body&&n<8){var c=p.getAttribute('class');if(c&&c.trim()){anc.push(c);n++;}p=p.parentElement;}var r=el.getBoundingClientRect();var cs=getComputedStyle(el);return{className:el.getAttribute('class')||'',tagName:(el.tagName||'').toLowerCase(),text:(el.textContent||'').trim().slice(0,40),ancestorClasses:anc,rect:{top:r.top,left:r.left,width:r.width,height:r.height},computedColor:cs.color,computedBackgroundColor:cs.backgroundColor,unlayeredProps:uLayered(el)};}
+function sig(el){var anc=[],p=el.parentElement,n=0;while(p&&p!==document.body&&n<8){var c=p.getAttribute('class');if(c&&c.trim()){anc.push(c);n++;}p=p.parentElement;}var r=el.getBoundingClientRect();var cs=getComputedStyle(el);return{className:el.getAttribute('class')||'',tagName:(el.tagName||'').toLowerCase(),text:(el.innerText||el.textContent||'').trim().slice(0,400),ancestorClasses:anc,rect:{top:r.top,left:r.left,width:r.width,height:r.height},computedColor:cs.color,computedBackgroundColor:cs.backgroundColor,unlayeredProps:uLayered(el)};}
 function ensureStyle(){if(!styleEl){styleEl=document.createElement('style');styleEl.id='ss-preview';document.head.appendChild(styleEl);}return styleEl;}
 /* Build the preview CSS for one selection from its accumulated decls: base (minPx 0)
    as a bare rule, variants wrapped in @media, emitted ascending by minPx so a larger
@@ -48,54 +48,71 @@ function rebuildSheet(){var css='';for(var k in pvDecls)css+=buildCss(k);ensureS
    marker). A committed selection is kept as-is — only the live pointer is released. */
 function restoreSel(){if(curMark!==null&&pendingMark===curMark){delete pvDecls[curMark];rebuildSheet();for(var i=0;i<selectedSet.length;i++){var el=selectedSet[i];if(!el)continue;if(origClasses[i]!=null)el.setAttribute('class',origClasses[i]);el.removeAttribute('data-ss-sel');}}curMark=null;pendingMark=null;selectedSet=[];origClasses=[];}
 function snapshotOrig(){origClasses=[];for(var i=0;i<selectedSet.length;i++)origClasses.push(selectedSet[i]?selectedSet[i].getAttribute('class'):null);}
-/* A leaf whose only child is non-empty text — the one shape we can edit in place
-   (anything with child elements or a dynamic {expr} child stays style-only). */
-function isLeafText(el){return !!(el&&el.childNodes.length===1&&el.childNodes[0].nodeType===3&&el.childNodes[0].nodeValue.trim()!=='');}
-/* The text leaf to edit for a double-click: the nearest classed single-text-node
-   element at or above the cursor. Unlike editable() (nearest *classed* ancestor,
-   which may be a wrapper), this lands on the element whose text we can resolve. */
-function textTarget(node){
-  var el=(node&&node.nodeType===3)?node.parentElement:node;
-  while(el&&el!==document.body){if(el.getAttribute){var c=el.getAttribute('class');if(c&&c.trim()&&isLeafText(el))return el;}el=el.parentElement;}
-  return null;
+/* An element whose children are only text and <br> nodes (with some real text) — the
+   shape we can edit in place. Anything with other nested elements or a dynamic {expr}
+   child stays style-only. */
+function isEditableText(el){
+  if(!el||el.nodeType!==1||!el.childNodes.length)return false;
+  var hasText=false;
+  for(var i=0;i<el.childNodes.length;i++){var n=el.childNodes[i];
+    if(n.nodeType===3){if(n.nodeValue.trim()!=='')hasText=true;}
+    else if(n.nodeName!=='BR')return false;}
+  return hasText;
 }
-function startText(el){
+/* Serialize an editable element back to source form: text verbatim, each <br> as
+   "<br />". Enter commits, so the user never adds new breaks — only the existing
+   <br> nodes are round-tripped. */
+function serializeInner(el){var out='';for(var i=0;i<el.childNodes.length;i++){var n=el.childNodes[i];if(n.nodeType===3)out+=n.nodeValue;else if(n.nodeName==='BR')out+='<br />';else out+=(n.textContent||'');}return out;}
+/* The element to text-edit for a double-click: the nearest editable-text element at
+   or above the cursor. A class is NOT required — classless tags resolve by content. */
+function textTarget(node){var el=(node&&node.nodeType===3)?node.parentElement:node;while(el&&el!==document.body){if(isEditableText(el))return el;el=el.parentElement;}return null;}
+/* What a single click selects: the editable-text element under the cursor if there is
+   one (so text leaves are directly selectable, even classless), else the nearest
+   classed ancestor (the style-editing target). */
+function pickTarget(node){var el=(node&&node.nodeType===3)?node.parentElement:node;if(el&&el!==document.body&&isEditableText(el))return el;return editable(el);}
+function startText(el,x,y){
   if(txtEditing||!el)return;
-  txtEditing=true;txtEl=el;txtOrig=el.textContent;
-  /* Re-enable selection on just this element (the whole doc has it off in edit mode
-     so plain clicks don't highlight) and make it editable. */
-  el.style.userSelect='text';el.style.webkitUserSelect='text';
+  txtEditing=true;txtEl=el;txtOrig=serializeInner(el);txtOrigHtml=el.innerHTML;
+  /* Re-enable selection on just this element (the doc has it off in edit mode so plain
+     clicks don't highlight), make it editable, and kill the native focus ring. */
+  el.style.userSelect='text';el.style.webkitUserSelect='text';el.style.outline='none';
   try{el.setAttribute('contenteditable','plaintext-only');}catch(e){el.setAttribute('contenteditable','true');}
   el.setAttribute('data-ss-editing','1');el.focus();
-  var s=window.getSelection();s.removeAllRanges();var r=document.createRange();r.selectNodeContents(el);s.addRange(r);
-  place(hoverBox,null);placeSet(); // drop the stale hover box; size the selection box to the element
+  /* Drop the caret where the user double-clicked rather than selecting all the text. */
+  var s=window.getSelection();s.removeAllRanges();
+  var r=(document.caretRangeFromPoint&&x!=null)?document.caretRangeFromPoint(x,y):null;
+  if(!r||!el.contains(r.startContainer)){r=document.createRange();r.selectNodeContents(el);r.collapse(false);}
+  s.addRange(r);
+  /* Webflow-style: hide the orange selection box, show only the blue editing box. */
+  for(var i=0;i<selBoxes.length;i++)place(selBoxes[i],null);
+  ensureHover();place(hoverBox,el);
   window.parent.postMessage({type:'ss:textBegin'},'*');
 }
-/* Leave inline editing. commit=true saves the new text to source (via the parent),
-   else revert to the snapshot. txtEditing is cleared first so the focusout the
-   removeAttribute triggers doesn't re-enter. */
+/* Leave inline editing. commit=true saves to source (via the parent), else revert to
+   the snapshot. txtEditing is cleared first so the focusout the removeAttribute
+   triggers doesn't re-enter. */
 function endText(commit){
   if(!txtEditing||!txtEl)return;
-  var el=txtEl,orig=txtOrig;txtEditing=false;txtEl=null;
-  var nv=el.textContent.trim();
+  var el=txtEl,orig=txtOrig,origHtml=txtOrigHtml;txtEditing=false;txtEl=null;
+  var nv=serializeInner(el).trim();
   el.removeAttribute('contenteditable');el.removeAttribute('data-ss-editing');
-  el.style.userSelect='';el.style.webkitUserSelect='';
-  lastTxtEl=el;lastTxtOrig=orig;
+  el.style.userSelect='';el.style.webkitUserSelect='';el.style.outline='';
+  lastTxtEl=el;lastTxtHtml=origHtml;
   if(commit&&nv!==''&&nv!==orig.trim()){window.parent.postMessage({type:'ss:textCommit',text:nv},'*');}
-  else{el.textContent=orig;window.parent.postMessage({type:'ss:textCancel'},'*');}
-  placeSet();
+  else{el.innerHTML=origHtml;window.parent.postMessage({type:'ss:textCancel'},'*');}
+  place(hoverBox,null);placeSet(); // hide blue editing box, restore orange selection box
 }
-function onDbl(e){if(!active||txtEditing)return;var el=textTarget(e.target);if(!el||!txtEditable)return;e.preventDefault();e.stopPropagation();startText(el);}
-function onMove(e){if(!active||txtEditing)return;ensureHover();place(hoverBox,editable(e.target));}
-function onClick(e){if(!active||txtEditing)return;var el=editable(e.target);if(!el)return;e.preventDefault();e.stopPropagation();restoreSel();selectedSet=matching(el);curMark=String(++pvId);for(var i=0;i<selectedSet.length;i++)selectedSet[i].setAttribute('data-ss-sel',curMark);snapshotOrig();placeSet();place(hoverBox,null);txtEditable=true;window.parent.postMessage({type:'ss:select',signature:sig(el),count:selectedSet.length,leafText:isLeafText(el)},'*');}
-function reposition(){if(active)placeSet();}
+function onDbl(e){if(!active||txtEditing)return;var el=textTarget(e.target);if(!el||!txtEditable)return;e.preventDefault();e.stopPropagation();startText(el,e.clientX,e.clientY);}
+function onMove(e){if(!active||txtEditing)return;ensureHover();var t=pickTarget(e.target);if(t&&selectedSet.indexOf(t)!==-1)t=null;place(hoverBox,t);}
+function onClick(e){if(!active||txtEditing)return;var el=pickTarget(e.target);if(!el)return;e.preventDefault();e.stopPropagation();restoreSel();selectedSet=matching(el);curMark=String(++pvId);for(var i=0;i<selectedSet.length;i++)selectedSet[i].setAttribute('data-ss-sel',curMark);snapshotOrig();placeSet();place(hoverBox,null);txtEditable=true;window.parent.postMessage({type:'ss:select',signature:sig(el),count:selectedSet.length,leafText:isEditableText(el)},'*');}
+function reposition(){if(txtEditing)place(hoverBox,txtEl);else if(active)placeSet();}
 window.addEventListener('message',function(e){var d=e.data||{};
 if(d.type==='ss:activate'){active=true;ensureHover();var de=document.documentElement;de.style.cursor='crosshair';de.style.userSelect='none';de.style.webkitUserSelect='none';}
 else if(d.type==='ss:deactivate'){endText(false);active=false;restoreSel();place(hoverBox,null);for(var i=0;i<selBoxes.length;i++)place(selBoxes[i],null);var de=document.documentElement;de.style.cursor='';de.style.userSelect='';de.style.webkitUserSelect='';}
 /* Parent's verdict on whether the current selection's text is editable in source. */
 else if(d.type==='ss:textInfo'){txtEditable=!!d.editable;}
 /* Source write was rejected — put the last-edited element's text back. */
-else if(d.type==='ss:textRevert'){if(lastTxtEl){lastTxtEl.textContent=lastTxtOrig;placeSet();}}
+else if(d.type==='ss:textRevert'){if(lastTxtEl){lastTxtEl.innerHTML=lastTxtHtml;placeSet();}}
 else if(d.type==='ss:mutate'){for(var i=0;i<selectedSet.length;i++){var el=selectedSet[i];if(!el)continue;if(typeof d.className==='string')el.setAttribute('class',d.className);}if(curMark!==null&&d.rules){var byMin=pvDecls[curMark]||(pvDecls[curMark]={});for(var r=0;r<d.rules.length;r++){var rule=d.rules[r],bucket=byMin[rule.minPx]||(byMin[rule.minPx]={});for(var p in rule.decls){if(rule.decls[p]==null)delete bucket[p];else bucket[p]=rule.decls[p];}}pendingMark=curMark;rebuildSheet();}placeSet();}
 /* Edit was saved to source: clear the pending flag so the preview rule + class are kept
    (no longer reverted on deselect/deactivate) and re-baseline the class. HMR re-renders
@@ -111,8 +128,8 @@ document.addEventListener('keydown',function(e){if(!txtEditing)return;if(e.key==
 document.addEventListener('focusout',function(e){if(txtEditing&&e.target===txtEl)endText(true);},true);
 /* Block characters that would break JSX/Astro markup before they're typed. */
 document.addEventListener('beforeinput',function(e){if(txtEditing&&e.data&&/[<{]/.test(e.data))e.preventDefault();},true);
-/* Keep the selection box sized to the element as its text grows/shrinks. */
-document.addEventListener('input',function(){if(txtEditing)placeSet();},true);
+/* Keep the blue editing box sized to the element as its text grows/shrinks. */
+document.addEventListener('input',function(){if(txtEditing)place(hoverBox,txtEl);},true);
 window.addEventListener('scroll',reposition,true);
 window.addEventListener('resize',reposition,true);
 })()</script>

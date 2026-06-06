@@ -280,9 +280,12 @@ fn index_occurrences_cached(root: &Path) -> std::sync::Arc<Vec<Occurrence>> {
     idx
 }
 
-/// Drop the cached index for `root` after a write so the next resolve sees source.
+/// Drop the cached indexes for `root` after a write so the next resolve sees source.
 fn invalidate_index_cache(root: &Path) {
     if let Ok(mut cache) = INDEX_CACHE.lock() {
+        cache.remove(root);
+    }
+    if let Ok(mut cache) = TEXT_INDEX_CACHE.lock() {
         cache.remove(root);
     }
 }
@@ -562,10 +565,12 @@ pub enum TextResolution {
     ReadOnly { reason: String },
 }
 
-/// A located static text run between an opening tag's `>` and the next `</`.
+/// A located static text run between an opening tag's `>` and its `</`. The run may
+/// contain `<br>` line breaks (kept verbatim in `value`); any other nested element
+/// or a `{…}` expression disqualifies it.
 #[derive(Debug, Clone)]
 struct TextSpan {
-    /// Trimmed text — what the user edits.
+    /// Trimmed text — what the user edits (may contain `<br />`).
     value: String,
     /// Byte offset of the first non-whitespace text character.
     value_start: usize,
@@ -573,6 +578,8 @@ struct TextSpan {
     value_end: usize,
     line: usize,
     column: usize,
+    /// Lowercased enclosing tag name (for content-search disambiguation).
+    tag: String,
 }
 
 /// 1-based (line, column) of a byte offset in `src`.
@@ -583,11 +590,63 @@ fn line_col(src: &str, byte: usize) -> (usize, usize) {
     (line, column)
 }
 
+/// If a `<br>` / `<br/>` / `<br ... />` tag starts at byte `at`, returns the byte
+/// just past its `>`. Case-insensitive. None if `at` isn't the start of a `<br>` tag
+/// (so `<break>` or any other element is correctly rejected).
+fn br_tag_end(src: &str, at: usize) -> Option<usize> {
+    let rest = src.get(at..)?;
+    if !rest.get(..3)?.eq_ignore_ascii_case("<br") {
+        return None;
+    }
+    // The char after "br" must end the tag name (whitespace, `/`, or `>`).
+    match rest.as_bytes().get(3) {
+        Some(b' ' | b'\t' | b'\n' | b'\r' | b'/' | b'>') => {}
+        _ => return None,
+    }
+    let gt = rest.find('>')?;
+    Some(at + gt + 1)
+}
+
+/// Scan an element's inner content starting at `run_start` (just past the opening
+/// tag's `>`). Returns the trimmed text and its byte bounds, allowing `<br>` line
+/// breaks inside. Returns None for empty/whitespace-only runs, dynamic text (`{…}`),
+/// or any nested element other than `<br>` (mixed content).
+fn scan_inner(src: &str, run_start: usize) -> Option<(String, usize, usize)> {
+    let bytes = src.as_bytes();
+    let mut j = run_start;
+    loop {
+        if j >= bytes.len() {
+            return None; // unterminated
+        }
+        match bytes[j] {
+            b'{' => return None, // dynamic expression
+            b'<' => {
+                if src[j..].starts_with("</") {
+                    break; // the element's own closing tag — end of content
+                }
+                match br_tag_end(src, j) {
+                    Some(end) => j = end, // a <br> — keep going
+                    None => return None,  // some other child element — mixed
+                }
+            }
+            _ => j += 1,
+        }
+    }
+    let run = &src[run_start..j];
+    let trimmed = run.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let lead = run.len() - run.trim_start().len();
+    let value_start = run_start + lead;
+    let value_end = value_start + trimmed.len();
+    Some((trimmed.to_string(), value_start, value_end))
+}
+
 /// Starting just after a className value's closing quote, find the opening tag's
 /// real `>` — skipping `>` inside attribute strings and `{…}` expressions (e.g.
-/// `style={{}}`, `onClick={() => a > b}`) — then the static text run up to the next
-/// `<`. Returns None for self-closing tags, an element-first child (mixed content),
-/// empty/whitespace-only runs, or dynamic text (`{…}`).
+/// `style={{}}`, `onClick={() => a > b}`) — then read the static text run after it.
+/// None for self-closing tags or non-editable content (see [`scan_inner`]).
 fn text_run_in_tag(src: &str, after_quote: usize) -> Option<TextSpan> {
     let bytes = src.as_bytes();
     let mut i = after_quote;
@@ -618,39 +677,22 @@ fn text_run_in_tag(src: &str, after_quote: usize) -> Option<TextSpan> {
         i += 1;
     }
     let gt = gt?;
-    let run_start = gt + 1;
-    let mut j = run_start;
-    while j < bytes.len() && bytes[j] != b'<' {
-        j += 1;
-    }
-    if j >= bytes.len() || !src[j..].starts_with("</") {
-        return None; // element-first child (mixed content) or unterminated
-    }
-    let run = &src[run_start..j];
-    if run.contains('{') {
-        return None; // dynamic text
-    }
-    let trimmed = run.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    let lead = run.len() - run.trim_start().len();
-    let value_start = run_start + lead;
-    let value_end = value_start + trimmed.len();
+    let (value, value_start, value_end) = scan_inner(src, gt + 1)?;
     let (line, column) = line_col(src, value_start);
     Some(TextSpan {
-        value: trimmed.to_string(),
+        value,
         value_start,
         value_end,
         line,
         column,
+        tag: String::new(),
     })
 }
 
-/// Every static leaf text run in a file (text between `>` and `</` with no `{…}`).
-/// The text write-back uses this to re-locate a span by (line, value). A stray `>`
-/// inside an expression can yield a spurious entry, but the write-back matches on
-/// exact (line, old_text) and re-verifies, so a false span never drives a wrong edit.
+/// Every static text run in a file (text between `>` and `</`, `<br>` allowed). Powers
+/// both the content-search index and the write-back's re-locate by (line, value). A
+/// stray `>` inside an expression can yield a spurious entry, but callers match on
+/// exact (line, value) and re-verify, so a false span never drives a wrong edit.
 fn find_text_spans(src: &str) -> Vec<TextSpan> {
     let bytes = src.as_bytes();
     let mut out = Vec::new();
@@ -660,37 +702,229 @@ fn find_text_spans(src: &str) -> Vec<TextSpan> {
             i += 1;
             continue;
         }
-        let run_start = i + 1;
-        let mut j = run_start;
-        while j < bytes.len() && bytes[j] != b'<' {
-            j += 1;
+        if let Some((value, value_start, value_end)) = scan_inner(src, i + 1) {
+            let (line, column) = line_col(src, value_start);
+            let tag = nearest_tag(&src[..i]);
+            out.push(TextSpan {
+                value,
+                value_start,
+                value_end,
+                line,
+                column,
+                tag,
+            });
+            i = value_end;
+        } else {
+            i += 1;
         }
-        if j < bytes.len() && src[j..].starts_with("</") {
-            let run = &src[run_start..j];
-            if !run.contains('{') {
-                let trimmed = run.trim();
-                if !trimmed.is_empty() {
-                    let lead = run.len() - run.trim_start().len();
-                    let value_start = run_start + lead;
-                    let value_end = value_start + trimmed.len();
-                    let (line, column) = line_col(src, value_start);
-                    out.push(TextSpan {
-                        value: trimmed.to_string(),
-                        value_start,
-                        value_end,
-                        line,
-                        column,
-                    });
-                }
-            }
-        }
-        i = j.max(run_start);
     }
     out
 }
 
-/// Resolve a clicked element to its editable text source. Anchors on class
-/// resolution, then locates the static text run inside the resolved tag.
+/// One static text run found in source, with a normalized key for content matching.
+#[derive(Debug, Clone)]
+struct TextOccurrence {
+    /// Raw source text (may contain `<br />`) — the write-back's drift baseline.
+    value: String,
+    /// Match key: `<br>`→space, whitespace-collapsed, lowercased. Lets a DOM element's
+    /// rendered text (innerText: `<br>`→newline, CSS text-transform applied) match the
+    /// source literal regardless of casing or wrapping.
+    norm: String,
+    /// Project-relative POSIX path.
+    file: String,
+    line: usize,
+    column: usize,
+    /// Lowercased enclosing tag name.
+    tag: String,
+}
+
+/// Replace each `<br>` tag in `s` with a single space (leaving other text intact).
+fn strip_br_to_space(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = String::with_capacity(s.len());
+    let (mut i, mut seg) = (0usize, 0usize);
+    while i < bytes.len() {
+        if bytes[i] == b'<' {
+            if let Some(end) = br_tag_end(s, i) {
+                out.push_str(&s[seg..i]);
+                out.push(' ');
+                i = end;
+                seg = end;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out.push_str(&s[seg..]);
+    out
+}
+
+/// Normalize text for content matching: `<br>`→space, collapse all whitespace, trim,
+/// lowercase. Applied to both the element's innerText and each source literal.
+fn normalize_text(s: &str) -> String {
+    strip_br_to_space(s)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+}
+
+/// Short-lived cache of the per-project text index (parallels the className index).
+static TEXT_INDEX_CACHE: std::sync::LazyLock<
+    std::sync::Mutex<
+        std::collections::HashMap<
+            std::path::PathBuf,
+            (std::time::Instant, std::sync::Arc<Vec<TextOccurrence>>),
+        >,
+    >,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+/// Index every static text run under `root`, from cache when fresh.
+fn index_text_cached(root: &Path) -> std::sync::Arc<Vec<TextOccurrence>> {
+    let key = root.to_path_buf();
+    if let Ok(cache) = TEXT_INDEX_CACHE.lock() {
+        if let Some((at, idx)) = cache.get(&key) {
+            if at.elapsed() < INDEX_TTL {
+                return idx.clone();
+            }
+        }
+    }
+    let idx = std::sync::Arc::new(index_text_occurrences(root));
+    if let Ok(mut cache) = TEXT_INDEX_CACHE.lock() {
+        cache.insert(key, (std::time::Instant::now(), idx.clone()));
+    }
+    idx
+}
+
+/// Index every static text run under `root` (same file walk/filters as the className index).
+fn index_text_occurrences(root: &Path) -> Vec<TextOccurrence> {
+    let mut out = Vec::new();
+    let walker = ignore::WalkBuilder::new(root)
+        .standard_filters(true)
+        .build();
+    for entry in walker.flatten() {
+        let path = entry.path();
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_ascii_lowercase())
+            .unwrap_or_default();
+        if !SOURCE_EXTS.contains(&ext.as_str()) {
+            continue;
+        }
+        let Ok(src) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        let rel = path
+            .strip_prefix(root)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        for span in find_text_spans(&src) {
+            let norm = normalize_text(&span.value);
+            if norm.is_empty() {
+                continue;
+            }
+            out.push(TextOccurrence {
+                value: span.value,
+                norm,
+                file: rel.clone(),
+                line: span.line,
+                column: span.column,
+                tag: span.tag,
+            });
+        }
+    }
+    out
+}
+
+/// Distinct (file, line) locations among text candidates.
+fn distinct_text_locs(cands: &[&TextOccurrence]) -> usize {
+    let mut set = std::collections::HashSet::new();
+    for c in cands {
+        set.insert((c.file.as_str(), c.line));
+    }
+    set.len()
+}
+
+fn resolved_text(o: &TextOccurrence, confidence: &str) -> TextResolution {
+    TextResolution::Resolved {
+        file: o.file.clone(),
+        line: o.line,
+        column: o.column,
+        text: o.value.clone(),
+        confidence: confidence.to_string(),
+    }
+}
+
+/// Resolve an element's text by searching source for its (normalized) content. Used
+/// for elements without a unique class anchor — classless tags, or a repeated class
+/// whose text is unique. Disambiguates repeats by tag, then a unique ancestor's file.
+fn resolve_text_by_content(
+    class_occ: &[Occurrence],
+    text_occ: &[TextOccurrence],
+    sig: &ElementSignature,
+) -> TextResolution {
+    let Some(want) = sig
+        .text
+        .as_deref()
+        .map(normalize_text)
+        .filter(|w| !w.is_empty())
+    else {
+        return TextResolution::ReadOnly {
+            reason: "No text to edit.".into(),
+        };
+    };
+    let matches: Vec<&TextOccurrence> = text_occ.iter().filter(|o| o.norm == want).collect();
+    if matches.is_empty() {
+        return TextResolution::ReadOnly {
+            reason:
+                "This text isn't a static string in source (dynamic or generated) — not editable."
+                    .into(),
+        };
+    }
+    if distinct_text_locs(&matches) == 1 {
+        return resolved_text(matches[0], "text");
+    }
+
+    // Narrow by tag (soft — only if it leaves candidates).
+    let tag_filtered: Vec<&TextOccurrence> = matches
+        .iter()
+        .copied()
+        .filter(|o| o.tag == sig.tag_name)
+        .collect();
+    let pool = if tag_filtered.is_empty() {
+        matches.clone()
+    } else {
+        tag_filtered
+    };
+    if distinct_text_locs(&pool) == 1 {
+        return resolved_text(pool[0], "tag");
+    }
+
+    // Anchor to the file of a unique-in-source ancestor class.
+    for anc in &sig.ancestor_classes {
+        let anc_occ: Vec<&Occurrence> = class_occ.iter().filter(|o| &o.class_name == anc).collect();
+        if anc_occ.len() == 1 {
+            let file = &anc_occ[0].file;
+            let in_file: Vec<&TextOccurrence> =
+                pool.iter().copied().filter(|o| &o.file == file).collect();
+            if distinct_text_locs(&in_file) == 1 {
+                return resolved_text(in_file[0], "ancestor");
+            }
+            break;
+        }
+    }
+
+    TextResolution::ReadOnly {
+        reason: "This text appears in several places — select a more specific element.".into(),
+    }
+}
+
+/// Resolve a clicked element to its editable text source. Strategy 1: anchor on a
+/// unique class and read the text inside that tag (most reliable). Strategy 2: when
+/// there's no unique class (classless element, repeated class, or non-literal text),
+/// search source for the element's text content.
 #[tauri::command]
 #[tracing::instrument(skip(signature), fields(project = %project_path, tag = %signature.tag_name))]
 pub fn resolve_text_source(
@@ -699,55 +933,65 @@ pub fn resolve_text_source(
 ) -> Result<TextResolution, CommandError> {
     let root = validate_project_path(&project_path)?;
     let occurrences = index_occurrences_cached(&root);
-    match resolve(occurrences.as_slice(), &signature) {
-        Resolution::Resolved {
-            file,
-            line,
-            class_name,
-            confidence,
-            ..
-        } => {
-            let abs = root.join(&file);
-            let Ok(src) = std::fs::read_to_string(&abs) else {
-                return Ok(TextResolution::ReadOnly {
-                    reason: "Could not read the source file.".into(),
-                });
-            };
-            // Re-find the className span we resolved to, then read the text after its tag.
-            let span = find_attr_spans(&src, attrs_for_path(&file))
+
+    // Strategy 1: class-anchored.
+    if let Resolution::Resolved {
+        file,
+        line,
+        class_name,
+        confidence,
+        ..
+    } = resolve(occurrences.as_slice(), &signature)
+    {
+        if let Ok(src) = std::fs::read_to_string(root.join(&file)) {
+            if let Some(span) = find_attr_spans(&src, attrs_for_path(&file))
                 .into_iter()
-                .find(|s| s.line == line && s.value == class_name);
-            let Some(span) = span else {
-                return Ok(TextResolution::ReadOnly {
-                    reason: "Source changed — reselect the element.".into(),
-                });
-            };
-            // value_end points at the closing quote; scan from just after it.
-            match text_run_in_tag(&src, span.value_end + 1) {
-                Some(ts) => Ok(TextResolution::Resolved {
-                    file,
-                    line: ts.line,
-                    column: ts.column,
-                    text: ts.value,
-                    confidence,
-                }),
-                None => Ok(TextResolution::ReadOnly {
-                    reason: "This text isn't a plain string in source (dynamic, empty, or wraps nested elements)."
-                        .into(),
-                }),
+                .find(|s| s.line == line && s.value == class_name)
+            {
+                if let Some(ts) = text_run_in_tag(&src, span.value_end + 1) {
+                    return Ok(TextResolution::Resolved {
+                        file,
+                        line: ts.line,
+                        column: ts.column,
+                        text: ts.value,
+                        confidence,
+                    });
+                }
             }
         }
-        Resolution::Multi { .. } => Ok(TextResolution::ReadOnly {
-            reason: "This element appears in several places — text editing needs a single, unique element.".into(),
-        }),
-        Resolution::ReadOnly { reason } => Ok(TextResolution::ReadOnly { reason }),
     }
+
+    // Strategy 2: content search.
+    let text_idx = index_text_cached(&root);
+    Ok(resolve_text_by_content(
+        occurrences.as_slice(),
+        text_idx.as_slice(),
+        &signature,
+    ))
+}
+
+/// True if `s` contains markup that would break JSX/Astro text: a `{` expression, or
+/// any `<` tag other than `<br>` (which we allow for multi-line text).
+fn has_illegal_markup(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'{' => return true,
+            b'<' => match br_tag_end(s, i) {
+                Some(end) => i = end,
+                None => return true,
+            },
+            _ => i += 1,
+        }
+    }
+    false
 }
 
 /// Surgically replace one static text run's value, after verifying the current text
 /// still equals `old_text` (drift guard). Only the trimmed run is touched —
 /// surrounding whitespace and the rest of the file are preserved byte-for-byte.
-/// Rejects `<`/`{` in the replacement: both break JSX/Astro markup.
+/// Allows plain text and `<br>` line breaks; rejects other markup.
 #[tauri::command]
 #[tracing::instrument(fields(project = %project_path, file = %file, line = line))]
 pub fn apply_text_edit(
@@ -757,10 +1001,10 @@ pub fn apply_text_edit(
     old_text: String,
     new_text: String,
 ) -> Result<(), CommandError> {
-    if new_text.contains('<') || new_text.contains('{') {
+    if has_illegal_markup(&new_text) {
         return Err(CommandError::Validation {
             field: "new_text".into(),
-            reason: "Text can't contain '<' or '{' — those break the markup.".into(),
+            reason: "Text can only contain plain text and <br> line breaks.".into(),
         });
     }
     let root = validate_project_path(&project_path)?;
@@ -1598,6 +1842,110 @@ const items = [];
         let about = spans.iter().find(|s| s.value == "About").unwrap();
         assert_eq!(home.line, 1);
         assert_eq!(about.line, 2);
+    }
+
+    #[test]
+    fn text_run_keeps_br_line_breaks() {
+        // A multi-line heading with <br /> is editable; the br is part of the value.
+        let src = "<h1 className=\"hero\">Elite AI Performance.<br />Powered By Trase.</h1>";
+        let ts = text_after_class(src).unwrap();
+        assert_eq!(ts.value, "Elite AI Performance.<br />Powered By Trase.");
+        // …but a real nested element is still mixed content.
+        assert!(text_after_class("<h1 className=\"a\">Hi <em>there</em></h1>").is_none());
+        // <break> must not be mistaken for <br>.
+        assert!(text_after_class("<h1 className=\"a\">x<break>y</h1>").is_none());
+    }
+
+    #[test]
+    fn normalize_text_collapses_br_case_and_whitespace() {
+        // innerText (rendered, uppercased, br→newline) normalizes to match the source.
+        assert_eq!(
+            normalize_text("Trusted Where Failure Is\nNot An Option."),
+            normalize_text("Trusted Where Failure Is<br />Not An Option.")
+        );
+        assert_eq!(
+            normalize_text("KEY INDUSTRIES"),
+            normalize_text("Key Industries")
+        );
+        assert_eq!(normalize_text("  a   b "), "a b");
+    }
+
+    fn toc(value: &str, file: &str, line: usize, tag: &str) -> TextOccurrence {
+        TextOccurrence {
+            value: value.into(),
+            norm: normalize_text(value),
+            file: file.into(),
+            line,
+            column: 1,
+            tag: tag.into(),
+        }
+    }
+
+    #[test]
+    fn content_search_resolves_unique_classless_text() {
+        let texts = vec![toc("Health systems.", "index.astro", 5, "p")];
+        let sig = ElementSignature {
+            class_name: String::new(),
+            tag_name: "p".into(),
+            text: Some("Health systems.".into()),
+            ancestor_classes: vec![],
+        };
+        match resolve_text_by_content(&[], &texts, &sig) {
+            TextResolution::Resolved { line, text, .. } => {
+                assert_eq!(line, 5);
+                assert_eq!(text, "Health systems.");
+            }
+            other => panic!("expected Resolved, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn content_search_disambiguates_repeated_class_by_text() {
+        // Two <span class="tag"> with different copy — resolved by unique text.
+        let texts = vec![
+            toc("Key Industries", "index.astro", 10, "span"),
+            toc("Our Platform", "index.astro", 20, "span"),
+        ];
+        let sig = ElementSignature {
+            class_name: "tag".into(),
+            tag_name: "span".into(),
+            text: Some("KEY INDUSTRIES".into()), // CSS-uppercased innerText
+            ancestor_classes: vec![],
+        };
+        match resolve_text_by_content(&[], &texts, &sig) {
+            TextResolution::Resolved { line, text, .. } => {
+                assert_eq!(line, 10);
+                assert_eq!(text, "Key Industries");
+            }
+            other => panic!("expected Resolved, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn content_search_ambiguous_is_read_only() {
+        let texts = vec![
+            toc("Read more", "a.tsx", 1, "a"),
+            toc("Read more", "b.tsx", 1, "a"),
+        ];
+        let sig = ElementSignature {
+            class_name: String::new(),
+            tag_name: "a".into(),
+            text: Some("Read more".into()),
+            ancestor_classes: vec![],
+        };
+        assert!(matches!(
+            resolve_text_by_content(&[], &texts, &sig),
+            TextResolution::ReadOnly { .. }
+        ));
+    }
+
+    #[test]
+    fn illegal_markup_allows_br_only() {
+        assert!(!has_illegal_markup("Plain text"));
+        assert!(!has_illegal_markup("Line one<br />Line two"));
+        assert!(!has_illegal_markup("a<br>b<br/>c"));
+        assert!(has_illegal_markup("Has <strong>tag</strong>"));
+        assert!(has_illegal_markup("Has {expr}"));
     }
 
     use std::collections::BTreeMap;

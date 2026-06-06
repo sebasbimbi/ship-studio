@@ -41,7 +41,6 @@ function renderPanel(
     <VisualEditorPanel
       selection={selection}
       currentClass={currentClass}
-      textResolution={null}
       breakpoints={BREAKPOINTS}
       activeBreakpoint={activeBreakpoint}
       breakpointTooWide={breakpointTooWide}
@@ -244,7 +243,6 @@ describe('VisualEditorPanel', () => {
       <VisualEditorPanel
         selection={resolvedSelection}
         currentClass="p-3"
-        textResolution={null}
         breakpoints={BREAKPOINTS}
         activeBreakpoint={BASE_BREAKPOINT}
         breakpointTooWide={false}
@@ -278,7 +276,6 @@ describe('VisualEditorPanel', () => {
       <VisualEditorPanel
         selection={resolvedSelection}
         currentClass="p-3"
-        textResolution={null}
         breakpoints={BREAKPOINTS}
         activeBreakpoint={BASE_BREAKPOINT}
         breakpointTooWide={false}
@@ -326,7 +323,6 @@ describe('VisualEditorPanel', () => {
         {...mk()}
         selection={resolvedSelection}
         currentClass="p-3"
-        textResolution={null}
         onOpenInCode={onOpenInCode}
       />
     );
@@ -349,7 +345,6 @@ describe('VisualEditorPanel', () => {
         {...mk()}
         selection={resolvedSelection}
         currentClass="p-3"
-        textResolution={null}
         usage={usage}
         onOpenInCode={onOpenInCode}
       />
@@ -371,7 +366,6 @@ describe('VisualEditorPanel', () => {
       <VisualEditorPanel
         selection={multiSelection}
         currentClass="flex p-4"
-        textResolution={null}
         breakpoints={BREAKPOINTS}
         activeBreakpoint={BASE_BREAKPOINT}
         breakpointTooWide={false}
