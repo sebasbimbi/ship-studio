@@ -380,6 +380,42 @@
   color: var(--text-secondary);
   font-weight: 600;
 }
+/* Small Slack link at the foot of the beta note. */
+.ss-edit-panel__slack {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: var(--spacing-sm);
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.ss-edit-panel__slack:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+/* Hand-off block for text that's rendered from code/data (can't be edited inline). */
+.ss-edit-panel__dynhelp {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+}
+.ss-edit-panel__dynhelp p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
 
 /* Set-vs-inherited indicator: a filled dot when the value is set on the active
    breakpoint, a hollow ring when inherited from a smaller one. */

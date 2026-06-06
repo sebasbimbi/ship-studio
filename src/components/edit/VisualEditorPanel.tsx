@@ -14,11 +14,13 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { Button } from '../primitives/Button';
 import { EnumDropdown } from './EnumDropdown';
 import { MultiSourceControl } from './MultiSourceControl';
 import { UsageScope } from './UsageScope';
 import { CodeIcon } from './CodeIcon';
+import { SlackIcon } from '../icons/brand';
 import { PropSection } from './PropSection';
 import { PropControlRenderer, type ControlRenderCtx } from './PropControlRenderer';
 import { CONTROL_SECTIONS } from '../../lib/editControls';
@@ -30,8 +32,32 @@ import type {
   LayerContext,
   SpacingValue,
   ResetSpec,
+  ElementSignature,
+  Resolution,
+  TextResolution,
 } from '../../lib/edit';
+import { useCopyToClipboard } from '../../hooks/useCopyToClipboard';
 import type { Selection } from '../../hooks/useVisualEditor';
+
+const SLACK_INVITE_URL =
+  'https://join.slack.com/t/shipstudiocommunity/shared_invite/zt-3ommmu2w4-jtYZzzc9T~9lsEeKQ4E2AQ';
+
+/** Build a ready-to-paste request for the coding agent to change text that's rendered
+ *  from code/data (so it can't be edited inline). The user pastes it into the terminal
+ *  and fills in the new wording. */
+function buildAgentRequest(sig: ElementSignature, resolution: Resolution | null): string {
+  const cls = sig.className ? ` (classes: "${sig.className}")` : '';
+  const loc =
+    resolution?.status === 'resolved' ? `\nNear: ${resolution.file}:${resolution.line}` : '';
+  const text = (sig.text || '').trim();
+  return (
+    `The text below is rendered from code or data in my project (not a static string in the markup), ` +
+    `so I can't edit it directly. Find where it's produced in the source and change it.\n\n` +
+    `Element: <${sig.tagName}>${cls}${loc}\n\n` +
+    `Current text:\n"${text}"\n\n` +
+    `Replace it with:\n<your new text here>`
+  );
+}
 
 /** Save-status badge — the SAME box whether saving or saved, so the footer never
  *  shifts height between the two (auto-save) states. */
@@ -137,6 +163,35 @@ function EditorIntro() {
   );
 }
 
+/** Shown when a clicked text element is rendered from code/data and can't be edited
+ *  inline: hands the change off to the coding agent via a one-click copy-able request. */
+function DynamicTextHelp({
+  signature,
+  resolution,
+}: {
+  signature: ElementSignature;
+  resolution: Resolution | null;
+}) {
+  const { copy, isCopied } = useCopyToClipboard();
+  return (
+    <div className="ss-edit-panel__dynhelp">
+      <p>
+        This text is rendered from code or data, so it can’t be edited here. Copy the request below,
+        paste it into your agent in the terminal, type your new wording where it says so, and the
+        agent will make the change.
+      </p>
+      <Button
+        variant="secondary"
+        size="sm"
+        block
+        onClick={() => void copy(buildAgentRequest(signature, resolution))}
+      >
+        {isCopied ? 'Copied — paste it to your agent' : 'Copy request for your agent'}
+      </Button>
+    </div>
+  );
+}
+
 /** Subtle info dot shown by the source line when the element is styled by a custom
  *  CSS class — its tooltip explains that edits use `!important` to win the cascade. */
 function CustomCssHint() {
@@ -169,6 +224,9 @@ interface Props {
   selection: Selection | null;
   /** The class string currently applied live (what "Save" will persist). */
   currentClass: string;
+  /** Text-editability of the selection. When read-only (dynamic text), the panel
+   *  offers a copy-able request to hand the edit to the coding agent. */
+  textResolution?: TextResolution | null;
   /** All breakpoints (Base + detected), ascending by min-width. */
   breakpoints: Breakpoint[];
   /** The breakpoint layer currently being edited (derived from the canvas width). */
@@ -213,6 +271,7 @@ function initialPos() {
 export function VisualEditorPanel({
   selection,
   currentClass,
+  textResolution,
   breakpoints,
   activeBreakpoint,
   breakpointTooWide,
@@ -364,7 +423,11 @@ export function VisualEditorPanel({
 
         {!selection && <EditorIntro />}
 
-        {resolution?.status === 'read_only' && (
+        {textResolution?.status === 'read_only' && selection && (
+          <DynamicTextHelp signature={selection.signature} resolution={resolution} />
+        )}
+
+        {resolution?.status === 'read_only' && textResolution?.status !== 'read_only' && (
           <p className="ss-edit-panel__readonly">{resolution.reason}</p>
         )}
 
@@ -436,12 +499,18 @@ export function VisualEditorPanel({
         )}
 
         <p className="ss-edit-panel__beta">
-          <strong>
-            Visual editor is in beta. Style editing works best with Next.js; text editing works the
-            same on Next.js and Astro.
-          </strong>{' '}
-          Hit a bug or have feedback? We'd genuinely appreciate hearing about it.
+          <strong>Visual editor is in beta.</strong> Hit a bug or have feedback? We'd genuinely
+          appreciate hearing about it.
         </p>
+        <button
+          type="button"
+          className="ss-edit-panel__slack"
+          onClick={() => void openUrl(SLACK_INVITE_URL)}
+          title="Join the Ship Studio community on Slack"
+        >
+          <SlackIcon size={12} />
+          Join the Slack
+        </button>
       </div>
 
       {controlsVisible && (
