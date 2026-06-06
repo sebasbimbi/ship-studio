@@ -157,6 +157,9 @@ export function useVisualEditor({
   // the ss:textCommit handler reads the latest without re-subscribing. `text` is the
   // source baseline used as the drift guard on write-back.
   const [textResolution, setTextResolution] = useState<TextResolution | null>(null);
+  // Bumps each time a double-click lands on dynamic text the iframe bounced out of
+  // — drives a one-shot pulse on the DynamicTextHelp hand-off so the user notices it.
+  const [textBlockedNonce, setTextBlockedNonce] = useState(0);
   const textTargetRef = useRef<{ file: string; line: number; column: number; text: string } | null>(
     null
   );
@@ -206,6 +209,7 @@ export function useVisualEditor({
       // out of the optimistic edit. No toast: the panel shows the "copy a request for
       // your agent" hand-off (DynamicTextHelp) for the still-selected element.
       if (d.type === 'ss:textBlocked') {
+        setTextBlockedNonce((n) => n + 1);
         return;
       }
 
@@ -483,6 +487,8 @@ export function useVisualEditor({
     usage,
     /** Text-editability of the current selection (drives the panel's hint). */
     textResolution,
+    /** Bumps when a double-click hits dynamic text — pulses the hand-off block. */
+    textBlockedNonce,
     multiTarget,
     setMultiTarget,
     autoSave,

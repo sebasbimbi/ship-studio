@@ -384,9 +384,10 @@
 .ss-edit-panel__slack {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 5px;
-  margin-top: var(--spacing-sm);
-  padding: 4px 9px;
+  margin-top: var(--spacing-xs);
+  padding: 8px 9px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-tertiary);
@@ -415,6 +416,25 @@
   font-size: 11px;
   line-height: 1.5;
   color: var(--text-secondary);
+}
+/* One-shot pulse when the user double-clicks the dynamic text again — draws the
+   eye to the hand-off after their click "did nothing" on the canvas. */
+.ss-edit-panel__dynhelp--pulse {
+  animation: ss-dynhelp-pulse 0.6s ease;
+}
+@keyframes ss-dynhelp-pulse {
+  0% {
+    box-shadow: 0 0 0 0 transparent;
+    background: var(--bg-tertiary);
+  }
+  30% {
+    box-shadow: 0 0 0 2px var(--accent);
+    background: var(--bg-secondary);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+    background: var(--bg-tertiary);
+  }
 }
 
 /* Set-vs-inherited indicator: a filled dot when the value is set on the active

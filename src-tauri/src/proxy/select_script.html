@@ -1,6 +1,10 @@
 <script>(function(){
 if(window.__ssSelectInit)return;window.__ssSelectInit=true;
-var active=false,hoverBox=null,selBoxes=[],selectedSet=[];
+var active=false,hoverBox=null,selBoxes=[],selectedSet=[],selPrimary=null;
+/* Box colors: the element the user actually clicked (selPrimary) gets the blue
+   "you're editing this" outline; its same-source siblings — which a source edit will
+   ALSO change — get the orange "also affected" outline, so the two are distinguishable. */
+var SEL_PRIMARY_COLOR='rgba(96,165,250,.95)',SEL_SIBLING_COLOR='rgba(217,119,87,.95)';
 /* The class each currently-selected element had BEFORE any live mutation, so we can
    revert an unsaved preview when the user deselects. Without this, re-selecting reads
    the mutated class (not a source literal) and the element wrongly reports as "not
@@ -33,10 +37,10 @@ var txtEditing=false,txtEl=null,txtRealEl=null,txtOrig='',txtOrigHtml='',txtPrev
 var SS_TEXT_CAP=2000;
 function mk(c){var d=document.createElement('div');d.style.cssText='position:fixed;pointer-events:none;z-index:2147483646;border:2px solid '+c+';box-sizing:border-box;border-radius:2px';d.setAttribute('data-ss-overlay','1');document.body.appendChild(d);return d;}
 function ensureHover(){if(!hoverBox)hoverBox=mk('rgba(96,165,250,.8)');}
-function ensureSel(n){while(selBoxes.length<n)selBoxes.push(mk('rgba(217,119,87,.95)'));}
+function ensureSel(n){while(selBoxes.length<n)selBoxes.push(mk(SEL_SIBLING_COLOR));}
 function editable(el){while(el&&el!==document.body){if(el.nodeType===1){var c=el.getAttribute&&el.getAttribute('class');if(c&&c.trim())return el;}el=el.parentElement;}return null;}
 function place(box,el){if(!box)return;if(!el){box.style.display='none';return;}var r=el.getBoundingClientRect();box.style.display='block';box.style.top=r.top+'px';box.style.left=r.left+'px';box.style.width=r.width+'px';box.style.height=r.height+'px';}
-function placeSet(){ensureSel(selectedSet.length);for(var i=0;i<selBoxes.length;i++)place(selBoxes[i],selectedSet[i]||null);}
+function placeSet(){ensureSel(selectedSet.length);for(var i=0;i<selBoxes.length;i++){var el=selectedSet[i]||null;place(selBoxes[i],el);if(el)selBoxes[i].style.borderColor=(el===selPrimary?SEL_PRIMARY_COLOR:SEL_SIBLING_COLOR);}}
 /* All elements whose class attribute is identical to the clicked element's — these
    render from the same source literal (e.g. a .map), so a source edit changes all. */
 function matching(el){var c=el.getAttribute('class');if(!c||!c.trim())return [el];var out=[],all=document.querySelectorAll('[class]');for(var i=0;i<all.length;i++){if(all[i].getAttribute('class')===c)out.push(all[i]);}return out;}
@@ -55,7 +59,7 @@ function buildCss(mark){var byMin=pvDecls[mark];if(!byMin)return '';var mins=[];
 function rebuildSheet(){var css='';for(var k in pvDecls)css+=buildCss(k);ensureStyle().textContent=css;}
 /* Discard the current selection's UNCOMMITTED preview (revert class, drop its decls +
    marker). A committed selection is kept as-is — only the live pointer is released. */
-function restoreSel(){if(curMark!==null&&pendingMark===curMark){delete pvDecls[curMark];rebuildSheet();for(var i=0;i<selectedSet.length;i++){var el=selectedSet[i];if(!el)continue;if(origClasses[i]!=null)el.setAttribute('class',origClasses[i]);el.removeAttribute('data-ss-sel');}}curMark=null;pendingMark=null;selectedSet=[];origClasses=[];}
+function restoreSel(){if(curMark!==null&&pendingMark===curMark){delete pvDecls[curMark];rebuildSheet();for(var i=0;i<selectedSet.length;i++){var el=selectedSet[i];if(!el)continue;if(origClasses[i]!=null)el.setAttribute('class',origClasses[i]);el.removeAttribute('data-ss-sel');}}curMark=null;pendingMark=null;selectedSet=[];selPrimary=null;origClasses=[];}
 function snapshotOrig(){origClasses=[];for(var i=0;i<selectedSet.length;i++)origClasses.push(selectedSet[i]?selectedSet[i].getAttribute('class'):null);}
 /* The inline elements allowed inside editable text: <br> plus the formatting tags
    the rich-text bubble can apply. Must mirror INLINE_TAGS in edit.rs. */
@@ -271,7 +275,7 @@ function updateFmtBar(){
 }
 function onDbl(e){if(!active||txtEditing)return;var el=textTarget(e.target);if(!el||!txtEditable)return;e.preventDefault();e.stopPropagation();startText(el,e.clientX,e.clientY);}
 function onMove(e){if(!active||txtEditing)return;ensureHover();var t=pickTarget(e.target);if(t&&selectedSet.indexOf(t)!==-1)t=null;place(hoverBox,t);}
-function onClick(e){if(!active||txtEditing)return;var el=pickTarget(e.target);if(!el)return;e.preventDefault();e.stopPropagation();restoreSel();selectedSet=matching(el);curMark=String(++pvId);for(var i=0;i<selectedSet.length;i++)selectedSet[i].setAttribute('data-ss-sel',curMark);snapshotOrig();placeSet();place(hoverBox,null);txtEditable=true;window.parent.postMessage({type:'ss:select',signature:sig(el),count:selectedSet.length,leafText:isEditableText(el)},'*');}
+function onClick(e){if(!active||txtEditing)return;var el=pickTarget(e.target);if(!el)return;e.preventDefault();e.stopPropagation();restoreSel();selectedSet=matching(el);selPrimary=el;curMark=String(++pvId);for(var i=0;i<selectedSet.length;i++)selectedSet[i].setAttribute('data-ss-sel',curMark);snapshotOrig();placeSet();place(hoverBox,null);txtEditable=true;window.parent.postMessage({type:'ss:select',signature:sig(el),count:selectedSet.length,leafText:isEditableText(el)},'*');}
 function reposition(){if(txtEditing)place(hoverBox,txtEl);else if(active)placeSet();}
 window.addEventListener('message',function(e){var d=e.data||{};
 if(d.type==='ss:activate'){active=true;ensureHover();var de=document.documentElement;de.style.cursor='crosshair';de.style.userSelect='none';de.style.webkitUserSelect='none';}

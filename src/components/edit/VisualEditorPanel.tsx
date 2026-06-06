@@ -9,6 +9,7 @@
 
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -54,8 +55,7 @@ function buildAgentRequest(sig: ElementSignature, resolution: Resolution | null)
     `The text below is rendered from code or data in my project (not a static string in the markup), ` +
     `so I can't edit it directly. Find where it's produced in the source and change it.\n\n` +
     `Element: <${sig.tagName}>${cls}${loc}\n\n` +
-    `Current text:\n"${text}"\n\n` +
-    `Replace it with:\n<your new text here>`
+    `Current text:\n"${text}"`
   );
 }
 
@@ -168,17 +168,29 @@ function EditorIntro() {
 function DynamicTextHelp({
   signature,
   resolution,
+  pulseKey,
 }: {
   signature: ElementSignature;
   resolution: Resolution | null;
+  /** Bumps when the user double-clicks this dynamic text again — restarts the pulse. */
+  pulseKey?: number;
 }) {
   const { copy, isCopied } = useCopyToClipboard();
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!pulseKey) return;
+    const el = ref.current;
+    if (!el) return;
+    const cls = 'ss-edit-panel__dynhelp--pulse';
+    el.classList.remove(cls);
+    void el.offsetWidth; // restart the animation even if it's already mid-pulse
+    el.classList.add(cls);
+  }, [pulseKey]);
   return (
-    <div className="ss-edit-panel__dynhelp">
+    <div ref={ref} className="ss-edit-panel__dynhelp">
       <p>
-        This text is rendered from code or data, so it can’t be edited here. Copy the request below,
-        paste it into your agent in the terminal, type your new wording where it says so, and the
-        agent will make the change.
+        This text comes from code or data — it can’t be edited here. Copy the request below, paste
+        it into your agent, and tell it the new wording.
       </p>
       <Button
         variant="secondary"
@@ -227,6 +239,9 @@ interface Props {
   /** Text-editability of the selection. When read-only (dynamic text), the panel
    *  offers a copy-able request to hand the edit to the coding agent. */
   textResolution?: TextResolution | null;
+  /** Bumps each time a double-click hits dynamic text — pulses the hand-off block
+   *  so the user's eye is drawn to the panel after their click did nothing. */
+  textBlockedNonce?: number;
   /** All breakpoints (Base + detected), ascending by min-width. */
   breakpoints: Breakpoint[];
   /** The breakpoint layer currently being edited (derived from the canvas width). */
@@ -272,6 +287,7 @@ export function VisualEditorPanel({
   selection,
   currentClass,
   textResolution,
+  textBlockedNonce,
   breakpoints,
   activeBreakpoint,
   breakpointTooWide,
@@ -424,7 +440,11 @@ export function VisualEditorPanel({
         {!selection && <EditorIntro />}
 
         {textResolution?.status === 'read_only' && selection && (
-          <DynamicTextHelp signature={selection.signature} resolution={resolution} />
+          <DynamicTextHelp
+            signature={selection.signature}
+            resolution={resolution}
+            pulseKey={textBlockedNonce}
+          />
         )}
 
         {resolution?.status === 'read_only' && textResolution?.status !== 'read_only' && (

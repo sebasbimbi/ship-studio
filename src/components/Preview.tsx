@@ -897,6 +897,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
             selection={editor.selection}
             currentClass={editor.currentClass}
             textResolution={editor.textResolution}
+            textBlockedNonce={editor.textBlockedNonce}
             breakpoints={breakpoints}
             activeBreakpoint={activeBreakpoint}
             breakpointTooWide={breakpointTooWide}
