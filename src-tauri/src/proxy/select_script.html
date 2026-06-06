@@ -113,6 +113,7 @@ function finalizePending(){
   if(p.debounce)clearTimeout(p.debounce);
   if(p.clone&&p.clone.parentNode)p.clone.parentNode.removeChild(p.clone);
   if(p.real)p.real.style.cssText=p.prevCss;
+  placeSet(); // re-snap the selection box to the now-restored real element
 }
 function startText(el,x,y){
   if(txtEditing||!el)return;
@@ -189,7 +190,10 @@ function endText(commit){
     if(changed){txtRevertEl=target;txtRevertHtml=origHtml;window.parent.postMessage({type:'ss:textCommit',text:nv},'*');}
     else{target.innerHTML=origHtml;window.parent.postMessage({type:'ss:textCancel'},'*');}
   }
-  place(hoverBox,null);placeSet(); // hide blue editing box, restore orange selection box
+  place(hoverBox,null); // hide the blue editing box
+  // While a React swap is pending the real element is hidden — keep the orange box
+  // hidden too (its rect would be bogus) until finalizePending re-snaps it.
+  if(txtPending){for(var bi=0;bi<selBoxes.length;bi++)place(selBoxes[bi],null);}else{placeSet();}
 }
 /* ── Rich-text bubble (bold / italic / link), shown over a non-empty selection.
    Two views: the formatting buttons, and a link-input view for the href. ── */
@@ -257,7 +261,7 @@ function updateFmtBar(){
 }
 function onDbl(e){if(!active||txtEditing)return;var el=textTarget(e.target);if(!el||!txtEditable)return;e.preventDefault();e.stopPropagation();startText(el,e.clientX,e.clientY);}
 function onMove(e){if(!active||txtEditing)return;ensureHover();var t=pickTarget(e.target);if(t&&selectedSet.indexOf(t)!==-1)t=null;place(hoverBox,t);}
-function onClick(e){if(!active||txtEditing)return;finalizePending();var el=pickTarget(e.target);if(!el)return;e.preventDefault();e.stopPropagation();restoreSel();selectedSet=matching(el);curMark=String(++pvId);for(var i=0;i<selectedSet.length;i++)selectedSet[i].setAttribute('data-ss-sel',curMark);snapshotOrig();placeSet();place(hoverBox,null);txtEditable=true;window.parent.postMessage({type:'ss:select',signature:sig(el),count:selectedSet.length,leafText:isEditableText(el)},'*');}
+function onClick(e){if(!active||txtEditing)return;var el=pickTarget(e.target);if(!el)return;e.preventDefault();e.stopPropagation();restoreSel();selectedSet=matching(el);curMark=String(++pvId);for(var i=0;i<selectedSet.length;i++)selectedSet[i].setAttribute('data-ss-sel',curMark);snapshotOrig();placeSet();place(hoverBox,null);txtEditable=true;window.parent.postMessage({type:'ss:select',signature:sig(el),count:selectedSet.length,leafText:isEditableText(el)},'*');}
 function reposition(){if(txtEditing)place(hoverBox,txtEl);else if(active)placeSet();}
 window.addEventListener('message',function(e){var d=e.data||{};
 if(d.type==='ss:activate'){active=true;ensureHover();var de=document.documentElement;de.style.cursor='crosshair';de.style.userSelect='none';de.style.webkitUserSelect='none';}
