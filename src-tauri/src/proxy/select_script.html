@@ -122,29 +122,59 @@ function endText(commit){
   else{el.innerHTML=origHtml;window.parent.postMessage({type:'ss:textCancel'},'*');}
   place(hoverBox,null);placeSet(); // hide blue editing box, restore orange selection box
 }
-/* ── Rich-text bubble (bold / italic / link), shown over a non-empty selection ── */
-var fmtBar=null;
+/* ── Rich-text bubble (bold / italic / link), shown over a non-empty selection.
+   Two views: the formatting buttons, and a link-input view for the href. ── */
+var fmtBar=null,fmtMain=null,fmtLink=null,fmtInput=null,fmtLinkMode=false,savedRange=null;
+var LINK_SVG='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
+function mkFmtBtn(cmd,html,extra){var b=document.createElement('button');b.setAttribute('data-cmd',cmd);b.innerHTML=html;b.style.cssText='all:unset;cursor:pointer;min-width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:5px;color:#e7e7ea;font-size:13px;'+(extra||'');b.onmouseenter=function(){this.style.background='rgba(255,255,255,.12)';};b.onmouseleave=function(){this.style.background='';};return b;}
 function ensureFmtBar(){
   if(fmtBar)return fmtBar;
   fmtBar=document.createElement('div');fmtBar.setAttribute('data-ss-overlay','1');
-  fmtBar.style.cssText='position:fixed;z-index:2147483647;display:none;align-items:center;gap:2px;padding:4px;background:#1c1c1f;border:1px solid rgba(255,255,255,.12);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.45);pointer-events:auto;font-family:-apple-system,system-ui,sans-serif';
-  var defs=[['bold','B','font-weight:700'],['italic','I','font-style:italic'],['link','🔗','']];
-  for(var i=0;i<defs.length;i++){var b=document.createElement('button');b.setAttribute('data-cmd',defs[i][0]);b.textContent=defs[i][1];b.style.cssText='all:unset;cursor:pointer;width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:5px;color:#e7e7ea;font-size:13px;'+defs[i][2];b.onmouseenter=function(){this.style.background='rgba(255,255,255,.1)';};b.onmouseleave=function(){this.style.background='';};fmtBar.appendChild(b);}
-  /* mousedown must not steal focus from the editable (that would blur→commit). */
-  fmtBar.addEventListener('mousedown',function(e){e.preventDefault();e.stopPropagation();},true);
+  fmtBar.style.cssText='position:fixed;z-index:2147483647;display:none;align-items:center;padding:4px;background:#1c1c1f;border:1px solid rgba(255,255,255,.12);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.45);pointer-events:auto;font-family:-apple-system,system-ui,sans-serif';
+  fmtMain=document.createElement('div');fmtMain.style.cssText='display:flex;align-items:center;gap:2px';
+  fmtMain.appendChild(mkFmtBtn('bold','B','font-weight:700'));
+  fmtMain.appendChild(mkFmtBtn('italic','I','font-style:italic'));
+  fmtMain.appendChild(mkFmtBtn('link',LINK_SVG));
+  fmtLink=document.createElement('div');fmtLink.style.cssText='display:none;align-items:center;gap:4px';
+  fmtInput=document.createElement('input');fmtInput.type='text';fmtInput.placeholder='Paste link or /page';
+  fmtInput.style.cssText='all:unset;width:170px;height:24px;padding:0 8px;background:#2a2a2e;border-radius:5px;color:#e7e7ea;font-size:12px;font-family:inherit';
+  fmtLink.appendChild(fmtInput);
+  fmtLink.appendChild(mkFmtBtn('linksave','Apply','font-size:11px;padding:0 9px;background:#3b82f6;color:#fff;font-weight:600'));
+  fmtBar.appendChild(fmtMain);fmtBar.appendChild(fmtLink);
+  /* mousedown must not steal focus from the editable (blur→commit) — except on the
+     link input, which is meant to take focus. */
+  fmtBar.addEventListener('mousedown',function(e){if(e.target!==fmtInput)e.preventDefault();e.stopPropagation();},true);
   fmtBar.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('[data-cmd]');if(b){e.preventDefault();e.stopPropagation();applyFmt(b.getAttribute('data-cmd'));}},true);
+  fmtInput.addEventListener('keydown',function(e){e.stopPropagation();if(e.key==='Enter'){e.preventDefault();applyFmt('linksave');}else if(e.key==='Escape'){e.preventDefault();showFmtMain();if(txtEl)txtEl.focus();}},true);
   document.body.appendChild(fmtBar);return fmtBar;
 }
-function hideFmtBar(){if(fmtBar)fmtBar.style.display='none';}
+function showFmtMain(){fmtLinkMode=false;if(fmtMain)fmtMain.style.display='flex';if(fmtLink)fmtLink.style.display='none';}
+function showFmtLink(){fmtLinkMode=true;if(fmtMain)fmtMain.style.display='none';if(fmtLink)fmtLink.style.display='flex';fmtInput.focus();fmtInput.select();}
+function hideFmtBar(){if(fmtBar)fmtBar.style.display='none';showFmtMain();}
+/* The <a> the current selection sits inside, if any (to prefill/edit its href). */
+function anchorInSelection(){var s=window.getSelection();if(!s||!s.rangeCount)return null;var n=s.getRangeAt(0).commonAncestorContainer;while(n&&n!==txtEl){if(n.nodeType===1&&n.nodeName==='A')return n;n=n.parentNode;}return null;}
 function applyFmt(cmd){
   if(!txtEditing)return;
-  if(cmd==='bold')document.execCommand('bold');
-  else if(cmd==='italic')document.execCommand('italic');
-  else if(cmd==='link'){var url=window.prompt('Link URL');if(url){url=url.trim();if(/^(https?:\/\/|mailto:|tel:|\/|#)/i.test(url))document.execCommand('createLink',false,url);}}
+  if(cmd==='bold'){document.execCommand('bold');}
+  else if(cmd==='italic'){document.execCommand('italic');}
+  else if(cmd==='link'){
+    var s=window.getSelection();if(s&&s.rangeCount)savedRange=s.getRangeAt(0).cloneRange();
+    var a=anchorInSelection();fmtInput.value=a?(a.getAttribute('href')||''):'';
+    ensureFmtBar();showFmtLink();return; // stay open; the input takes over
+  }
+  else if(cmd==='linksave'){
+    var url=fmtInput.value.trim();
+    if(txtEl)txtEl.focus();
+    if(savedRange){var sel=window.getSelection();sel.removeAllRanges();sel.addRange(savedRange);}
+    if(url===''){document.execCommand('unlink');}
+    else if(!/^\s*(javascript|data|vbscript):/i.test(url)){document.execCommand('createLink',false,url);}
+    showFmtMain();
+  }
   if(txtEl)place(hoverBox,txtEl);updateFmtBar();
 }
 function updateFmtBar(){
   if(!txtEditing||!txtEl){hideFmtBar();return;}
+  if(fmtLinkMode)return; // editing the href — keep the bar put, don't react to selection
   var s=window.getSelection();
   if(!s||s.isCollapsed||!s.rangeCount){hideFmtBar();return;}
   var rng=s.getRangeAt(0);
@@ -181,8 +211,11 @@ document.addEventListener('dblclick',onDbl,true);
 document.addEventListener('keydown',function(e){if(!txtEditing)return;
   if(e.key==='Enter'){e.preventDefault();if(e.metaKey||e.ctrlKey){endText(true);}else{if(!document.execCommand('insertLineBreak'))document.execCommand('insertHTML',false,'<br>');place(hoverBox,txtEl);}}
   else if(e.key==='Escape'){e.preventDefault();endText(false);}},true);
-/* Clicking away (blur) commits. */
-document.addEventListener('focusout',function(e){if(txtEditing&&e.target===txtEl)endText(true);},true);
+/* Clicking away commits — but not when focus moves into the format bubble (e.g. the
+   link input) and not while the href is being edited. */
+document.addEventListener('focusout',function(e){if(!txtEditing||e.target!==txtEl)return;if(fmtLinkMode)return;if(e.relatedTarget&&fmtBar&&fmtBar.contains(e.relatedTarget))return;endText(true);},true);
+/* Robust click-away: a mousedown outside both the editable and the bubble commits. */
+document.addEventListener('mousedown',function(e){if(!txtEditing)return;if(txtEl&&txtEl.contains(e.target))return;if(fmtBar&&fmtBar.contains(e.target))return;endText(true);},true);
 /* Block characters that would break JSX/Astro markup before they're typed. */
 document.addEventListener('beforeinput',function(e){if(txtEditing&&e.data&&/[<{]/.test(e.data))e.preventDefault();},true);
 /* Paste as plain text — rich contentEditable would otherwise inject foreign markup. */
