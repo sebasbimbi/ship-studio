@@ -569,6 +569,55 @@ pub async fn android_app_running(
     Ok(!out.trim().is_empty())
 }
 
+/// Which platforms a project can build for — drives the UX platform picker so it
+/// only offers what the project actually targets.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct MobileTargets {
+    pub ios: bool,
+    pub android: bool,
+}
+
+/// Detect a project's mobile build targets from its layout. Bare RN / Flutter keep
+/// `ios/` and `android/` native folders; managed Expo can `prebuild` either on
+/// demand, so it offers both. Non-mobile projects target neither. Pure for testing.
+fn detect_mobile_targets_for(project_path: &std::path::Path) -> MobileTargets {
+    use crate::commands::projects::{detect_project_type, is_expo_project};
+    match detect_project_type(project_path) {
+        crate::types::ProjectType::Flutter | crate::types::ProjectType::Reactnative => {
+            if is_expo_project(project_path) {
+                return MobileTargets {
+                    ios: true,
+                    android: true,
+                };
+            }
+            let ios = project_path.join("ios").is_dir();
+            let android = project_path.join("android").is_dir();
+            // A native project with neither folder yet (freshly cloned) — offer both
+            // rather than nothing; the build will generate the missing platform.
+            if !ios && !android {
+                MobileTargets {
+                    ios: true,
+                    android: true,
+                }
+            } else {
+                MobileTargets { ios, android }
+            }
+        }
+        _ => MobileTargets::default(),
+    }
+}
+
+/// Which platforms a project can build for (iOS / Android). The frontend combines
+/// this with machine capability (Xcode for iOS, the Android SDK for Android) to
+/// decide which platform toggles to show.
+#[tauri::command]
+#[tracing::instrument]
+pub async fn detect_mobile_targets(project_path: String) -> Result<MobileTargets, CommandError> {
+    let project = crate::utils::validate_project_path(&project_path)?;
+    let workspace = crate::utils::resolve_workspace_path(&project);
+    Ok(detect_mobile_targets_for(&workspace))
+}
+
 /// Determine the command that launches the project's app onto a booted
 /// simulator, based on the project type. Reads project files (not pure) and is
 /// unit-tested via `build_launch_command`; the frontend runs the returned
@@ -1161,6 +1210,51 @@ mod tests {
         }"#;
         // Booted beats newer-but-shutdown.
         assert_eq!(choose_default_simulator(json).unwrap().udid, "RUNNING");
+    }
+
+    #[test]
+    fn detect_mobile_targets_by_layout_and_framework() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        // Expo (managed) → both, regardless of native folders.
+        let expo = TempDir::new().unwrap();
+        fs::write(
+            expo.path().join("package.json"),
+            r#"{"dependencies":{"expo":"51"}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            detect_mobile_targets_for(expo.path()),
+            MobileTargets {
+                ios: true,
+                android: true
+            }
+        );
+
+        // Bare RN with only an android/ folder → Android only.
+        let rn = TempDir::new().unwrap();
+        fs::write(
+            rn.path().join("package.json"),
+            r#"{"dependencies":{"react-native":"0.75"}}"#,
+        )
+        .unwrap();
+        fs::create_dir(rn.path().join("android")).unwrap();
+        assert_eq!(
+            detect_mobile_targets_for(rn.path()),
+            MobileTargets {
+                ios: false,
+                android: true
+            }
+        );
+
+        // Plain web → neither.
+        let web = TempDir::new().unwrap();
+        fs::write(web.path().join("next.config.js"), "module.exports={}").unwrap();
+        assert_eq!(
+            detect_mobile_targets_for(web.path()),
+            MobileTargets::default()
+        );
     }
 
     #[test]

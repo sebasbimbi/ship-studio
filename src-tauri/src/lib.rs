@@ -498,6 +498,7 @@ pub fn run() {
             commands::mobile::hide_simulator,
             commands::mobile::list_android_devices,
             commands::mobile::android_app_running,
+            commands::mobile::detect_mobile_targets,
             // PTY & Terminal
             commands::pty::spawn_pty,
             commands::pty::kill_pty,
