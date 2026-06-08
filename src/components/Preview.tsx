@@ -33,6 +33,9 @@ import {
 } from '../hooks/usePreviewResize';
 import { useOptionalToast } from '../contexts/ToastContext';
 import { DevServerLogs } from './DevServerLogs';
+import { DevServerStatus } from './DevServerStatus';
+import { stripAnsi } from '../lib/ansi';
+import { trackEvent } from '../lib/analytics';
 import { BrowserTools } from './BrowserTools';
 import { HealthTabPanel, type HealthTabPanelRef } from './HealthTabPanel';
 import { BrowserDropdown } from './BrowserDropdown';
@@ -545,30 +548,39 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     );
   }
 
-  if (conn.isLoading) {
-    return (
-      <div className="preview-loading">
-        <div className="spinner" />
-        <p>{isStaticProject ? 'Starting preview...' : 'Starting dev server...'}</p>
-        <p className="hint">Waiting for localhost:{port}</p>
-        <p className="hint" style={{ marginTop: 8, fontSize: 11 }}>
-          {conn.retryCount > 0 && `Attempt ${conn.retryCount}/${SERVER_MAX_RETRIES}`}
-        </p>
-      </div>
-    );
-  }
+  if (conn.isLoading || conn.isStopped || conn.hasError) {
+    // The agent handoff only makes sense for real dev servers (static projects
+    // have no server log to diagnose) and when a Claude terminal is wired up.
+    const handleFixWithAgent =
+      onSendToClaude && !isStaticProject
+        ? () => {
+            const logs = stripAnsi(devServerOutput).split('\n').slice(-200).join('\n').trim();
+            const prompt =
+              `My dev server isn't coming up — Ship Studio is waiting on ` +
+              `http://localhost:${port} but it never responds.\n\n` +
+              (logs
+                ? `Recent dev-server output:\n\n\`\`\`\n${logs}\n\`\`\`\n\n`
+                : `There's no dev-server output yet.\n\n`) +
+              `Please work out why it won't start — a busy port, a crash, a missing ` +
+              `dependency, or a wrong or missing dev script — and fix it so it serves on ` +
+              `port ${port}.`;
+            onSendToClaude(prompt);
+            void trackEvent('preview_fix_with_agent', { has_logs: !!logs });
+          }
+        : undefined;
 
-  if (conn.hasError) {
     return (
-      <div className="preview-error">
-        <p>{isStaticProject ? 'Could not start preview' : 'Could not connect to dev server'}</p>
-        <p className="hint">
-          {isStaticProject
-            ? 'Make sure the project contains an index.html file'
-            : 'Ask Claude to run: npm run dev'}
-        </p>
-        <button onClick={conn.handleRetry}>Retry</button>
-      </div>
+      <DevServerStatus
+        phase={conn.isStopped ? 'stopped' : conn.hasError ? 'error' : 'loading'}
+        isStaticProject={isStaticProject}
+        port={port}
+        retryCount={conn.retryCount}
+        maxRetries={SERVER_MAX_RETRIES}
+        devServerOutput={devServerOutput}
+        onStop={conn.stopConnecting}
+        onRetry={conn.handleRetry}
+        onFixWithAgent={handleFixWithAgent}
+      />
     );
   }
 

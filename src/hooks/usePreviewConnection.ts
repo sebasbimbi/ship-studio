@@ -54,6 +54,10 @@ export function usePreviewConnection({
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  // User pressed "Stop" on the loading screen — halt the retry loop instead of
+  // grinding through all SERVER_MAX_RETRIES attempts. Mirrored into a ref so the
+  // in-flight checkServer closure can bail before scheduling the next retry.
+  const [isStopped, setIsStopped] = useState(false);
   const [serverReady, setServerReady] = useState(false);
   const [pages, setPages] = useState<PageInfo[]>([]);
   const [currentPage, setCurrentPage] = useState('/');
@@ -74,6 +78,13 @@ export function usePreviewConnection({
 
   const wasRestartingRef = useRef(false);
   const healthCheckFailuresRef = useRef(0);
+  const isStoppedRef = useRef(false);
+  isStoppedRef.current = isStopped;
+  const retryCountRef = useRef(0);
+  retryCountRef.current = retryCount;
+  // The pending "schedule next attempt" timer, tracked so Stop can cancel it
+  // immediately rather than letting one more attempt fire.
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -83,6 +94,7 @@ export function usePreviewConnection({
     setHasError(false);
     setServerReady(false);
     setRetryCount(-1);
+    setIsStopped(false);
     setCurrentPage('/');
     setIframePath('/');
     setPages([]);
@@ -101,6 +113,7 @@ export function usePreviewConnection({
       setIsLoading(true);
       setHasError(false);
       setRetryCount(-1);
+      setIsStopped(false);
       wasRestartingRef.current = true;
     } else if (wasRestartingRef.current) {
       wasRestartingRef.current = false;
@@ -273,6 +286,10 @@ export function usePreviewConnection({
       logger.info('[Preview] Waiting for old server to die (retryCount=-1)');
       return;
     }
+    if (isStopped) {
+      // User halted the loop — don't probe or schedule anything.
+      return;
+    }
     logger.info('[Preview] Starting server check', { retryCount, url: devServerUrl });
 
     const checkServer = async () => {
@@ -299,9 +316,12 @@ export function usePreviewConnection({
           error: errorMsg,
           url: devServerUrl,
         });
+        // The fetch may have resolved after the user hit Stop — don't schedule
+        // another attempt or flip into the error state behind their back.
+        if (isStoppedRef.current) return;
         if (retryCount < SERVER_MAX_RETRIES) {
           const delay = Math.min(1000 * Math.pow(1.5, retryCount), 5000);
-          setTimeout(() => setRetryCount((c) => c + 1), delay);
+          retryTimerRef.current = setTimeout(() => setRetryCount((c) => c + 1), delay);
         } else {
           setIsLoading(false);
           setHasError(true);
@@ -310,8 +330,14 @@ export function usePreviewConnection({
     };
 
     void checkServer();
+    return () => {
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- port is covered by devServerUrl
-  }, [devServerUrl, retryCount]);
+  }, [devServerUrl, retryCount, isStopped]);
 
   // Periodic health check after server is ready
   useEffect(() => {
@@ -402,9 +428,23 @@ export function usePreviewConnection({
 
   const handleRetry = useCallback(() => {
     setHasError(false);
+    setIsStopped(false);
     setIsLoading(true);
     setRetryCount(-1);
     setTimeout(() => setRetryCount(0), 50);
+  }, []);
+
+  // Halt the connect loop immediately — cancel any pending retry and drop out of
+  // the loading state into a "stopped" state with Retry / Fix-with-agent actions.
+  const stopConnecting = useCallback(() => {
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+    setIsStopped(true);
+    setIsLoading(false);
+    setHasError(false);
+    void trackEvent('preview_connect_stopped', { retry_count: retryCountRef.current });
   }, []);
 
   const filteredPages = useMemo(
@@ -418,6 +458,7 @@ export function usePreviewConnection({
     hasError,
     retryCount,
     serverReady,
+    isStopped,
 
     // URL state
     baseUrl,
@@ -442,5 +483,6 @@ export function usePreviewConnection({
     handleRefresh,
     handlePageSelect,
     handleRetry,
+    stopConnecting,
   };
 }

@@ -905,3 +905,76 @@
 .preview-install-icon {
   color: var(--text-muted);
 }
+
+/* Dev-server status screen (loading / stopped / error) — replaces the old
+   black-box spinner with Stop / Retry / Fix-with-agent + inline logs. */
+.preview-status {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xl);
+  background: var(--bg-secondary);
+  text-align: center;
+}
+.preview-status .hint {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: 0;
+  max-width: 420px;
+}
+.preview-status__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: var(--spacing-xs) 0 0;
+}
+.preview-status__icon {
+  color: var(--text-muted);
+}
+.preview-status--error .preview-status__icon {
+  color: var(--warning);
+}
+.preview-status__attempt {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0;
+}
+.preview-status__actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-xs);
+}
+.preview-status__logs {
+  width: min(520px, 90%);
+  margin-top: var(--spacing-sm);
+  text-align: left;
+}
+.preview-status__logs-toggle {
+  all: unset;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 2px 0;
+}
+.preview-status__logs-toggle:hover {
+  color: var(--text-primary);
+}
+.preview-status__logs-body {
+  margin: var(--spacing-xs) 0 0;
+  padding: var(--spacing-sm);
+  max-height: 160px;
+  overflow: auto;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
