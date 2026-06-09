@@ -945,9 +945,27 @@ async fn connect_scrcpy_socket(local_port: u16) -> Option<(tokio::net::TcpStream
     None
 }
 
+/// Removes its scrcpy adb forward when dropped — crucially including when the bridge
+/// supervisor task is aborted mid-pump (teardown), where the explicit cleanup at the
+/// end of `pump_video_scrcpy` would never run and the forward would leak. `Drop`
+/// can't await, so it spawns the (fast, best-effort) removal.
+struct ForwardGuard {
+    serial: String,
+    port: u16,
+}
+
+impl Drop for ForwardGuard {
+    fn drop(&mut self) {
+        let serial = std::mem::take(&mut self.serial);
+        let port = self.port;
+        tokio::spawn(async move { remove_scrcpy_forward(&serial, port).await });
+    }
+}
+
 /// scrcpy low-latency mirror: forward a socket, start the server, and pump its raw
-/// Annex-B H.264 to the WebSocket. On exit the server is killed (kill_on_drop) and
-/// the forward removed. No relaunch loop — scrcpy streams continuously (no 180s cap).
+/// Annex-B H.264 to the WebSocket. The server is killed on drop (`kill_on_drop`) and
+/// the forward removed by `ForwardGuard` on every exit path (including task abort).
+/// No relaunch loop — scrcpy streams continuously (no 180s cap).
 async fn pump_video_scrcpy(serial: String, mut sink: WsSink) {
     use futures_util::SinkExt;
     use tokio::io::AsyncReadExt;
@@ -959,15 +977,18 @@ async fn pump_video_scrcpy(serial: String, mut sink: WsSink) {
         pump_video_screenrecord(serial, sink).await;
         return;
     };
+    // From here, any return (or abort) removes the forward via this guard.
+    let _forward = ForwardGuard {
+        serial: serial.clone(),
+        port: local_port,
+    };
     let Some(mut server) = start_scrcpy_server(&serial, &scid) else {
         tracing::warn!(%serial, "scrcpy: server spawn failed");
-        remove_scrcpy_forward(&serial, local_port).await;
         return;
     };
     let Some((mut stream, first)) = connect_scrcpy_socket(local_port).await else {
         tracing::warn!(%serial, "scrcpy: could not connect the video socket");
         let _ = server.start_kill();
-        remove_scrcpy_forward(&serial, local_port).await;
         return;
     };
 
@@ -989,7 +1010,6 @@ async fn pump_video_scrcpy(serial: String, mut sink: WsSink) {
     }
     let _ = server.start_kill();
     let _ = server.wait().await;
-    remove_scrcpy_forward(&serial, local_port).await;
 }
 
 /// screenrecord fallback mirror: raw H.264 to the WebSocket, relaunched on the 180s
@@ -1648,6 +1668,13 @@ pub async fn start_mobile_preview(
     platform: crate::state::Platform,
     preferred: Option<String>,
 ) -> Result<MirrorInfo, CommandError> {
+    // macOS-only for now: the iOS path needs Xcode/simctl, and the Android path
+    // (adb/emulator/scrcpy) hasn't been validated on Windows. The frontend already
+    // hides the mobile preview off macOS; this is the backend backstop.
+    if !cfg!(target_os = "macos") {
+        return Err("Mobile preview is currently available on macOS only.".into());
+    }
+
     // Android has its own boot + mirror transport (emulator + screenrecord→WS
     // bridge); route to it. iOS continues below with serve-sim.
     if platform == crate::state::Platform::Android {
