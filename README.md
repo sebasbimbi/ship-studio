@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/ship-studio/ship-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/ship-studio/ship-studio/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Download](https://img.shields.io/badge/Download-macOS%20%7C%20Windows-54E36E)](https://github.com/ship-studio/releases/releases/latest)
+[![Download](https://img.shields.io/badge/Download-macOS%20%7C%20Windows-54E36E)](https://www.ship.studio/download)
 
 **The professional studio for modern development.**
 Build it, ship it, host it — without leaving the app.
@@ -21,7 +21,7 @@ lives on your machine, not on our servers.
 
 *Dev tools for the rest of us.*
 
-[**Download for free**](https://github.com/ship-studio/releases/releases/latest) · [Website](https://www.ship.studio/) · [Community Slack](https://join.slack.com/t/shipstudiocommunity/shared_invite/zt-3ommmu2w4-jtYZzzc9T~9lsEeKQ4E2AQ) · [Follow @galluzzo_julian](https://x.com/galluzzo_julian)
+[**Download for free**](https://www.ship.studio/download) · [Website](https://www.ship.studio/) · [Community Slack](https://join.slack.com/t/shipstudiocommunity/shared_invite/zt-3ommmu2w4-jtYZzzc9T~9lsEeKQ4E2AQ) · [Follow @galluzzo_julian](https://x.com/galluzzo_julian)
 
 ---
 
