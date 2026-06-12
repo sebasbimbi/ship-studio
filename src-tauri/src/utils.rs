@@ -366,6 +366,63 @@ pub fn validate_project_path(project_path: &str) -> Result<std::path::PathBuf, S
     ))
 }
 
+/// Validates a path to a *file* that lives inside ~/ShipStudio (or a registered
+/// external project), WITHOUT requiring the file itself to already exist.
+///
+/// Unlike [`validate_project_path`] (which canonicalizes the path and therefore
+/// fails on a not-yet-created target), this canonicalizes the file's *parent*
+/// directory — resolving symlinks and `..` — enforces containment, then rejoins
+/// the final component. Use it for commands that read, create, or overwrite a
+/// specific file by absolute path (e.g. .env files) so they can't be tricked
+/// into touching files outside the sandbox via `..`, symlinks, or an arbitrary
+/// absolute path.
+///
+/// Returns the safe, canonical absolute path the caller should operate on.
+pub fn validate_project_file_path(file_path: &str) -> Result<std::path::PathBuf, String> {
+    let path = std::path::Path::new(file_path);
+
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| format!("Invalid path: '{file_path}' has no file name"))?;
+
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("Invalid path: '{file_path}' has no parent directory"))?;
+
+    // Canonicalize the parent (must exist) — resolves symlinks and `..` so the
+    // containment check below can't be defeated lexically.
+    let canonical_parent = dunce::canonicalize(parent).map_err(|e| format!("Invalid path: {e}"))?;
+
+    let home = dirs::home_dir().ok_or("Could not find home directory")?;
+    let shipstudio_dir = home.join("ShipStudio");
+
+    let allowed = canonical_parent.starts_with(&shipstudio_dir)
+        || crate::commands::external_projects::is_registered_external_path(&canonical_parent)?;
+
+    if !allowed {
+        return Err(format!(
+            "Security error: path '{file_path}' is outside ShipStudio directory"
+        ));
+    }
+
+    let resolved = canonical_parent.join(file_name);
+
+    // Refuse to operate through a symlink at the final component. The parent
+    // check above confines the directory, but `fs::read`/`write`/`remove_file`
+    // follow symlinks — so a malicious repo could plant `proj/.env` as a symlink
+    // to ~/.zshenv and escape the sandbox on the final hop. (Mirrors the guard
+    // in assets.rs::upload_asset.)
+    if let Ok(meta) = std::fs::symlink_metadata(&resolved) {
+        if meta.file_type().is_symlink() {
+            return Err(format!(
+                "Security error: '{file_path}' is a symlink; refusing to follow it"
+            ));
+        }
+    }
+
+    Ok(resolved)
+}
+
 /// Resolve a project path to its "active workspace" directory.
 ///
 /// For single-package projects this is the project root unchanged. For monorepo
@@ -412,16 +469,55 @@ pub fn resolve_workspace_path(project_root: &std::path::Path) -> std::path::Path
         };
         match metadata.workspace_subpath {
             Some(sub) if !sub.is_empty() => {
-                let candidate = project_root.join(&sub);
-                if candidate.exists() {
-                    candidate
-                } else {
+                // The subpath comes from the repo-controlled project.json, so a
+                // malicious repo could set an absolute path or `..` to escape
+                // the project root (this resolved path becomes a dev-server cwd
+                // and asset root). Reject anything that isn't a plain relative
+                // path and fall back to the root.
+                let rel = std::path::Path::new(&sub);
+                let is_safe_relative = rel.components().all(|c| {
+                    matches!(
+                        c,
+                        std::path::Component::Normal(_) | std::path::Component::CurDir
+                    )
+                });
+                if !is_safe_relative {
+                    tracing::warn!(
+                        project = %project_root.display(),
+                        subpath = %sub,
+                        "workspace_subpath is not a safe relative path; falling back to repo root"
+                    );
+                    return project_root.to_path_buf();
+                }
+                let candidate = project_root.join(rel);
+                if !candidate.exists() {
                     tracing::warn!(
                         project = %project_root.display(),
                         subpath = %sub,
                         "workspace_subpath points at a missing directory; falling back to repo root"
                     );
-                    project_root.to_path_buf()
+                    return project_root.to_path_buf();
+                }
+                // The lexical check above blocks `..`, but a relative entry like
+                // `apps/web` could itself be a symlink to /tmp/escape. Canonicalize
+                // both sides and confirm containment before trusting it as the cwd.
+                match (
+                    dunce::canonicalize(&candidate),
+                    dunce::canonicalize(project_root),
+                ) {
+                    (Ok(canon_candidate), Ok(canon_root))
+                        if canon_candidate.starts_with(&canon_root) =>
+                    {
+                        candidate
+                    }
+                    _ => {
+                        tracing::warn!(
+                            project = %project_root.display(),
+                            subpath = %sub,
+                            "workspace_subpath resolves outside the project root; falling back to repo root"
+                        );
+                        project_root.to_path_buf()
+                    }
                 }
             }
             _ => project_root.to_path_buf(),
@@ -783,6 +879,101 @@ mod tests {
             };
             let is_registered = is_registered_external_path(&canonical).unwrap_or(true);
             assert!(!is_registered, "/tmp must not appear registered by default");
+        }
+    }
+
+    /// Security tests for `validate_project_file_path` — the helper that guards
+    /// the .env read/write/delete commands. Unlike `validate_project_path` it
+    /// must accept a not-yet-existing target file while still confining writes
+    /// to ~/ShipStudio.
+    mod validate_project_file_path_tests {
+        use super::*;
+        use std::fs;
+
+        fn shipstudio_root() -> std::path::PathBuf {
+            dirs::home_dir().expect("home dir").join("ShipStudio")
+        }
+
+        #[test]
+        fn rejects_file_outside_shipstudio() {
+            // ~/.zshenv is the canonical RCE target — must be rejected.
+            let home = dirs::home_dir().expect("home dir");
+            let target = home.join(".zshenv-shipstudio-audit-test");
+            let err = validate_project_file_path(&target.to_string_lossy())
+                .expect_err("file in $HOME (outside ShipStudio) must be rejected");
+            assert!(
+                err.contains("Security error") || err.contains("outside ShipStudio"),
+                "unexpected error: {err}"
+            );
+        }
+
+        #[test]
+        fn rejects_traversal_out_of_shipstudio() {
+            // A path whose parent canonicalizes outside the root must fail even
+            // though the leading segment names ShipStudio.
+            let root = shipstudio_root();
+            let sneaky = root.join("..").join(".ssh").join("authorized_keys");
+            let result = validate_project_file_path(&sneaky.to_string_lossy());
+            assert!(
+                result.is_err(),
+                "traversal out of ShipStudio must be rejected"
+            );
+        }
+
+        #[test]
+        fn accepts_nonexistent_file_inside_shipstudio() {
+            // The key behavior: a target that doesn't exist yet (creating a new
+            // .env) is allowed as long as its parent dir is inside the sandbox.
+            let root = shipstudio_root();
+            if fs::create_dir_all(&root).is_err() {
+                eprintln!("skipping: couldn't create ~/ShipStudio");
+                return;
+            }
+            let dir = root.join(".audit-env-test-dir");
+            if fs::create_dir_all(&dir).is_err() {
+                eprintln!("skipping: couldn't create test dir");
+                return;
+            }
+            let target = dir.join(".env"); // does NOT exist
+            let result = validate_project_file_path(&target.to_string_lossy());
+            let _ = fs::remove_dir_all(&dir);
+            assert!(
+                result.is_ok(),
+                "not-yet-created file inside ShipStudio should validate, got {result:?}"
+            );
+        }
+
+        /// A `.env` that is itself a symlink pointing outside the sandbox must be
+        /// rejected — otherwise fs::write/read/remove would follow it (the
+        /// planted-symlink RCE this helper guards against).
+        #[test]
+        #[cfg(unix)]
+        fn rejects_symlinked_final_component() {
+            use std::os::unix::fs::symlink;
+            let root = shipstudio_root();
+            if fs::create_dir_all(&root).is_err() {
+                eprintln!("skipping: couldn't create ~/ShipStudio");
+                return;
+            }
+            let dir = root.join(".audit-env-symlink-test");
+            let _ = fs::remove_dir_all(&dir);
+            if fs::create_dir_all(&dir).is_err() {
+                eprintln!("skipping: couldn't create test dir");
+                return;
+            }
+            let link = dir.join(".env");
+            // Point at /tmp/... outside ShipStudio; target need not exist.
+            if symlink("/tmp/ss-audit-symlink-target", &link).is_err() {
+                let _ = fs::remove_dir_all(&dir);
+                eprintln!("skipping: couldn't create symlink");
+                return;
+            }
+            let result = validate_project_file_path(&link.to_string_lossy());
+            let _ = fs::remove_dir_all(&dir);
+            assert!(
+                result.is_err(),
+                "symlinked final component must be rejected, got {result:?}"
+            );
         }
     }
 }
