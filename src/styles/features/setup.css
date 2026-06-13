@@ -492,6 +492,12 @@
   font-weight: 600;
 }
 
+.wizard-agent-card-desc {
+  margin: 4px 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
 .wizard-agent-card-badge {
   font-size: var(--font-size-xs);
   font-weight: 500;

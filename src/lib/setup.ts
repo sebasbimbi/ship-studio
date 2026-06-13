@@ -155,9 +155,9 @@ export const SETUP_ITEM_ORDER = [
 export const SETUP_FRIENDLY_NAMES: Record<string, string> = {
   homebrew: 'Package Manager',
   node: 'Node.js',
-  npm_fix: 'Fix npm Permissions',
+  npm_fix: 'Repair file access',
   git: 'Git',
-  gh: 'GitHub CLI',
+  gh: 'GitHub connector',
   gh_auth: 'GitHub Account',
   claude: 'Claude Code',
   claude_auth: 'Claude Account',
@@ -165,7 +165,7 @@ export const SETUP_FRIENDLY_NAMES: Record<string, string> = {
   codex_auth: 'Codex Account',
   opencode: 'Opencode',
   opencode_auth: 'Opencode Account',
-  vercel: 'Vercel CLI',
+  vercel: 'Vercel (hosting)',
   vercel_auth: 'Vercel Account',
 };
 

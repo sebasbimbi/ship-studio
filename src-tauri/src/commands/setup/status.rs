@@ -26,7 +26,7 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
             ("homebrew", "Package Manager", None),
             ("node", "Node.js", Some("homebrew")),
             ("git", "Git", Some("homebrew")),
-            ("gh", "GitHub CLI", Some("homebrew")),
+            ("gh", "GitHub connector", Some("homebrew")),
             ("gh_auth", "GitHub Account", Some("gh")),
             ("claude", "Claude Code", None),
             ("claude_auth", "Claude Account", Some("claude")),
@@ -34,7 +34,7 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
             ("codex_auth", "Codex Account", Some("codex")),
             ("opencode", "Opencode", None),
             ("opencode_auth", "Opencode Account", Some("opencode")),
-            ("vercel", "Vercel CLI", None),
+            ("vercel", "Vercel (hosting)", None),
             ("vercel_auth", "Vercel Account", Some("vercel")),
         ];
 
@@ -202,7 +202,7 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
         if !npm_cache_ok {
             items.push(SetupItemInfo {
                 id: "npm_fix".to_string(),
-                friendly_name: "Fix npm Permissions".to_string(),
+                friendly_name: "Repair file access".to_string(),
                 status: SetupItemStatus::NotInstalled,
                 version: None,
                 username: None,
@@ -259,7 +259,7 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
     });
     items.push(SetupItemInfo {
         id: "gh".to_string(),
-        friendly_name: "GitHub CLI".to_string(),
+        friendly_name: "GitHub connector".to_string(),
         status: if gh_path.is_some() {
             SetupItemStatus::Ready
         } else {
@@ -393,7 +393,7 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
     });
     items.push(SetupItemInfo {
         id: "vercel".to_string(),
-        friendly_name: "Vercel CLI".to_string(),
+        friendly_name: "Vercel (hosting)".to_string(),
         status: if vercel_path.is_some() {
             SetupItemStatus::Ready
         } else {

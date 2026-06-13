@@ -841,7 +841,7 @@ describe('OnboardingScreen', () => {
 
       // Step 2 items should be visible
       expect(screen.getByText('Git')).toBeInTheDocument();
-      expect(screen.getByText('GitHub CLI')).toBeInTheDocument();
+      expect(screen.getByText('GitHub connector')).toBeInTheDocument();
       expect(screen.getByText('GitHub Account')).toBeInTheDocument();
     });
 
@@ -1608,7 +1608,7 @@ describe('OnboardingScreen', () => {
       });
 
       // gh_auth depends on gh — with gh not installed, should show blocked
-      expect(screen.getByText('Unlocks after GitHub CLI')).toBeInTheDocument();
+      expect(screen.getByText('Unlocks after GitHub connector')).toBeInTheDocument();
     });
 
     it('claude_auth shows as blocked when claude is not installed (step 3)', async () => {
@@ -1664,7 +1664,7 @@ describe('OnboardingScreen', () => {
       // Insert npm_fix after node
       const npmFixItem = {
         id: 'npm_fix',
-        friendlyName: 'Fix npm Permissions',
+        friendlyName: 'Repair file access',
         status: 'not_installed' as const,
       };
       const nodeIndex = items.findIndex((i) => i.id === 'node');
@@ -1682,8 +1682,8 @@ describe('OnboardingScreen', () => {
       // npm_fix is present and not ready — Next should be disabled
       expect(screen.getByText('Next')).toBeDisabled();
 
-      // Fix npm Permissions should appear
-      expect(screen.getByText('Fix npm Permissions')).toBeInTheDocument();
+      // Repair file access should appear
+      expect(screen.getByText('Repair file access')).toBeInTheDocument();
     });
 
     it('agent step complete with only codex pair ready', async () => {
