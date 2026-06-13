@@ -25,6 +25,9 @@ import { SlackIcon } from '../icons/brand';
 import { PinIcon } from '../icons/layout';
 import { PropSection } from './PropSection';
 import { ImageSection } from './ImageSection';
+import { TextEditSection } from './TextEditSection';
+import { RequestChangeSection } from './RequestChangeSection';
+import { UnifiedCommitTray } from './UnifiedCommitTray';
 import { PropControlRenderer, type ControlRenderCtx } from './PropControlRenderer';
 import { CONTROL_SECTIONS } from '../../lib/editControls';
 import { breakpointPrefixes, type UsageReport } from '../../lib/edit';
@@ -41,7 +44,8 @@ import type {
   ImageResolution,
 } from '../../lib/edit';
 import { useCopyToClipboard } from '../../hooks/useCopyToClipboard';
-import type { Selection } from '../../hooks/useVisualEditor';
+import type { Selection, PendingEdit } from '../../hooks/useVisualEditor';
+import type { RedlineAnnotation } from '../../lib/redline';
 
 const SLACK_INVITE_URL =
   'https://join.slack.com/t/shipstudiocommunity/shared_invite/zt-3ommmu2w4-jtYZzzc9T~9lsEeKQ4E2AQ';
@@ -59,35 +63,6 @@ function buildAgentRequest(sig: ElementSignature, resolution: Resolution | null)
     `so I can't edit it directly. Find where it's produced in the source and change it.\n\n` +
     `Element: <${sig.tagName}>${cls}${loc}\n\n` +
     `Current text:\n"${text}"`
-  );
-}
-
-/** Save-status badge — the SAME box whether saving or saved, so the footer never
- *  shifts height between the two (auto-save) states. */
-function StatusBadge({ saving }: { saving: boolean }) {
-  return (
-    <div className="ss-edit-panel__saved" aria-live="polite">
-      {saving ? (
-        'Saving…'
-      ) : (
-        <>
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-          Saved
-        </>
-      )}
-    </div>
   );
 }
 
@@ -242,8 +217,14 @@ interface Props {
   /** The class string currently applied live (what "Save" will persist). */
   currentClass: string;
   /** Text-editability of the selection. When read-only (dynamic text), the panel
-   *  offers a copy-able request to hand the edit to the coding agent. */
+   *  offers a copy-able request to hand the edit to the coding agent. When
+   *  resolved AND `onApplyText` is provided, the panel shows an editable "Text"
+   *  section (an alternative to the inline double-click editor). */
   textResolution?: TextResolution | null;
+  /** Write a new text value to source for the selected leaf (drift-guarded; the
+   *  same path the inline editor commits to). Optional: omit to hide the Text
+   *  section. Resolves true when written, false when unchanged/failed. */
+  onApplyText?: (text: string) => Promise<boolean>;
   /** Image-src editability of the selection — drives the Image section. */
   imageResolution?: ImageResolution | null;
   /** Write a new src to source and swap the preview (immediate save). */
@@ -260,10 +241,6 @@ interface Props {
   breakpointTooWide: boolean;
   /** Switch the edited breakpoint — resizes the preview canvas to match. */
   onSelectBreakpoint: (bp: Breakpoint) => void;
-  /** Whether edits auto-save to source (debounced). */
-  autoSave: boolean;
-  /** Toggle auto-save on/off. */
-  onToggleAutoSave: () => void;
   /** Step the gap utility one notch up (1) or down (-1). */
   onStepGap: (dir: 1 | -1) => void;
   /** Set one side of padding/margin to a scale step or arbitrary value. */
@@ -279,13 +256,43 @@ interface Props {
   usage: UsageReport | null;
   /** Jump to a source file:line in the Code tab. */
   onOpenInCode?: (file: string, line: number) => void;
-  onCommit: () => void;
   onClose: () => void;
   /** Docked as a sidebar column inside the preview container instead of
    *  floating over the canvas. Positioning comes from the container's grid. */
   pinned?: boolean;
   onTogglePin?: () => void;
+
+  // ── Unified edit + request queues (Edit + Redline unification) ──
+  // Two independent queues with two independent apply paths: direct edits flow to
+  // the commit tray ("Apply edits to source"); change requests live in the
+  // Request-a-change section's own list ("Send N requests to agent"). All optional
+  // with safe defaults so existing renders compile.
+  /** Direct edits frozen in the preview, awaiting the batched write. */
+  pendingEdits?: PendingEdit[];
+  /** Change requests captured for the agent, awaiting the batched send. */
+  pendingRequests?: RedlineAnnotation[];
+  /** Write the pending direct edits to source. */
+  onApplyEdits?: () => void;
+  /** Record a free-form change request for the current selection. */
+  onAddRequest?: (label: string) => void;
+  /** Drop one staged direct edit (host un-freezes its preview). */
+  onDiscardEdit?: (id: string) => void;
+  /** Drop one staged change request (host removes its badge). */
+  onDiscardRequest?: (id: string) => void;
+  /** Scroll/flash a request's badge in the preview. */
+  onFocusRequest?: (id: string) => void;
+  /** Commit a new label for a staged request row. */
+  onEditRequestLabel?: (id: string, text: string) => void;
+  /** Ship every pending request to the agent (screenshot + markdown); the host
+   *  self-clears the queue on success. */
+  onSendRequests?: () => void;
+  /** True while sending the requests to the agent is in flight. */
+  sending?: boolean;
+  /** True while the commit tray's apply-edits write is in flight. */
+  applying?: boolean;
 }
+
+const NOOP = () => {};
 
 const PANEL_WIDTH = 264;
 
@@ -301,6 +308,7 @@ export function VisualEditorPanel({
   projectPath,
   currentClass,
   textResolution,
+  onApplyText,
   imageResolution,
   onReplaceImage,
   textBlockedNonce,
@@ -308,8 +316,6 @@ export function VisualEditorPanel({
   activeBreakpoint,
   breakpointTooWide,
   onSelectBreakpoint,
-  autoSave,
-  onToggleAutoSave,
   onStepGap,
   onSetSide,
   onApplyEnum,
@@ -318,20 +324,28 @@ export function VisualEditorPanel({
   onMultiTargetChange,
   usage,
   onOpenInCode,
-  onCommit,
   onClose,
   pinned = false,
   onTogglePin,
+  pendingEdits = [],
+  pendingRequests = [],
+  onApplyEdits = NOOP,
+  onAddRequest = NOOP,
+  onDiscardEdit = NOOP,
+  onDiscardRequest = NOOP,
+  onFocusRequest = NOOP,
+  onEditRequestLabel = NOOP,
+  onSendRequests = NOOP,
+  sending = false,
+  applying = false,
 }: Props) {
   const resolution = selection?.resolution ?? null;
   // Images get an Image section (current asset + Replace) on top of style controls.
   const isImage = selection?.signature.tagName === 'img';
-  // Both 'resolved' (one spot) and 'multi' (several identical spots) are editable.
-  const editable = resolution?.status === 'resolved' || resolution?.status === 'multi';
-  const dirty = editable && currentClass !== resolution.class_name;
   // Show the controls as soon as an element is selected — they only need the class
-  // string (available instantly). The source badge + Save fill in once resolved, so
-  // the panel doesn't flicker through a "Resolving…" collapse on every click.
+  // string (available instantly). The source badge fills in once resolved, so the
+  // panel doesn't flicker through a "Resolving…" collapse on every click. Direct
+  // edits never write immediately now — they stage into the commit tray.
   const controlsVisible = !!selection && resolution?.status !== 'read_only';
 
   // Cascade-resolution context for the active breakpoint, threaded to each control
@@ -503,6 +517,29 @@ export function VisualEditorPanel({
           />
         )}
 
+        {/* Direct text edit — shown for a resolvable text leaf when the host wires
+            the apply handler. An alternative to the inline double-click editor;
+            both write through the same drift-guarded applyTextEdit path. */}
+        {textResolution?.status === 'resolved' && onApplyText && (
+          <TextEditSection resolution={textResolution} onApply={onApplyText} />
+        )}
+
+        {/* Request a change — a self-contained requests manager, shown for the
+            whole edit mode (NOT gated on a selection). The direct controls cover
+            what the editor can write itself; this captures everything else as
+            free-form notes and ships them to the agent on its own "Send" button.
+            `canAdd` gates the add-box on a live selection. */}
+        <RequestChangeSection
+          onAddRequest={onAddRequest}
+          canAdd={!!selection}
+          pendingRequests={pendingRequests}
+          onEditRequestLabel={onEditRequestLabel}
+          onDiscardRequest={onDiscardRequest}
+          onFocusRequest={onFocusRequest}
+          onSendRequests={onSendRequests}
+          sending={sending}
+        />
+
         {controlsVisible && (
           <>
             {resolution?.status === 'resolved' && (
@@ -585,33 +622,18 @@ export function VisualEditorPanel({
         </button>
       </div>
 
-      {controlsVisible && (
-        <div className="ss-edit-panel__footer">
-          <button
-            type="button"
-            role="switch"
-            aria-checked={autoSave}
-            className="ss-edit-panel__autosave"
-            onClick={onToggleAutoSave}
-            title="Automatically save edits to source as you go"
-          >
-            <span className={`ss-edit-panel__switch${autoSave ? ' is-on' : ''}`} aria-hidden />
-            Auto-save
-          </button>
-          {!editable ? (
-            // Resolving the source location — Save isn't available yet.
-            <span className="ss-edit-panel__locating">Locating source…</span>
-          ) : autoSave ? (
-            <StatusBadge saving={dirty} />
-          ) : dirty ? (
-            <Button size="sm" variant="primary" onClick={onCommit}>
-              Save to source
-            </Button>
-          ) : (
-            <StatusBadge saving={false} />
-          )}
-        </div>
-      )}
+      {/* Commit tray — EDITS ONLY. Lists every staged direct edit with per-row
+          discard and ONE "Apply edits to source". Shown whenever an edit is
+          pending, independent of the live selection: edits persist across
+          selection changes, so the user can still apply them after deselecting.
+          Change requests live in the Request-a-change section above, not here.
+          Returns null when the edit queue is empty. */}
+      <UnifiedCommitTray
+        pendingEdits={pendingEdits}
+        onApplyEdits={onApplyEdits}
+        onDiscardEdit={onDiscardEdit}
+        applying={applying}
+      />
     </div>
   );
 }

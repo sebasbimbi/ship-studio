@@ -57,6 +57,49 @@ pub async fn crop_and_save_screenshot(
     Ok(screenshot_path_str)
 }
 
+/// Crop an image and return the cropped region encoded as PNG bytes (in memory).
+///
+/// Mirrors the crop logic of [`crop_and_save_screenshot`] but persists nothing:
+/// it loads the source image, clamps the crop bounds to the image dimensions,
+/// encodes the cropped region to PNG in memory, and returns the raw bytes.
+/// Tauri serializes the `Vec<u8>` as a JS `number[]`.
+#[tauri::command]
+#[tracing::instrument]
+pub async fn crop_screenshot_bytes(
+    source_path: String,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+) -> Result<Vec<u8>, CommandError> {
+    // Load the source image
+    let img = image::open(&source_path).map_err(|e| format!("Failed to open image: {e}"))?;
+
+    // The source is a throwaway full-window capture; the decoded image now lives
+    // in memory, so delete the temp file (mirrors crop_and_save_screenshot's
+    // cleanup — otherwise every redline export would leak a window PNG).
+    let _ = std::fs::remove_file(&source_path);
+
+    // Crop the image (ensure bounds are within image dimensions)
+    let img_width = img.width();
+    let img_height = img.height();
+
+    let crop_x = x.min(img_width.saturating_sub(1));
+    let crop_y = y.min(img_height.saturating_sub(1));
+    let crop_width = width.min(img_width.saturating_sub(crop_x));
+    let crop_height = height.min(img_height.saturating_sub(crop_y));
+
+    let cropped = img.crop_imm(crop_x, crop_y, crop_width, crop_height);
+
+    // Encode the cropped image to PNG bytes in memory
+    let mut cursor = std::io::Cursor::new(Vec::new());
+    cropped
+        .write_to(&mut cursor, image::ImageFormat::Png)
+        .map_err(|e| format!("Failed to encode cropped image: {e}"))?;
+
+    Ok(cursor.into_inner())
+}
+
 /// Read a screenshot file and return it as a base64 data URL.
 /// Used for displaying screenshot previews in the UI.
 #[tauri::command]
@@ -135,4 +178,36 @@ pub async fn compare_screenshots(
     );
 
     Ok(is_similar)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::{ImageBuffer, Rgba};
+
+    #[tokio::test]
+    async fn crop_screenshot_bytes_returns_png_of_cropped_dimensions() {
+        // Build a small in-memory RGBA image (10x10) and write it to a temp PNG.
+        let img: ImageBuffer<Rgba<u8>, Vec<u8>> =
+            ImageBuffer::from_fn(10, 10, |x, _y| Rgba([(x * 20) as u8, 0, 0, 255]));
+        let mut tmp = std::env::temp_dir();
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        tmp.push(format!("crop_screenshot_bytes_test_{unique}.png"));
+        img.save(&tmp).expect("save temp png");
+
+        // Crop a 4x3 sub-rect at (2, 1).
+        let bytes = crop_screenshot_bytes(tmp.to_string_lossy().to_string(), 2, 1, 4, 3)
+            .await
+            .expect("crop_screenshot_bytes should succeed");
+
+        // The returned bytes must decode back to an image of the cropped dimensions.
+        let decoded = image::load_from_memory(&bytes).expect("returned bytes should decode as PNG");
+        assert_eq!(decoded.width(), 4);
+        assert_eq!(decoded.height(), 3);
+
+        let _ = std::fs::remove_file(&tmp);
+    }
 }
