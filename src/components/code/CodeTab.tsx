@@ -7,13 +7,52 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFileTree } from '../../hooks/useFileTree';
+import { useTreeDnd } from '../../hooks/useTreeDnd';
 import { FileTree } from './FileTree';
 import { CodeViewer } from './CodeViewer';
+import { ConflictPromptModal } from './ConflictPromptModal';
 import { Spinner } from '../primitives/Spinner';
 import { Button } from '../primitives/Button';
 import { ResetIcon, SearchIcon } from '../icons';
-import { type FileTreeNode, fileExtensionForAnalytics } from '../../lib/code';
+import {
+  moveProjectEntry,
+  type ConflictResolution,
+  type FileTreeNode,
+  fileExtensionForAnalytics,
+} from '../../lib/code';
+import { asCommandError, formatCommandError } from '../../lib/errors';
+import { useOptionalToast } from '../../contexts/ToastContext';
 import { trackEvent, trackSearch } from '../../lib/analytics';
+
+/** Extensions whose moves can break source-level imports/references. */
+const CODE_EXTENSIONS = new Set([
+  'ts',
+  'tsx',
+  'js',
+  'jsx',
+  'mjs',
+  'cjs',
+  'vue',
+  'svelte',
+  'astro',
+  'rs',
+  'py',
+  'rb',
+  'go',
+  'java',
+  'kt',
+  'swift',
+  'c',
+  'h',
+  'cpp',
+  'cs',
+  'php',
+  'css',
+  'scss',
+]);
+
+const baseName = (p: string): string => p.split('/').pop() ?? p;
+const isCodeFile = (p: string): boolean => CODE_EXTENSIONS.has(fileExtensionForAnalytics(p));
 
 interface CodeTabProps {
   projectPath: string;
@@ -33,6 +72,7 @@ export function CodeTab({ projectPath, onSendToAgent, revealTarget }: CodeTabPro
     treeError,
     fileError,
     toggleDirectory,
+    expandDir,
     selectFile: selectFileRaw,
     refreshTree: refreshTreeRaw,
   } = useFileTree(projectPath);
@@ -114,6 +154,56 @@ export function CodeTab({ projectPath, onSendToAgent, revealTarget }: CodeTabPro
     document.addEventListener('mouseup', handleMouseUp);
   }, []);
 
+  // ---- In-tree move (drag-and-drop) ----
+  const toast = useOptionalToast();
+  const [conflict, setConflict] = useState<{ from: string; toDir: string; name: string } | null>(
+    null
+  );
+
+  const performMove = useCallback(
+    async (from: string, toDir: string, resolution: ConflictResolution) => {
+      try {
+        const newRel = await moveProjectEntry(projectPath, from, toDir, resolution);
+        refreshTreeRaw();
+        expandDir(toDir);
+        // Keep the viewer in sync when the open file — or a folder containing it
+        // — is what moved; otherwise it would point at a now-dead path.
+        if (selectedFilePath === from) {
+          selectFileRaw(newRel);
+        } else if (selectedFilePath?.startsWith(`${from}/`)) {
+          selectFileRaw(`${newRel}${selectedFilePath.slice(from.length)}`);
+        }
+        void trackEvent('code_entry_moved');
+        // Always confirm the move; append the may-break-imports caveat (don't
+        // auto-fix) only for code files whose references could now be stale.
+        const movedName = baseName(newRel);
+        toast.showToast(
+          isCodeFile(newRel)
+            ? `Moved ${movedName}. If it's imported elsewhere, update those paths or ask your agent.`
+            : `Moved ${movedName} to ${baseName(toDir) || 'project root'}.`,
+          isCodeFile(newRel) ? 'info' : 'success'
+        );
+      } catch (e) {
+        const err = asCommandError(e);
+        if (err.type === 'Validation' && err.field === 'destination') {
+          setConflict({ from, toDir, name: baseName(from) });
+        } else {
+          toast.showToast(formatCommandError(err), 'error');
+        }
+      }
+    },
+    [projectPath, refreshTreeRaw, expandDir, selectedFilePath, selectFileRaw, toast]
+  );
+
+  const handleTreeMove = useCallback(
+    (from: string, toDir: string) => void performMove(from, toDir, 'error'),
+    [performMove]
+  );
+
+  // In-tree drag is disabled while a search filter is active: the filtered view
+  // hides siblings, so the drop target would be ambiguous.
+  const dnd = useTreeDnd({ onMove: handleTreeMove, enabled: !searchQuery.trim() });
+
   return (
     <div className="code-tab" ref={containerRef}>
       <div className="code-tab-sidebar" style={{ width: sidebarWidth }}>
@@ -140,7 +230,11 @@ export function CodeTab({ projectPath, onSendToAgent, revealTarget }: CodeTabPro
             }}
           />
         </div>
-        <div className="code-tab-sidebar-content">
+        <div
+          className={`code-tab-sidebar-content${dnd.dropTargetDir === '' ? ' root-drop-target' : ''}`}
+          onDragOver={dnd.onRootDragOver}
+          onDrop={dnd.onRootDrop}
+        >
           {isLoadingTree ? (
             <div className="code-tab-sidebar-loading">
               <Spinner size="sm" style={{ color: 'var(--accent)' }} />
@@ -163,6 +257,7 @@ export function CodeTab({ projectPath, onSendToAgent, revealTarget }: CodeTabPro
               selectedFilePath={selectedFilePath}
               onToggleDirectory={toggleDirectory}
               onSelectFile={selectFile}
+              dnd={searchQuery.trim() ? undefined : dnd}
             />
           )}
         </div>
@@ -179,6 +274,19 @@ export function CodeTab({ projectPath, onSendToAgent, revealTarget }: CodeTabPro
           revealLine={revealTarget?.line}
         />
       </div>
+      <ConflictPromptModal
+        isOpen={!!conflict}
+        name={conflict?.name ?? ''}
+        // Root drops pass undefined → the modal reads "this folder" (no fake label).
+        targetLabel={conflict && conflict.toDir ? baseName(conflict.toDir) : undefined}
+        // Single in-tree move: applyToAll is intentionally unused (remaining=0).
+        onResolve={(choice) => {
+          const c = conflict;
+          setConflict(null);
+          if (c && choice !== 'skip') void performMove(c.from, c.toDir, choice);
+        }}
+        onClose={() => setConflict(null)}
+      />
     </div>
   );
 }

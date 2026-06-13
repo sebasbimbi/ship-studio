@@ -92,6 +92,7 @@ Fired from `useIntegrationStatus` once GitHub auth resolves with a username.
 | `browser_tools_sent_to_agent` | `tab`, `entry_count` (null for elements), `had_data`, `char_count` |
 | `code_file_opened` | `file_extension` |
 | `code_tree_refreshed` | — |
+| `code_entry_moved` | — |
 | `code_snippet_sent_to_agent` | `file_extension`, `language`, `line_count`, `char_count`, `had_question` |
 | `code_snippet_copied` | `file_extension`, `line_count` |
 | `search_performed` (`code_files`) | Debounced |
