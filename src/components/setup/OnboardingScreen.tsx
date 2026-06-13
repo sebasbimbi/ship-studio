@@ -27,6 +27,9 @@ import {
   FullSetupStatus,
   getFullSetupStatus,
   checkClaudeAuthStatus,
+  startClaudeAuth,
+  startGitHubAuth,
+  cleanupAuthProcesses,
   installPackages,
   setDefaultAgentId,
   PKG_MGR_PACKAGES,
@@ -40,6 +43,8 @@ import {
   getReadyAgentPairs,
   isAtLeastOneAgentReady,
 } from '../../lib/setup';
+import { ModalFrame } from '../primitives/ModalFrame';
+import { usePolling } from '../../hooks/usePolling';
 import { initDefaultAgent } from '../../lib/agent';
 import { checkGitHubCliStatus } from '../../lib/github';
 import { openUrl } from '@tauri-apps/plugin-opener';
@@ -90,6 +95,17 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   const [terminalConfig, setTerminalConfig] = useState<TerminalConfig | null>(null);
   const [terminalExitCode, setTerminalExitCode] = useState<number | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  // Friendly browser-auth flow for gh_auth / claude_auth (replaces the raw
+  // terminal for those): shows the returned message + polls until authenticated.
+  const [browserAuth, setBrowserAuth] = useState<{ itemId: string; message: string } | null>(null);
+  // True once a browser-auth flow has been waiting a while, to swap in an
+  // actionable "taking longer than expected" hint (avoids an endless spinner).
+  const [browserAuthSlow, setBrowserAuthSlow] = useState(false);
+  // Mirror browserAuth so a poll resolving after the modal closed can bail.
+  const browserAuthRef = useRef(browserAuth);
+  useEffect(() => {
+    browserAuthRef.current = browserAuth;
+  }, [browserAuth]);
 
   const unlistenRef = useRef<UnlistenFn | null>(null);
   const stepEnteredAtRef = useRef<Map<WizardStepId, number>>(new Map());
@@ -311,6 +327,21 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
           setActiveItemId(null);
           return;
         }
+        // Friendly browser-based sign-in instead of the raw interactive CLI.
+        try {
+          await cleanupAuthProcesses(); // kill any stale login from a prior attempt
+          const message = await startGitHubAuth();
+          setBrowserAuthSlow(false);
+          setBrowserAuth({ itemId, message });
+        } catch (err) {
+          logger.error('Failed to start GitHub auth', { error: err });
+          updateItemStatus(itemId, {
+            status: 'error',
+            errorMessage: 'Could not start GitHub sign-in. Click to try again.',
+          });
+          setActiveItemId(null);
+        }
+        return;
       } else if (itemId === 'claude_auth') {
         const isAuthed = await checkClaudeAuthStatus();
         if (isAuthed) {
@@ -318,6 +349,20 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
           setActiveItemId(null);
           return;
         }
+        try {
+          await cleanupAuthProcesses();
+          const message = await startClaudeAuth();
+          setBrowserAuthSlow(false);
+          setBrowserAuth({ itemId, message });
+        } catch (err) {
+          logger.error('Failed to start agent auth', { error: err });
+          updateItemStatus(itemId, {
+            status: 'error',
+            errorMessage: 'Could not start sign-in. Click to try again.',
+          });
+          setActiveItemId(null);
+        }
+        return;
       }
 
       // Check if this item uses terminal
@@ -384,6 +429,61 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
     },
     [activeItemId, terminalConfig, updateItemStatus, fetchStatus, items, currentStep]
   );
+
+  // While a browser-auth flow is open, poll until the account connects, then
+  // refresh the checklist and close the modal automatically.
+  usePolling(
+    async () => {
+      const current = browserAuthRef.current;
+      if (!current) return;
+      const authed =
+        current.itemId === 'gh_auth'
+          ? (await checkGitHubCliStatus()).authenticated
+          : await checkClaudeAuthStatus();
+      // Bail if the flow was dismissed while this poll was in flight.
+      if (authed && browserAuthRef.current) {
+        setBrowserAuth(null);
+        setBrowserAuthSlow(false);
+        setActiveItemId(null);
+        await fetchStatus();
+      }
+    },
+    { enabled: browserAuth !== null, intervalMs: 2000, name: 'browser-auth' }
+  );
+
+  // After a while, surface an actionable "taking longer" hint instead of an
+  // endless spinner (the browser may have silently failed to open).
+  useEffect(() => {
+    if (!browserAuth) return;
+    const timer = setTimeout(() => setBrowserAuthSlow(true), 45000);
+    return () => clearTimeout(timer);
+  }, [browserAuth]);
+
+  // Dismiss the browser-auth modal: re-check now AND after a short delay (the
+  // CLI may write the token just after the user dismisses), then refresh.
+  const handleBrowserAuthCancel = useCallback(() => {
+    setBrowserAuth(null);
+    setBrowserAuthSlow(false);
+    setActiveItemId(null);
+    void fetchStatus();
+    setTimeout(() => void fetchStatus(), 2000);
+  }, [fetchStatus]);
+
+  // Power-user fallback: kill the in-flight browser login first so the terminal
+  // doesn't run a second, competing auth, then open the raw terminal.
+  const handleBrowserAuthUseTerminal = useCallback(async () => {
+    const current = browserAuth;
+    if (!current) return;
+    setBrowserAuth(null);
+    setBrowserAuthSlow(false);
+    await cleanupAuthProcesses();
+    const cmd = TERMINAL_COMMANDS[current.itemId];
+    if (cmd) {
+      setTerminalConfig({ itemId: current.itemId, command: cmd.command, args: cmd.args });
+    } else {
+      setActiveItemId(null);
+    }
+  }, [browserAuth]);
 
   // Emit setup_step_completed for the step the user just clicked Next on.
   // Only fires from handleNext — the all-complete fast path skips the wizard
@@ -641,6 +741,32 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
               />
             </div>
           </div>
+        )}
+
+        {browserAuth && (
+          <ModalFrame
+            isOpen
+            onClose={handleBrowserAuthCancel}
+            title={SETUP_FRIENDLY_NAMES[browserAuth.itemId] || 'Connect your account'}
+          >
+            <div className="onboarding-browser-auth" role="status" aria-live="polite">
+              <Spinner size="lg" style={{ color: 'var(--accent)' }} />
+              <p className="onboarding-browser-auth-message">{browserAuth.message}</p>
+              <p className="onboarding-browser-auth-hint">
+                {browserAuthSlow
+                  ? "Still waiting. If a browser tab didn't open, use the terminal instead, or close this and try again."
+                  : 'Waiting for you to finish in your browser. This updates automatically once you are connected.'}
+              </p>
+              <div className="onboarding-browser-auth-actions">
+                <Button variant="ghost" onClick={() => void handleBrowserAuthUseTerminal()}>
+                  Use the terminal instead
+                </Button>
+                <Button variant="secondary" onClick={handleBrowserAuthCancel}>
+                  Close
+                </Button>
+              </div>
+            </div>
+          </ModalFrame>
         )}
 
         <div className="onboarding-slack-cta">

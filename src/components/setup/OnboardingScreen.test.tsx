@@ -1153,7 +1153,7 @@ describe('OnboardingScreen', () => {
   // ============ Auth verification after terminal ============
 
   describe('auth verification after terminal', () => {
-    it('gh_auth terminal exit 0 but not authenticated shows error', async () => {
+    it('gh_auth opens the friendly browser sign-in modal (not the terminal)', async () => {
       // Start on step 2 with git+gh ready, gh_auth not authenticated
       const items = STEP1_COMPLETE_ITEMS.map((i) => {
         if (i.id === 'git') return { ...i, status: 'ready' as const, version: '2.43.0' };
@@ -1162,6 +1162,13 @@ describe('OnboardingScreen', () => {
       });
       const status = makeSetupStatus({ items, detectedAgents: [] });
       mockInvoke('get_full_setup_status', status);
+      mockInvoke(
+        'start_github_auth',
+        'A code has been copied to your clipboard. Paste it in the browser to connect.'
+      );
+      // Stay unauthenticated for the pre-check AND the background poll, so the
+      // modal stays open for the assertion.
+      mockCheckGitHubCliStatus.mockResolvedValue({ installed: true, authenticated: false });
 
       render(<OnboardingScreen onComplete={onComplete} />);
 
@@ -1171,30 +1178,109 @@ describe('OnboardingScreen', () => {
         ).toBeInTheDocument();
       });
 
-      // Find Connect button for gh_auth
       const connectButtons = screen.getAllByText('Connect');
       expect(connectButtons.length).toBeGreaterThan(0);
-
-      // Pre-check returns NOT authenticated — terminal will open
-      mockCheckGitHubCliStatus.mockResolvedValueOnce({ installed: true, authenticated: false });
-      // Post-terminal auth check also returns NOT authenticated
-      mockCheckGitHubCliStatus.mockResolvedValueOnce({ installed: true, authenticated: false });
-
-      // Click Connect → opens terminal
       act(() => {
         fireEvent.click(connectButtons[0]);
       });
 
+      // The friendly browser-auth modal appears with the returned message —
+      // NOT the raw terminal.
+      await waitFor(() => {
+        expect(
+          screen.getByText(
+            'A code has been copied to your clipboard. Paste it in the browser to connect.'
+          )
+        ).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('mock-terminal')).not.toBeInTheDocument();
+
+      // Close dismisses the modal.
+      act(() => {
+        fireEvent.click(screen.getByText('Close'));
+      });
+      await waitFor(() => {
+        expect(
+          screen.queryByText(
+            'A code has been copied to your clipboard. Paste it in the browser to connect.'
+          )
+        ).not.toBeInTheDocument();
+      });
+    });
+
+    it('gh_auth browser sign-in auto-closes once the poll detects authentication', async () => {
+      const items = STEP1_COMPLETE_ITEMS.map((i) => {
+        if (i.id === 'git') return { ...i, status: 'ready' as const, version: '2.43.0' };
+        if (i.id === 'gh') return { ...i, status: 'ready' as const, version: '2.40.0' };
+        return i;
+      });
+      mockInvoke('get_full_setup_status', makeSetupStatus({ items, detectedAgents: [] }));
+      mockInvoke('start_github_auth', 'A code has been copied to your clipboard.');
+      // Not authed for the pre-check (opens the modal).
+      mockCheckGitHubCliStatus.mockResolvedValue({ installed: true, authenticated: false });
+
+      render(<OnboardingScreen onComplete={onComplete} />);
+      await waitFor(() => {
+        expect(
+          screen.getByText('Save your work safely and publish it online. Required.')
+        ).toBeInTheDocument();
+      });
+
+      act(() => {
+        fireEvent.click(screen.getAllByText('Connect')[0]);
+      });
+      await waitFor(() => {
+        expect(screen.getByText('A code has been copied to your clipboard.')).toBeInTheDocument();
+      });
+
+      // Auth completes in the browser → the next poll detects it and closes.
+      mockCheckGitHubCliStatus.mockResolvedValue({ installed: true, authenticated: true });
+      await waitFor(
+        () => {
+          expect(
+            screen.queryByText('A code has been copied to your clipboard.')
+          ).not.toBeInTheDocument();
+        },
+        { timeout: 4000 }
+      );
+    });
+
+    it('gh_auth "Use the terminal instead" falls back to the terminal and still verifies', async () => {
+      const items = STEP1_COMPLETE_ITEMS.map((i) => {
+        if (i.id === 'git') return { ...i, status: 'ready' as const, version: '2.43.0' };
+        if (i.id === 'gh') return { ...i, status: 'ready' as const, version: '2.40.0' };
+        return i;
+      });
+      mockInvoke('get_full_setup_status', makeSetupStatus({ items, detectedAgents: [] }));
+      mockInvoke('start_github_auth', 'A code has been copied to your clipboard.');
+      mockCheckGitHubCliStatus.mockResolvedValue({ installed: true, authenticated: false });
+
+      render(<OnboardingScreen onComplete={onComplete} />);
+      await waitFor(() => {
+        expect(
+          screen.getByText('Save your work safely and publish it online. Required.')
+        ).toBeInTheDocument();
+      });
+
+      act(() => {
+        fireEvent.click(screen.getAllByText('Connect')[0]);
+      });
+      await waitFor(() => {
+        expect(screen.getByText('Use the terminal instead')).toBeInTheDocument();
+      });
+
+      // Fall back to the terminal.
+      act(() => {
+        fireEvent.click(screen.getByText('Use the terminal instead'));
+      });
       await waitFor(() => {
         expect(screen.getByTestId('mock-terminal')).toBeInTheDocument();
       });
 
-      // Terminal exits 0 (user thought auth was done, but it wasn't)
+      // Terminal exits 0 but still not authed → handleTerminalExit surfaces the error.
       act(() => {
         fireEvent.click(screen.getByTestId('terminal-exit-0'));
       });
-
-      // Auth verification should fail → show error
       await waitFor(() => {
         expect(
           screen.getByText('Authentication not completed. Click to try again.')
@@ -1202,7 +1288,37 @@ describe('OnboardingScreen', () => {
       });
     });
 
-    it('claude_auth terminal exit 0 but not authenticated shows error', async () => {
+    it('gh_auth surfaces an error and clears progress when sign-in fails to start', async () => {
+      const items = STEP1_COMPLETE_ITEMS.map((i) => {
+        if (i.id === 'git') return { ...i, status: 'ready' as const, version: '2.43.0' };
+        if (i.id === 'gh') return { ...i, status: 'ready' as const, version: '2.40.0' };
+        return i;
+      });
+      mockInvoke('get_full_setup_status', makeSetupStatus({ items, detectedAgents: [] }));
+      mockInvokeErr('start_github_auth', new Error('gh not found'));
+      mockCheckGitHubCliStatus.mockResolvedValue({ installed: true, authenticated: false });
+
+      render(<OnboardingScreen onComplete={onComplete} />);
+      await waitFor(() => {
+        expect(
+          screen.getByText('Save your work safely and publish it online. Required.')
+        ).toBeInTheDocument();
+      });
+
+      act(() => {
+        fireEvent.click(screen.getAllByText('Connect')[0]);
+      });
+
+      // No modal; the item shows an actionable error and Connect is clickable again.
+      await waitFor(() => {
+        expect(
+          screen.getByText('Could not start GitHub sign-in. Click to try again.')
+        ).toBeInTheDocument();
+      });
+      expect(screen.queryByText('Use the terminal instead')).not.toBeInTheDocument();
+    });
+
+    it('claude_auth opens the friendly browser sign-in modal (not the terminal)', async () => {
       // Start on step 3 with Claude installed but not authenticated
       const items = HAS_BASE_NO_AGENTS_ITEMS.map((i) => {
         if (i.id === 'claude') return { ...i, status: 'ready' as const, version: '1.0.0' };
@@ -1214,9 +1330,9 @@ describe('OnboardingScreen', () => {
         detectedAgents: [],
       });
       mockInvoke('get_full_setup_status', status);
-
-      // Mock claude auth check to return NOT authenticated
+      // Unauthenticated for both pre-check and poll; start returns a message.
       mockInvoke('check_claude_auth_status', false);
+      mockInvoke('start_claude_auth', 'Browser opened. Log in to your Claude account to continue.');
 
       render(<OnboardingScreen onComplete={onComplete} />);
 
@@ -1228,28 +1344,18 @@ describe('OnboardingScreen', () => {
         ).toBeInTheDocument();
       });
 
-      // Find Connect button for claude_auth
       const connectButtons = screen.getAllByText('Connect');
       expect(connectButtons.length).toBeGreaterThan(0);
-
       act(() => {
         fireEvent.click(connectButtons[0]);
       });
 
       await waitFor(() => {
-        expect(screen.getByTestId('mock-terminal')).toBeInTheDocument();
-      });
-
-      // Terminal exits 0 but auth check fails
-      act(() => {
-        fireEvent.click(screen.getByTestId('terminal-exit-0'));
-      });
-
-      await waitFor(() => {
         expect(
-          screen.getByText('Authentication not completed. Click to try again.')
+          screen.getByText('Browser opened. Log in to your Claude account to continue.')
         ).toBeInTheDocument();
       });
+      expect(screen.queryByTestId('mock-terminal')).not.toBeInTheDocument();
     });
 
     it('gh_auth pre-check finds existing auth and skips terminal', async () => {

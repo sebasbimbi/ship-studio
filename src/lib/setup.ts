@@ -391,6 +391,15 @@ export async function startGitHubAuth(): Promise<string> {
 }
 
 /**
+ * Kill any tracked, still-running auth CLI processes (gh/agent `... auth login`).
+ * Call before starting a fresh auth or falling back to the terminal so two
+ * concurrent logins don't contend for the same token write. Returns the count.
+ */
+export async function cleanupAuthProcesses(): Promise<number> {
+  return invoke<number>('cleanup_auth_processes');
+}
+
+/**
  * Install Claude Code CLI.
  */
 export async function installClaude(): Promise<void> {
