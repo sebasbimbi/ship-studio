@@ -566,7 +566,13 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   // onApplyEdits: write the pending direct edits to source. Local `applying`
   // flag drives the tray's disabled/"Applying…" state.
   const [applying, setApplying] = useState(false);
+  // Refs guard against re-entry (a rapid second click or a Cmd+K trigger while a
+  // run is in flight) so edits can't double-apply and requests can't double-send.
+  const applyingRef = useRef(false);
+  const sendingRef = useRef(false);
   const onApplyEdits = useCallback(async () => {
+    if (applyingRef.current) return;
+    applyingRef.current = true;
     try {
       setApplying(true);
       await editor.applyAllEdits();
@@ -574,6 +580,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
       onToast(String(e), 'error');
     } finally {
       setApplying(false);
+      applyingRef.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onToast is recreated each render; editor methods are stable
   }, [editor.applyAllEdits]);
@@ -583,10 +590,14 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   // self-clears the queue (+ on-page badges) on success — so this is just a
   // guarded await. Its own `redline.sending` flag drives the section's button.
   const onSendRequests = useCallback(async () => {
+    if (sendingRef.current) return;
+    sendingRef.current = true;
     try {
       await redline.sendToAgent();
     } catch (e) {
       onToast(String(e), 'error');
+    } finally {
+      sendingRef.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onToast is recreated each render; redline.sendToAgent is stable
   }, [redline.sendToAgent]);

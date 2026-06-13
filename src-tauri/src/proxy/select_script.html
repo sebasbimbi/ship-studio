@@ -330,7 +330,7 @@ else if(d.type==='ss:commit'){
      to source — applyAllEdits() replays the write later, and ss:revertMark un-freezes it
      if the staged edit is discarded. Stash the marker's pre-edit classes (keyed by mark)
      so that revert can restore the real source classes. */
-  if(curMark!==null){var fels=[],fcls=[];for(var i=0;i<selectedSet.length;i++){if(!selectedSet[i])continue;fels.push(selectedSet[i]);fcls.push(origClasses[i]!=null?origClasses[i]:null);}frozenOrig[curMark]={els:fels,classes:fcls};}
+  if(curMark!==null&&!frozenOrig[curMark]){var fels=[],fcls=[];for(var i=0;i<selectedSet.length;i++){if(!selectedSet[i])continue;fels.push(selectedSet[i]);fcls.push(origClasses[i]!=null?origClasses[i]:null);}frozenOrig[curMark]={els:fels,classes:fcls};}
   pendingMark=null;txtRevertEl=null;snapshotOrig();window.__ssSuppressUntil=Date.now()+2000;}
 else if(d.type==='ss:requestTree'){treeOn=true;treeEnsureObserver();treeSend();}
 else if(d.type==='ss:treeOff'){treeOn=false;}
@@ -345,6 +345,9 @@ else if(d.type==='ss:annotate:set'){var ael=selPrimary;if(ael&&ael.isConnected){
 else if(d.type==='ss:annotate:remove'){var arm=rlMarkers[d.id];if(arm){if(arm.box&&arm.box.parentNode)arm.box.parentNode.removeChild(arm.box);delete rlMarkers[d.id];}}
 else if(d.type==='ss:annotate:clear'){for(var aid in rlMarkers){var am=rlMarkers[aid];if(am&&am.box&&am.box.parentNode)am.box.parentNode.removeChild(am.box);}rlMarkers={};}
 else if(d.type==='ss:annotate:focus'){var afm=rlMarkers[d.id];if(afm&&afm.el&&afm.el.isConnected){try{afm.el.scrollIntoView({block:'center',behavior:'smooth'});}catch(err){}rlRetrack();}}
+/* Re-sync badge numbers after the host renumbers (remove/reorder): update each existing
+   badge's text in place so the on-page markers match the markdown/screenshot order. */
+else if(d.type==='ss:annotate:renumber'){if(d.entries){for(var ri2=0;ri2<d.entries.length;ri2++){var ren=d.entries[ri2],rem=rlMarkers[ren.id];if(rem&&rem.box){rem.box.textContent=String(ren.number);rem.number=ren.number;}}}}
 /* A staged (frozen) edit was discarded host-side: un-freeze its preview. Drop the
    marker's preview decls, rebuild the sheet, restore the source classes stashed at
    commit time, and strip the data-ss-sel marker so it reads as unedited again. */

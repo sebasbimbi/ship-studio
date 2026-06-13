@@ -26,7 +26,7 @@
  * the async usage patch around it.
  */
 
-import { useReducer, useCallback } from 'react';
+import { useReducer, useCallback, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { findComponentUsage, type ElementSignature, type SourceLocation } from '../lib/edit';
 import {
@@ -325,6 +325,19 @@ export function useRedline({
     },
     [post]
   );
+
+  // Keep the in-iframe badge numbers in sync with the (re)numbered annotations.
+  // remove/reorder renumber the list 1..N; without this the on-page badges keep
+  // their stale numbers and the captured screenshot markers desync from the
+  // markdown order at sendToAgent time.
+  const badgeNumbering = state.annotations.map((a) => `${a.id}:${a.number}`).join('|');
+  useEffect(() => {
+    post({
+      type: 'ss:annotate:renumber',
+      entries: state.annotations.map((a) => ({ id: a.id, number: a.number })),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-sync only when the id→number mapping changes
+  }, [badgeNumbering, post]);
 
   // Build the export document from the current annotations + live viewport,
   // capture a real annotated PNG of the preview, write the markdown changelog (+

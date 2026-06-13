@@ -140,9 +140,12 @@ function editKey(e: PendingEdit): string {
   if (e.kind === 'class') {
     const r = e.resolution;
     const loc = r.status === 'resolved' ? r : r.status === 'multi' ? r.locations[0] : null;
-    return loc ? `class:${loc.file}:${loc.line}` : `class:${e.mark}`;
+    // Column disambiguates multiple className literals on the same source line.
+    return loc ? `class:${loc.file}:${loc.line}:${loc.column}` : `class:${e.mark}`;
   }
-  return `${e.kind}:${e.file}:${e.line}`;
+  // JSX/HTML often has several editable literals on one line, so file:line alone
+  // would coalesce (and silently drop) a distinct second edit; include column.
+  return `${e.kind}:${e.file}:${e.line}:${e.column}`;
 }
 
 interface Params {
@@ -782,8 +785,12 @@ export function useVisualEditor({
     (id: string) => {
       const edit = pendingRef.current.find((e) => e.id === id);
       if (!edit) return;
-      setPending(pendingRef.current.filter((e) => e.id !== id));
-      if (edit.mark) post({ type: 'ss:revertMark', mark: edit.mark });
+      // ss:revertMark un-freezes the WHOLE marker's preview, so drop every staged
+      // edit sharing that mark (not just this one) — otherwise a sibling edit on
+      // the same element lingers in the queue with its preview already reverted.
+      const mark = edit.mark;
+      setPending(pendingRef.current.filter((e) => e.id !== id && (!mark || e.mark !== mark)));
+      if (mark) post({ type: 'ss:revertMark', mark });
     },
     [post, setPending]
   );

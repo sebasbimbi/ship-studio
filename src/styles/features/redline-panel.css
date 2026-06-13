@@ -8,6 +8,15 @@
    bottom of this file. The `ss-redline-panel__*` prefix is kept so the migrated
    markup didn't have to be reclassed wholesale. */
 
+/* Fixed marker/icon dimensions for the redline rows — component sizes (not values
+   on the spacing scale), tokenized per the feature-local-token convention so the
+   stylesheet stays literal-free. */
+:root {
+  --rl-badge-size: 18px;
+  --rl-action-size: 22px;
+  --rl-tray-list-max-h: 180px;
+}
+
 .ss-redline-panel__list {
   list-style: none;
   margin: 0;
@@ -40,8 +49,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: var(--rl-badge-size);
+  height: var(--rl-badge-size);
   margin-top: 1px;
   font-size: var(--font-size-xs);
   font-weight: 700;
@@ -80,7 +89,7 @@
   border: none;
   cursor: text;
   white-space: normal;
-  word-break: break-word;
+  overflow-wrap: break-word;
 }
 .ss-redline-panel__label:hover {
   background: none;
@@ -167,8 +176,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: var(--rl-action-size);
+  height: var(--rl-action-size);
   padding: 0;
   color: var(--text-muted);
   background: none;
@@ -211,7 +220,7 @@
 /* The staged-rows list is capped so a long queue scrolls inside the tray
    rather than pushing the Apply all button off-screen. */
 .ss-commit-tray__list {
-  max-height: 180px;
+  max-height: var(--rl-tray-list-max-h);
   overflow-y: auto;
   scrollbar-width: none;
 }
@@ -230,7 +239,7 @@
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  height: 18px;
+  height: var(--rl-badge-size);
   margin-top: 1px;
   padding: 0 var(--spacing-xs);
   font-size: var(--font-size-xs);
