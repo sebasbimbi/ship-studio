@@ -8,15 +8,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFileTree } from '../../hooks/useFileTree';
 import { useTreeDnd } from '../../hooks/useTreeDnd';
+import { useOsImport } from '../../hooks/useOsImport';
 import { FileTree } from './FileTree';
 import { CodeViewer } from './CodeViewer';
-import { ConflictPromptModal } from './ConflictPromptModal';
+import { ConflictPromptModal, type ConflictChoice } from './ConflictPromptModal';
 import { Spinner } from '../primitives/Spinner';
 import { Button } from '../primitives/Button';
 import { ResetIcon, SearchIcon } from '../icons';
 import {
   moveProjectEntry,
+  importPathsToProject,
   type ConflictResolution,
+  type ImportOutcome,
   type FileTreeNode,
   fileExtensionForAnalytics,
 } from '../../lib/code';
@@ -204,6 +207,107 @@ export function CodeTab({ projectPath, onSendToAgent, revealTarget }: CodeTabPro
   // hides siblings, so the drop target would be ambiguous.
   const dnd = useTreeDnd({ onMove: handleTreeMove, enabled: !searchQuery.trim() });
 
+  // ---- OS import (drag files from Finder onto the tree) ----
+  const [isImporting, setIsImporting] = useState(false);
+  const importingRef = useRef(false);
+  const [importConflict, setImportConflict] = useState<{
+    conflicts: ImportOutcome[];
+    toDir: string;
+    cursor: number;
+    toReplace: string[];
+    toRename: string[];
+  } | null>(null);
+  // Mirror in a ref so the drop handler can synchronously reject a re-drop while
+  // a conflict prompt is open without re-subscribing the listener.
+  const importConflictRef = useRef(importConflict);
+  useEffect(() => {
+    importConflictRef.current = importConflict;
+  }, [importConflict]);
+
+  const performImport = useCallback(
+    async (paths: string[], toDir: string, resolution: ConflictResolution) => {
+      setIsImporting(true);
+      importingRef.current = true;
+      try {
+        const outcomes = await importPathsToProject(projectPath, paths, toDir, resolution);
+        refreshTreeRaw();
+        if (toDir) expandDir(toDir);
+        const imported = outcomes.filter((o) => o.status === 'imported');
+        const conflicts = outcomes.filter((o) => o.status === 'conflict');
+        if (imported.length > 0) {
+          void trackEvent('code_paths_imported', { count: imported.length });
+          const dest = baseName(toDir) || 'project root';
+          toast.showToast(
+            imported.length === 1
+              ? `Imported ${baseName(imported[0].newRel ?? '')} to ${dest}.`
+              : `Imported ${imported.length} items to ${dest}.`,
+            'success'
+          );
+        }
+        if (conflicts.length > 0) {
+          setImportConflict({ conflicts, toDir, cursor: 0, toReplace: [], toRename: [] });
+        }
+      } catch (e) {
+        toast.showToast(formatCommandError(asCommandError(e)), 'error');
+      } finally {
+        setIsImporting(false);
+        importingRef.current = false;
+      }
+    },
+    [projectPath, refreshTreeRaw, expandDir, toast]
+  );
+
+  const handleOsImport = useCallback(
+    (paths: string[], toDir: string) => {
+      // Ignore a fresh drop while an import is in flight or a conflict prompt is
+      // open — otherwise a "looks frozen, drop again" re-drop starts a second,
+      // colliding import.
+      if (importingRef.current || importConflictRef.current) return;
+      void performImport(paths, toDir, 'error');
+    },
+    [performImport]
+  );
+  // Mirror the in-tree-move search gate: a filtered view hides siblings, so an
+  // import target would be ambiguous / land somewhere off-screen.
+  const osImport = useOsImport({
+    zone: 'code-files',
+    enabled: !searchQuery.trim(),
+    onImport: handleOsImport,
+  });
+
+  // Resolve OS-import name collisions one at a time (with "apply to the rest"),
+  // then re-import the chosen sources grouped by policy. Skipped ones are dropped.
+  const resolveImportConflict = useCallback(
+    (choice: ConflictChoice, applyToAll: boolean) => {
+      if (!importConflict) return;
+      const { conflicts, toDir, cursor, toReplace, toRename } = importConflict;
+      const end = applyToAll ? conflicts.length : cursor + 1;
+      const batch = conflicts.slice(cursor, end).map((c) => c.source);
+      const nextReplace = choice === 'replace' ? [...toReplace, ...batch] : toReplace;
+      const nextRename = choice === 'rename' ? [...toRename, ...batch] : toRename;
+      if (end >= conflicts.length) {
+        setImportConflict(null);
+        if (nextReplace.length) void performImport(nextReplace, toDir, 'replace');
+        if (nextRename.length) void performImport(nextRename, toDir, 'rename');
+      } else {
+        setImportConflict({
+          ...importConflict,
+          cursor: end,
+          toReplace: nextReplace,
+          toRename: nextRename,
+        });
+      }
+    },
+    [importConflict, performImport]
+  );
+
+  // Dismissing the prompt (ESC / overlay / close) cancels the remaining conflict
+  // handling entirely — no pending replace/rename is committed (Replace is
+  // destructive, so dismissal must mean "change nothing further").
+  const dismissImportConflict = useCallback(() => {
+    setImportConflict(null);
+  }, []);
+
   return (
     <div className="code-tab" ref={containerRef}>
       <div className="code-tab-sidebar" style={{ width: sidebarWidth }}>
@@ -231,10 +335,19 @@ export function CodeTab({ projectPath, onSendToAgent, revealTarget }: CodeTabPro
           />
         </div>
         <div
-          className={`code-tab-sidebar-content${dnd.dropTargetDir === '' ? ' root-drop-target' : ''}`}
+          className={`code-tab-sidebar-content${
+            dnd.dropTargetDir === '' || osImport.dropTargetDir === '' ? ' root-drop-target' : ''
+          }`}
+          data-os-drop-zone="code-files"
           onDragOver={dnd.onRootDragOver}
           onDrop={dnd.onRootDrop}
         >
+          {isImporting && (
+            <div className="code-tab-importing">
+              <Spinner size="sm" />
+              <span>Importing…</span>
+            </div>
+          )}
           {isLoadingTree ? (
             <div className="code-tab-sidebar-loading">
               <Spinner size="sm" style={{ color: 'var(--accent)' }} />
@@ -258,6 +371,7 @@ export function CodeTab({ projectPath, onSendToAgent, revealTarget }: CodeTabPro
               onToggleDirectory={toggleDirectory}
               onSelectFile={selectFile}
               dnd={searchQuery.trim() ? undefined : dnd}
+              osDropTargetDir={osImport.dropTargetDir}
             />
           )}
         </div>
@@ -286,6 +400,18 @@ export function CodeTab({ projectPath, onSendToAgent, revealTarget }: CodeTabPro
           if (c && choice !== 'skip') void performMove(c.from, c.toDir, choice);
         }}
         onClose={() => setConflict(null)}
+      />
+      <ConflictPromptModal
+        isOpen={!!importConflict}
+        name={
+          importConflict ? baseName(importConflict.conflicts[importConflict.cursor].source) : ''
+        }
+        targetLabel={
+          importConflict && importConflict.toDir ? baseName(importConflict.toDir) : undefined
+        }
+        remaining={importConflict ? importConflict.conflicts.length - importConflict.cursor - 1 : 0}
+        onResolve={resolveImportConflict}
+        onClose={dismissImportConflict}
       />
     </div>
   );

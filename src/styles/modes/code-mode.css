@@ -223,6 +223,15 @@
   border-radius: var(--radius-sm);
 }
 
+.code-tab-importing {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
 /* Name-collision prompt (ConflictPromptModal) */
 .conflict-prompt {
   display: flex;

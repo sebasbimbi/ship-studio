@@ -21,6 +21,8 @@ interface FileTreeProps {
   onSelectFile: (path: string) => void;
   /** Optional drag-and-drop controller (enables in-tree move). */
   dnd?: TreeDnd;
+  /** Folder highlighted as the OS-import drop target (`''` = root), if any. */
+  osDropTargetDir?: string | null;
   level?: number;
 }
 
@@ -31,6 +33,7 @@ export function FileTree({
   onToggleDirectory,
   onSelectFile,
   dnd,
+  osDropTargetDir,
   level = 0,
 }: FileTreeProps) {
   return (
@@ -44,6 +47,7 @@ export function FileTree({
           onToggleDirectory={onToggleDirectory}
           onSelectFile={onSelectFile}
           dnd={dnd}
+          osDropTargetDir={osDropTargetDir}
           level={level}
         />
       ))}
@@ -58,6 +62,7 @@ interface FileTreeItemProps {
   onToggleDirectory: (path: string) => void;
   onSelectFile: (path: string) => void;
   dnd?: TreeDnd;
+  osDropTargetDir?: string | null;
   level: number;
 }
 
@@ -68,6 +73,7 @@ function FileTreeItem({
   onToggleDirectory,
   onSelectFile,
   dnd,
+  osDropTargetDir,
   level,
 }: FileTreeItemProps) {
   const isExpanded = expandedPaths.has(node.path);
@@ -81,9 +87,11 @@ function FileTreeItem({
     }
   };
 
-  // A folder row is the drop target when it is the effective destination; the
-  // dragged row dims while in flight.
-  const isDropTarget = !!dnd && node.isDirectory && dnd.dropTargetDir === node.path;
+  // A folder row is the drop target when it is the effective destination of an
+  // in-tree move OR an OS import; the dragged row dims while in flight.
+  const isDropTarget =
+    node.isDirectory &&
+    ((!!dnd && dnd.dropTargetDir === node.path) || osDropTargetDir === node.path);
   const isDragging = dnd?.draggingPath === node.path;
 
   const className = [
@@ -106,6 +114,8 @@ function FileTreeItem({
         aria-expanded={node.isDirectory ? isExpanded : undefined}
         aria-selected={isSelected}
         aria-grabbed={dnd ? isDragging : undefined}
+        data-tree-path={node.path}
+        data-tree-dir={node.isDirectory ? '1' : undefined}
         draggable={!!dnd}
         onDragStart={dnd ? (e) => dnd.onItemDragStart(e, node) : undefined}
         onDragOver={dnd ? (e) => dnd.onItemDragOver(e, node) : undefined}
@@ -130,6 +140,7 @@ function FileTreeItem({
           onToggleDirectory={onToggleDirectory}
           onSelectFile={onSelectFile}
           dnd={dnd}
+          osDropTargetDir={osDropTargetDir}
           level={level + 1}
         />
       )}
