@@ -26,6 +26,9 @@ export function PackageManagerStep({
 }: PackageManagerStepProps) {
   const stepItems = getStepItems('package-manager', items);
   const isAnyActionInProgress = activeItemId !== null || terminalActive;
+  // Once Node is detected, Homebrew is only an optional installer — don't push
+  // the user to install it (matches isWizardStepComplete's package-manager rule).
+  const nodeReady = items.find((i) => i.id === 'node')?.status === 'ready';
 
   return (
     <div className="wizard-step-items">
@@ -42,6 +45,7 @@ export function PackageManagerStep({
             onAction={() => onItemAction(item.id)}
             isActionInProgress={activeItemId === item.id}
             isAnyActionInProgress={isAnyActionInProgress}
+            isOptional={item.id === 'homebrew' && nodeReady}
           />
         );
       })}

@@ -357,6 +357,21 @@ export function isWizardStepComplete(stepId: WizardStepId, items: SetupItem[]): 
     return isAtLeastOneAgentReady(items);
   }
 
+  if (stepId === 'package-manager') {
+    // The package manager (Homebrew) is only a means to install Node; if Node is
+    // already present the step's goal is met regardless of Homebrew — so a user
+    // who has Node via another route isn't blocked into installing Homebrew.
+    // A surfaced npm_fix (a permissions repair) must still be resolved.
+    const node = items.find((i) => i.id === 'node');
+    const npmFix = items.find((i) => i.id === 'npm_fix');
+    if (node?.status === 'ready') {
+      return !npmFix || npmFix.status === 'ready';
+    }
+    // Node missing → the package manager is genuinely needed to install it.
+    const stepItems = getStepItems(stepId, items);
+    return stepItems.length > 0 && stepItems.every((i) => i.status === 'ready');
+  }
+
   const stepItems = getStepItems(stepId, items);
   return stepItems.length > 0 && stepItems.every((i) => i.status === 'ready');
 }

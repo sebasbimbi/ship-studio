@@ -450,8 +450,12 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
         error_message: None,
     });
 
-    // Required base items for setup completion (GitHub auth and individual agent items are optional)
-    const REQUIRED_ITEMS: &[&str] = &["homebrew", "node", "git", "gh"];
+    // Required base items for setup completion (GitHub auth and individual agent
+    // items are optional). Homebrew is intentionally NOT required: it's only an
+    // installer for node/git/gh, so if those are present it isn't needed — this
+    // matches the frontend isWizardStepComplete rule and keeps a user who has
+    // Node via another version manager (no Homebrew) from being re-nagged.
+    const REQUIRED_ITEMS: &[&str] = &["node", "git", "gh"];
 
     let base_ready = items
         .iter()
@@ -518,12 +522,9 @@ pub async fn quick_setup_check() -> crate::types::QuickSetupCheck {
         };
     }
 
-    // Fast Tier-1 checks: binary existence only (no --version calls)
-    #[cfg(windows)]
-    let pkg_mgr_present = check_winget().0;
-    #[cfg(not(windows))]
-    let pkg_mgr_present = check_homebrew().0;
-
+    // Fast Tier-1 checks: binary existence only (no --version calls). The package
+    // manager (Homebrew/Winget) is only an installer — not required when the
+    // tools it installs are already present (mirrors all_ready below).
     let node_present = find_executable("node").is_some();
     let git_present = find_executable("git").is_some();
     let gh_present = find_executable("gh").is_some();
@@ -548,8 +549,7 @@ pub async fn quick_setup_check() -> crate::types::QuickSetupCheck {
     // For gh_auth, we trust the cached state since checking requires subprocess
     // It will be verified in the background after showing projects
 
-    let all_present =
-        pkg_mgr_present && node_present && git_present && gh_present && at_least_one_agent;
+    let all_present = node_present && git_present && gh_present && at_least_one_agent;
 
     crate::types::QuickSetupCheck {
         all_present,

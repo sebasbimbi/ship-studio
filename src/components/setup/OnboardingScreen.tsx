@@ -603,9 +603,14 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
       }
     }
     const stepDef = WIZARD_STEPS.find((s) => s.id === currentStep);
+    // Homebrew is optional once Node is present, so it must never be reported as
+    // the blocker (keeps this in sync with isWizardStepComplete's rule).
+    const nodeReady = items.find((it) => it.id === 'node')?.status === 'ready';
     const blocker = stepDef?.itemIds
       .map((id) => items.find((it) => it.id === id))
-      .find((it) => it !== undefined && it.status !== 'ready');
+      .find(
+        (it) => it !== undefined && it.status !== 'ready' && !(it.id === 'homebrew' && nodeReady)
+      );
     if (blocker) {
       return `Finish setting up ${SETUP_FRIENDLY_NAMES[blocker.id] || blocker.id} to continue`;
     }

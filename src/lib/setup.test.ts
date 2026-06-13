@@ -507,6 +507,14 @@ describe('isWizardStepComplete', () => {
     expect(isWizardStepComplete('package-manager', FRESH_INSTALL_ITEMS)).toBe(false);
   });
 
+  it('package-manager is complete when Node is ready even if the package manager is not', () => {
+    // A user with Node via another route (no Homebrew) should not be blocked.
+    const items = STEP1_COMPLETE_ITEMS.map((i) =>
+      i.id === 'homebrew' ? { ...i, status: 'not_installed' as const } : i
+    );
+    expect(isWizardStepComplete('package-manager', items)).toBe(true);
+  });
+
   it('git-github is complete when git + gh + gh_auth are ready', () => {
     expect(isWizardStepComplete('git-github', ALL_READY_CLAUDE_ONLY)).toBe(true);
   });

@@ -59,6 +59,42 @@ pub fn get_extended_path() -> String {
     result
 }
 
+/// Query the user's login shell for its PATH so we detect tools installed by
+/// any version manager (nvm, volta, fnm, asdf, …) exactly the way their terminal
+/// sees them. A macOS app launched from Finder does NOT inherit this PATH.
+/// Bounded by a short timeout so a slow shell rc can't hang detection; returns
+/// None on any failure.
+#[cfg(not(windows))]
+fn get_login_shell_path() -> Option<String> {
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    use std::process::Stdio;
+
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        // -l (login) + -i (interactive) so the shell sources the rc files that
+        // set up version managers (nvm/fnm/asdf typically live in the interactive
+        // rc). A unique marker isolates the PATH from any banner/prompt a chatty
+        // rc prints to stdout; stdin is /dev/null so a prompting rc can't block.
+        let output = create_command(&shell)
+            .args(["-lic", "echo \"__SHIPSTUDIO_PATH__${PATH}\""])
+            .stdin(Stdio::null())
+            .output();
+        let _ = tx.send(output);
+    });
+    match rx.recv_timeout(Duration::from_secs(3)) {
+        Ok(Ok(o)) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .rev()
+            .find_map(|line| line.trim().strip_prefix("__SHIPSTUDIO_PATH__"))
+            .map(|p| p.trim().to_string())
+            .filter(|p| !p.is_empty()),
+        _ => None,
+    }
+}
+
 /// Computes the extended PATH (uncached). Called by `get_extended_path()`.
 fn build_extended_path() -> String {
     let current_path = std::env::var("PATH").unwrap_or_default();
@@ -186,6 +222,17 @@ fn build_extended_path() -> String {
         }
     }
 
+    // Merge the user's login-shell PATH (covers nvm/volta/fnm/asdf/custom that a
+    // Finder-launched bundle wouldn't otherwise see). Non-Windows only.
+    #[cfg(not(windows))]
+    if let Some(shell_path) = get_login_shell_path() {
+        for dir in shell_path.split(':') {
+            if !dir.is_empty() && !paths.iter().any(|p| p == dir) {
+                paths.push(dir.to_string());
+            }
+        }
+    }
+
     // Append existing PATH
     if !current_path.is_empty() {
         paths.push(current_path);
@@ -201,6 +248,27 @@ pub fn find_executable(cmd: &str) -> Option<std::path::PathBuf> {
     // First try which (works in dev and if PATH is set)
     if let Ok(path) = which::which(cmd) {
         return Some(path);
+    }
+
+    // Then search the extended PATH — which now includes the user's login-shell
+    // PATH, so we find tools installed by any version manager their terminal
+    // sees, even though a bundled app didn't inherit that PATH.
+    let separator = get_path_separator();
+    for dir in get_extended_path().split(separator) {
+        if dir.is_empty() {
+            continue;
+        }
+        let candidate = std::path::Path::new(dir).join(cmd);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+        #[cfg(windows)]
+        for ext in ["exe", "cmd"] {
+            let win = std::path::Path::new(dir).join(format!("{cmd}.{ext}"));
+            if win.is_file() {
+                return Some(win);
+            }
+        }
     }
 
     #[cfg(windows)]
@@ -747,6 +815,16 @@ mod tests {
         fn test_nonexistent_command() {
             let result = find_executable("this-command-definitely-does-not-exist-12345");
             assert!(result.is_none());
+        }
+
+        /// The login-shell PATH query must never panic and, when it returns a
+        /// value, that value must be non-empty — regardless of the host shell.
+        #[test]
+        #[cfg(not(windows))]
+        fn test_get_login_shell_path_is_safe() {
+            if let Some(path) = get_login_shell_path() {
+                assert!(!path.is_empty());
+            }
         }
     }
 
