@@ -21,6 +21,7 @@ import { Spinner } from '../primitives/Spinner';
 import {
   useProjectCreation,
   TEMPLATES,
+  TEMPLATE_GROUPS,
   STEPS,
   STATUS_MESSAGES,
 } from '../../hooks/useProjectCreation';
@@ -269,40 +270,54 @@ export function CreateProject({ onComplete, onCancel }: CreateProjectProps) {
 
           {activeTab === 'scratch' && (
             <>
-              <div className="stack-grid">
-                {TEMPLATES.map((template) => (
-                  <button
-                    key={template.id}
-                    type="button"
-                    className={`stack-card ${selectedTemplate?.id === template.id && !hasZipTemplate ? 'stack-card-selected' : ''}`}
-                    onClick={() => {
-                      handleTemplateSelect(template);
-                      void trackEvent('template_selected', {
-                        template_id: template.id,
-                        $screen_name: 'Create Project',
-                      });
-                      setSetAsDefaultChecked(false);
-                    }}
-                  >
-                    <span className="stack-card-name">{template.name}</span>
-                    <span className="stack-card-desc">{template.description}</span>
-                    {selectedTemplate?.id === template.id && !hasZipTemplate && (
-                      <div className="stack-card-check">
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="3"
+              {TEMPLATE_GROUPS.map((group) => {
+                const groupTemplates = TEMPLATES.filter((t) => t.category === group.id);
+                if (groupTemplates.length === 0) return null;
+                return (
+                  <div key={group.id} className="stack-group">
+                    <h3 className="stack-group-title">{group.label}</h3>
+                    <div className="stack-grid">
+                      {groupTemplates.map((template) => (
+                        <button
+                          key={template.id}
+                          type="button"
+                          className={`stack-card ${selectedTemplate?.id === template.id && !hasZipTemplate ? 'stack-card-selected' : ''}`}
+                          onClick={() => {
+                            handleTemplateSelect(template);
+                            void trackEvent('template_selected', {
+                              template_id: template.id,
+                              $screen_name: 'Create Project',
+                            });
+                            setSetAsDefaultChecked(false);
+                          }}
                         >
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                      </div>
-                    )}
-                  </button>
-                ))}
-              </div>
+                          <span className="stack-card-name">
+                            {template.name}
+                            {template.id === defaultTemplateId && (
+                              <span className="stack-card-badge">Recommended</span>
+                            )}
+                          </span>
+                          <span className="stack-card-desc">{template.description}</span>
+                          {selectedTemplate?.id === template.id && !hasZipTemplate && (
+                            <div className="stack-card-check">
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="3"
+                              >
+                                <polyline points="20 6 9 17 4 12" />
+                              </svg>
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
 
               {selectedTemplate && selectedTemplate.id !== defaultTemplateId && !hasZipTemplate && (
                 <button

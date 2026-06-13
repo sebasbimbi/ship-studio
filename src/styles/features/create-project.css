@@ -132,6 +132,19 @@
 }
 
 /* Stack Grid (Start from Scratch) */
+.stack-group {
+  margin-bottom: 18px;
+}
+
+.stack-group-title {
+  margin: 0 0 8px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
 .stack-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -166,9 +179,26 @@
 }
 
 .stack-card-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
   font-size: var(--font-size-md);
   font-weight: 600;
   color: var(--text-primary);
+}
+
+/* Neutral chip — deliberately NOT the accent green used for selection, so on
+   the pre-selected default tile "Recommended" reads as a separate signal from
+   the green selected border/check rather than blurring into one. */
+.stack-card-badge {
+  padding: 1px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
 }
 
 .stack-card-desc {
