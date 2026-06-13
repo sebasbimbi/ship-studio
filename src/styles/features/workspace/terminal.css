@@ -665,3 +665,14 @@
   font-size: var(--font-size-sm);
   line-height: 1.5;
 }
+
+/* Inline "Agent is working…" indicator in the terminal pane header (C12 / F27). */
+.terminal-agent-working {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-left: var(--spacing-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}

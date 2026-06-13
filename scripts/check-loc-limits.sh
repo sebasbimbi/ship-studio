@@ -39,8 +39,11 @@ echo "Components (.tsx limit 1200):"
 # Bumped again for the visual editor's jump-to-code wiring (codeTarget state +
 # openInCode callback threaded to the Code tab). Bumped again for the Shopify
 # theme preview gate (the logic lives in useShopifyTheme/ShopifySetup; this is
-# just the render branch + hook call the orchestrator must own).
-check_file src/components/workspace/WorkspaceView.tsx 1570
+# just the render branch + hook call the orchestrator must own). Bumped again
+# for the terminal-header "Agent is working" indicator (the hook + component
+# live in AgentWorkingIndicator/useActiveAgentStatus; this is just the import +
+# one deeply-nested usage line that prettier wraps).
+check_file src/components/workspace/WorkspaceView.tsx 1580
 check_file src/components/dashboard/ProjectList.tsx 800
 check_file src/components/plugins/PluginManager.tsx 700
 check_file src/components/dashboard/ImportProject.tsx 500
