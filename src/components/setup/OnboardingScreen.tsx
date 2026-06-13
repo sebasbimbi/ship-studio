@@ -64,6 +64,18 @@ interface TerminalConfig {
   args: string[];
 }
 
+/**
+ * Plain-language reassurance shown above an interactive setup terminal, so a
+ * non-developer doesn't read the scrolling shell output (or a Mac password
+ * prompt) as something going wrong. Returns null when no note is needed.
+ */
+function terminalReassurance(itemId: string): string | null {
+  if (itemId === 'homebrew') {
+    return "This is the official Homebrew installer. If it asks for your Mac password, that's expected — type it and press Return (the screen stays blank as you type). This window closes itself when it's done.";
+  }
+  return null;
+}
+
 interface OnboardingScreenProps {
   /** Called when setup is complete and user continues */
   onComplete: () => void;
@@ -595,6 +607,11 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
                   {terminalExitCode ? 'Close' : 'Cancel'}
                 </button>
               </div>
+              {terminalReassurance(terminalConfig.itemId) && (
+                <p className="onboarding-terminal-note">
+                  {terminalReassurance(terminalConfig.itemId)}
+                </p>
+              )}
               <OnboardingTerminal
                 command={terminalConfig.command}
                 args={terminalConfig.args}

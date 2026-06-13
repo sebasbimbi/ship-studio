@@ -836,6 +836,16 @@
   color: var(--text-primary);
 }
 
+.onboarding-terminal-note {
+  margin: 0;
+  padding: 10px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
 .onboarding-terminal-container {
   height: 350px;
   background: var(--bg-primary);
