@@ -624,3 +624,44 @@
   background: rgba(var(--warning-rgb), 0.2);
   color: var(--warning);
 }
+
+/* First-run hint over the agent terminal (C9 / F22). Non-interactive caption —
+   pointer-events:none so the click-to-focus overlay beneath it still works;
+   clears on the user's first keystroke. */
+.terminal-firstrun-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  /* Anchor to the bottom so the card sits below the agent's startup banner
+     rather than over it; horizontally centered. */
+  align-items: flex-end;
+  justify-content: center;
+  padding: var(--spacing-md);
+  pointer-events: none;
+}
+
+.terminal-firstrun-hint-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  /* Cap at 360px but never wider than the (possibly split) pane. */
+  max-width: min(360px, 100%);
+  padding: var(--spacing-lg);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  text-align: center;
+}
+
+.terminal-firstrun-hint-card strong {
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  font-weight: 600;
+}
+
+.terminal-firstrun-hint-card span {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
