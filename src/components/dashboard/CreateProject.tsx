@@ -64,6 +64,7 @@ export function CreateProject({ onComplete, onCancel }: CreateProjectProps) {
     handleRemoveZip,
     setZipPath,
     setZipFileName,
+    setError,
     saveDefaultTemplate,
     defaultTemplateId,
   } = useProjectCreation({ onComplete, onCancel });
@@ -141,8 +142,10 @@ export function CreateProject({ onComplete, onCancel }: CreateProjectProps) {
         setZipFileName(selectedCommunityTemplate.name + '.zip');
         rawHandleContinue();
       } catch (err) {
-        // Show error inline — don't block the modal
+        // Surface the failure (don't block the modal) — a silent catch left the
+        // button snapping back to "Continue" with no explanation.
         logger.error('Failed to download community template', { error: err });
+        setError("Couldn't download that template. Check your connection and try again.");
       } finally {
         setDownloading(false);
       }

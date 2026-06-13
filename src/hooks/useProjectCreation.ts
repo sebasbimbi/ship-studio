@@ -682,6 +682,7 @@ export function useProjectCreation({ onComplete, onCancel }: UseProjectCreationP
     // Zip state setters (for community template download flow)
     setZipPath,
     setZipFileName,
+    setError,
 
     // Default template
     saveDefaultTemplate,
