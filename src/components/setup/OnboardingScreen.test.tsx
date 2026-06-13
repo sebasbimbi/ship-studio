@@ -122,7 +122,9 @@ describe('OnboardingScreen', () => {
       expect(screen.getByText('Quick Setup')).toBeInTheDocument();
       // Step title appears in both indicator and header — check the header h2
       expect(
-        screen.getByText('Install the tools needed to manage dependencies')
+        screen.getByText(
+          'A one-time setup of the free developer tools your AI needs to build and run your site.'
+        )
       ).toBeInTheDocument();
     });
   });
@@ -135,7 +137,9 @@ describe('OnboardingScreen', () => {
     render(<OnboardingScreen onComplete={onComplete} />);
 
     await waitFor(() => {
-      expect(screen.getByText('Set up version control and repository hosting')).toBeInTheDocument();
+      expect(
+        screen.getByText('Save your work safely and publish it online. Required.')
+      ).toBeInTheDocument();
     });
   });
 
@@ -145,7 +149,9 @@ describe('OnboardingScreen', () => {
     render(<OnboardingScreen onComplete={onComplete} />);
 
     await waitFor(() => {
-      expect(screen.getByText('Install at least one AI coding assistant')).toBeInTheDocument();
+      expect(
+        screen.getByText('Your AI agent is what builds your app. Connect at least one to continue.')
+      ).toBeInTheDocument();
     });
   });
 
@@ -155,7 +161,9 @@ describe('OnboardingScreen', () => {
     render(<OnboardingScreen onComplete={onComplete} />);
 
     await waitFor(() => {
-      expect(screen.getByText('Set up version control and repository hosting')).toBeInTheDocument();
+      expect(
+        screen.getByText('Save your work safely and publish it online. Required.')
+      ).toBeInTheDocument();
     });
   });
 
@@ -458,7 +466,9 @@ describe('OnboardingScreen', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText('Install the tools needed to manage dependencies')
+          screen.getByText(
+            'A one-time setup of the free developer tools your AI needs to build and run your site.'
+          )
         ).toBeInTheDocument();
       });
 
@@ -500,7 +510,7 @@ describe('OnboardingScreen', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText('Set up version control and repository hosting')
+          screen.getByText('Save your work safely and publish it online. Required.')
         ).toBeInTheDocument();
       });
 
@@ -510,7 +520,9 @@ describe('OnboardingScreen', () => {
       });
 
       expect(
-        screen.getByText('Install the tools needed to manage dependencies')
+        screen.getByText(
+          'A one-time setup of the free developer tools your AI needs to build and run your site.'
+        )
       ).toBeInTheDocument();
     });
 
@@ -534,7 +546,7 @@ describe('OnboardingScreen', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText('Set up version control and repository hosting')
+          screen.getByText('Save your work safely and publish it online. Required.')
         ).toBeInTheDocument();
       });
 
@@ -564,7 +576,9 @@ describe('OnboardingScreen', () => {
         fireEvent.click(screen.getByText('Next'));
       });
 
-      expect(screen.getByText('Install at least one AI coding assistant')).toBeInTheDocument();
+      expect(
+        screen.getByText('Your AI agent is what builds your app. Connect at least one to continue.')
+      ).toBeInTheDocument();
     });
 
     it('hosting step shows Skip for Now button that advances to celebration', async () => {
@@ -587,7 +601,9 @@ describe('OnboardingScreen', () => {
 
       // Should land on hosting step
       await waitFor(() => {
-        expect(screen.getByText('Deploy your projects to the web')).toBeInTheDocument();
+        expect(
+          screen.getByText('Optional. Connect later to put your site on the web.')
+        ).toBeInTheDocument();
       });
 
       // Skip for Now should be visible
@@ -610,7 +626,7 @@ describe('OnboardingScreen', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText('Set up version control and repository hosting')
+          screen.getByText('Save your work safely and publish it online. Required.')
         ).toBeInTheDocument();
       });
 
@@ -627,7 +643,9 @@ describe('OnboardingScreen', () => {
         fireEvent.click(screen.getByText('Next'));
       });
 
-      expect(screen.getByText('Set up version control and repository hosting')).toBeInTheDocument();
+      expect(
+        screen.getByText('Save your work safely and publish it online. Required.')
+      ).toBeInTheDocument();
     });
   });
 
@@ -659,7 +677,11 @@ describe('OnboardingScreen', () => {
       render(<OnboardingScreen onComplete={onComplete} />);
 
       await waitFor(() => {
-        expect(screen.getByText('Install at least one AI coding assistant')).toBeInTheDocument();
+        expect(
+          screen.getByText(
+            'Your AI agent is what builds your app. Connect at least one to continue.'
+          )
+        ).toBeInTheDocument();
       });
 
       const nextButton = screen.getByText('Next');
@@ -673,7 +695,11 @@ describe('OnboardingScreen', () => {
       render(<OnboardingScreen onComplete={onComplete} />);
 
       await waitFor(() => {
-        expect(screen.getByText('Install at least one AI coding assistant')).toBeInTheDocument();
+        expect(
+          screen.getByText(
+            'Your AI agent is what builds your app. Connect at least one to continue.'
+          )
+        ).toBeInTheDocument();
       });
 
       // Next should be disabled (no agent pair ready)
@@ -764,7 +790,9 @@ describe('OnboardingScreen', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText('Install the tools needed to manage dependencies')
+          screen.getByText(
+            'A one-time setup of the free developer tools your AI needs to build and run your site.'
+          )
         ).toBeInTheDocument();
       });
 
@@ -807,7 +835,7 @@ describe('OnboardingScreen', () => {
       // Auto-advances to step 2
       await waitFor(() => {
         expect(
-          screen.getByText('Set up version control and repository hosting')
+          screen.getByText('Save your work safely and publish it online. Required.')
         ).toBeInTheDocument();
       });
 
@@ -825,7 +853,7 @@ describe('OnboardingScreen', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText('Set up version control and repository hosting')
+          screen.getByText('Save your work safely and publish it online. Required.')
         ).toBeInTheDocument();
       });
 
@@ -858,7 +886,9 @@ describe('OnboardingScreen', () => {
         fireEvent.click(screen.getByText('Next'));
       });
 
-      expect(screen.getByText('Install at least one AI coding assistant')).toBeInTheDocument();
+      expect(
+        screen.getByText('Your AI agent is what builds your app. Connect at least one to continue.')
+      ).toBeInTheDocument();
 
       // Now install Claude (terminal item) — after it succeeds, we're all done
       const claudeInstalls = screen.getAllByText('Install');
@@ -921,7 +951,9 @@ describe('OnboardingScreen', () => {
       await waitFor(() => {
         expect(screen.getByText('Quick Setup')).toBeInTheDocument();
         expect(
-          screen.getByText('Install the tools needed to manage dependencies')
+          screen.getByText(
+            'A one-time setup of the free developer tools your AI needs to build and run your site.'
+          )
         ).toBeInTheDocument();
       });
     });
@@ -1135,7 +1167,7 @@ describe('OnboardingScreen', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText('Set up version control and repository hosting')
+          screen.getByText('Save your work safely and publish it online. Required.')
         ).toBeInTheDocument();
       });
 
@@ -1189,7 +1221,11 @@ describe('OnboardingScreen', () => {
       render(<OnboardingScreen onComplete={onComplete} />);
 
       await waitFor(() => {
-        expect(screen.getByText('Install at least one AI coding assistant')).toBeInTheDocument();
+        expect(
+          screen.getByText(
+            'Your AI agent is what builds your app. Connect at least one to continue.'
+          )
+        ).toBeInTheDocument();
       });
 
       // Find Connect button for claude_auth
@@ -1230,7 +1266,7 @@ describe('OnboardingScreen', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText('Set up version control and repository hosting')
+          screen.getByText('Save your work safely and publish it online. Required.')
         ).toBeInTheDocument();
       });
 
@@ -1267,7 +1303,11 @@ describe('OnboardingScreen', () => {
       render(<OnboardingScreen onComplete={onComplete} />);
 
       await waitFor(() => {
-        expect(screen.getByText('Install at least one AI coding assistant')).toBeInTheDocument();
+        expect(
+          screen.getByText(
+            'Your AI agent is what builds your app. Connect at least one to continue.'
+          )
+        ).toBeInTheDocument();
       });
 
       const connectButtons = screen.getAllByText('Connect');
@@ -1531,7 +1571,7 @@ describe('OnboardingScreen', () => {
       });
 
       // Node depends on homebrew — with homebrew not installed, node should show "Waiting for..."
-      expect(screen.getByText('Waiting for Package Manager')).toBeInTheDocument();
+      expect(screen.getByText('Unlocks after Package Manager')).toBeInTheDocument();
     });
 
     it('node becomes installable after homebrew is installed', async () => {
@@ -1549,7 +1589,7 @@ describe('OnboardingScreen', () => {
       });
 
       // Node should NOT show "Waiting for..." anymore
-      expect(screen.queryByText('Waiting for Package Manager')).not.toBeInTheDocument();
+      expect(screen.queryByText('Unlocks after Package Manager')).not.toBeInTheDocument();
 
       // Node should have an Install button
       const installButtons = screen.getAllByText('Install');
@@ -1563,12 +1603,12 @@ describe('OnboardingScreen', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText('Set up version control and repository hosting')
+          screen.getByText('Save your work safely and publish it online. Required.')
         ).toBeInTheDocument();
       });
 
       // gh_auth depends on gh — with gh not installed, should show blocked
-      expect(screen.getByText('Waiting for GitHub CLI')).toBeInTheDocument();
+      expect(screen.getByText('Unlocks after GitHub CLI')).toBeInTheDocument();
     });
 
     it('claude_auth shows as blocked when claude is not installed (step 3)', async () => {
@@ -1577,11 +1617,15 @@ describe('OnboardingScreen', () => {
       render(<OnboardingScreen onComplete={onComplete} />);
 
       await waitFor(() => {
-        expect(screen.getByText('Install at least one AI coding assistant')).toBeInTheDocument();
+        expect(
+          screen.getByText(
+            'Your AI agent is what builds your app. Connect at least one to continue.'
+          )
+        ).toBeInTheDocument();
       });
 
       // claude_auth depends on claude — should show blocked
-      expect(screen.getByText('Waiting for Claude Code')).toBeInTheDocument();
+      expect(screen.getByText('Unlocks after Claude Code')).toBeInTheDocument();
     });
   });
 
@@ -1600,7 +1644,7 @@ describe('OnboardingScreen', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText('Set up version control and repository hosting')
+          screen.getByText('Save your work safely and publish it online. Required.')
         ).toBeInTheDocument();
       });
 
@@ -1649,7 +1693,11 @@ describe('OnboardingScreen', () => {
       render(<OnboardingScreen onComplete={onComplete} />);
 
       await waitFor(() => {
-        expect(screen.getByText('Install at least one AI coding assistant')).toBeInTheDocument();
+        expect(
+          screen.getByText(
+            'Your AI agent is what builds your app. Connect at least one to continue.'
+          )
+        ).toBeInTheDocument();
       });
 
       // Next should be disabled (no agent pair ready)
@@ -1715,7 +1763,11 @@ describe('OnboardingScreen', () => {
       render(<OnboardingScreen onComplete={onComplete} />);
 
       await waitFor(() => {
-        expect(screen.getByText('Install at least one AI coding assistant')).toBeInTheDocument();
+        expect(
+          screen.getByText(
+            'Your AI agent is what builds your app. Connect at least one to continue.'
+          )
+        ).toBeInTheDocument();
       });
 
       // Next should be disabled (binary ready but auth not = no complete pair)
@@ -1839,7 +1891,7 @@ describe('OnboardingScreen', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText('Set up version control and repository hosting')
+          screen.getByText('Save your work safely and publish it online. Required.')
         ).toBeInTheDocument();
       });
 
@@ -1888,7 +1940,9 @@ describe('OnboardingScreen', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText('Install the tools needed to manage dependencies')
+          screen.getByText(
+            'A one-time setup of the free developer tools your AI needs to build and run your site.'
+          )
         ).toBeInTheDocument();
       });
     });
@@ -1899,7 +1953,11 @@ describe('OnboardingScreen', () => {
       render(<OnboardingScreen onComplete={onComplete} />);
 
       await waitFor(() => {
-        expect(screen.getByText('Install at least one AI coding assistant')).toBeInTheDocument();
+        expect(
+          screen.getByText(
+            'Your AI agent is what builds your app. Connect at least one to continue.'
+          )
+        ).toBeInTheDocument();
       });
     });
   });

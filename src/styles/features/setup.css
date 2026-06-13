@@ -380,6 +380,14 @@
   flex: 1;
 }
 
+.wizard-nav-hint {
+  margin-right: 12px;
+  align-self: center;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  text-align: right;
+}
+
 .wizard-nav-back {
   padding: 8px 18px;
   font-size: var(--font-size-lg);

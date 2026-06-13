@@ -299,28 +299,29 @@ export const WIZARD_STEPS: WizardStepDef[] = [
   {
     id: 'package-manager',
     title: 'Package Manager & Node.js',
-    subtitle: 'Install the tools needed to manage dependencies',
+    subtitle:
+      'A one-time setup of the free developer tools your AI needs to build and run your site.',
     itemIds: ['homebrew', 'node', 'npm_fix'],
     skippable: false,
   },
   {
     id: 'git-github',
     title: 'Git & GitHub',
-    subtitle: 'Set up version control and repository hosting',
+    subtitle: 'Save your work safely and publish it online. Required.',
     itemIds: ['git', 'gh', 'gh_auth'],
     skippable: false,
   },
   {
     id: 'agent',
     title: 'AI Agent',
-    subtitle: 'Install at least one AI coding assistant',
+    subtitle: 'Your AI agent is what builds your app. Connect at least one to continue.',
     itemIds: ['claude', 'claude_auth', 'codex', 'codex_auth', 'opencode', 'opencode_auth'],
     skippable: false,
   },
   {
     id: 'hosting',
     title: 'Hosting Provider',
-    subtitle: 'Deploy your projects to the web',
+    subtitle: 'Optional. Connect later to put your site on the web.',
     itemIds: ['vercel', 'vercel_auth'],
     skippable: true,
   },
