@@ -603,6 +603,7 @@ export function ProjectList({
           onDeleteFolder={(folder) => setDeleteFolderConfirm(folder)}
           pinnedSet={pinnedSet}
           onTogglePin={onTogglePin}
+          onCreateProject={onCreateProject}
         />
 
         <AgentsPanel />
