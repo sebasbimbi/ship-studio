@@ -1,0 +1,88 @@
+/* First-run workspace tour (F23 / PART B). A sequenced spotlight walkthrough
+   layered on the existing data-education-id anchors. */
+
+.workspace-tour {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal-overlay);
+}
+
+/* Click-blocker. For an anchored step it's transparent (the ring's box-shadow
+   provides the dimming); for a centered step it dims the whole screen. */
+.workspace-tour-scrim {
+  position: fixed;
+  inset: 0;
+}
+
+.workspace-tour-scrim.dim {
+  background: var(--overlay-60);
+}
+
+/* Spotlight: a bordered cutout whose huge box-shadow IS the surrounding scrim,
+   so the highlighted element stays bright. */
+.workspace-tour-ring {
+  position: fixed;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 0 9999px var(--overlay-60);
+  pointer-events: none;
+  transition:
+    top var(--transition),
+    left var(--transition),
+    width var(--transition),
+    height var(--transition);
+}
+
+.workspace-tour-card {
+  position: fixed;
+  width: 320px;
+  max-width: calc(100vw - var(--spacing-xl));
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-lg);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.workspace-tour-card.centered {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.workspace-tour-step {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.workspace-tour-title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.workspace-tour-body {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.workspace-tour-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--spacing-sm);
+}
+
+.workspace-tour-nav {
+  display: flex;
+  gap: var(--spacing-sm);
+}
