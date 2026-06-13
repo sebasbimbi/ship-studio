@@ -7,10 +7,25 @@ import {
   type Breakpoint,
   type UsageReport,
 } from '../../lib/edit';
-import type { Selection } from '../../hooks/useVisualEditor';
+import type { Selection, PendingEdit } from '../../hooks/useVisualEditor';
+import type { RedlineLocator, RedlineAnnotation } from '../../lib/redline';
 
 const BREAKPOINTS: Breakpoint[] = [BASE_BREAKPOINT, ...DEFAULT_BREAKPOINTS];
 const MD = BREAKPOINTS.find((b) => b.name === 'md')!;
+
+/** A neutral locator — every Selection now carries one from the ss:select
+ *  payload. Fields don't matter for the panel's render, only that it type-checks. */
+const LOCATOR: RedlineLocator = {
+  tag: 'div',
+  id: null,
+  classList: [],
+  role: null,
+  ariaLabel: null,
+  textSnippet: null,
+  dataAttributes: {},
+  ancestorClasses: [],
+  nearbyLandmark: null,
+};
 
 const resolvedSelection: Selection = {
   signature: { className: 'p-3', tagName: 'div', ancestorClasses: [] },
@@ -23,6 +38,8 @@ const resolvedSelection: Selection = {
     confidence: 'unique',
   },
   instanceCount: 1,
+  locator: LOCATOR,
+  mark: 'm1',
 };
 
 function renderPanel(
@@ -31,8 +48,6 @@ function renderPanel(
   activeBreakpoint: Breakpoint = BASE_BREAKPOINT,
   onSelectBreakpoint = vi.fn(),
   breakpointTooWide = false,
-  autoSave = false,
-  onToggleAutoSave = vi.fn(),
   onApplyEnum = vi.fn(),
   onSetSide = vi.fn(),
   onReset = vi.fn()
@@ -47,8 +62,6 @@ function renderPanel(
       activeBreakpoint={activeBreakpoint}
       breakpointTooWide={breakpointTooWide}
       onSelectBreakpoint={onSelectBreakpoint}
-      autoSave={autoSave}
-      onToggleAutoSave={onToggleAutoSave}
       onStepGap={vi.fn()}
       onSetSide={onSetSide}
       onApplyEnum={onApplyEnum}
@@ -56,7 +69,6 @@ function renderPanel(
       multiTarget="all"
       onMultiTargetChange={vi.fn()}
       usage={null}
-      onCommit={vi.fn()}
       onClose={vi.fn()}
     />
   );
@@ -73,6 +85,8 @@ const multiSelection: Selection = {
     ],
   },
   instanceCount: 2,
+  locator: LOCATOR,
+  mark: 'm2',
 };
 
 describe('VisualEditorPanel', () => {
@@ -94,8 +108,8 @@ describe('VisualEditorPanel', () => {
     expect(screen.getByText('Opacity')).toBeInTheDocument();
     // Color controls render as swatch buttons that open the picker popover
     expect(screen.getByRole('button', { name: 'Text color' })).toBeInTheDocument();
-    // Save button
-    expect(screen.getByText('Saved')).toBeInTheDocument();
+    // Request-a-change section is offered for any selection.
+    expect(screen.getByRole('button', { name: 'Add request' })).toBeInTheDocument();
   });
 
   it('shows read-only reason and no controls for a read-only element', () => {
@@ -103,38 +117,29 @@ describe('VisualEditorPanel', () => {
       signature: { className: 'x', tagName: 'div', ancestorClasses: [] },
       resolution: { status: 'read_only', reason: 'Dynamic classes.' },
       instanceCount: 1,
+      locator: LOCATOR,
+      mark: 'm3',
     });
     expect(screen.getByText('Dynamic classes.')).toBeInTheDocument();
     expect(screen.queryByTestId('spacing-box')).not.toBeInTheDocument();
   });
 
+  it('still offers Request a change for a read-only element', () => {
+    // Even when the editor can't write the element itself, the agent note path
+    // stays open — that's the whole point of the unified mode.
+    renderPanel({
+      signature: { className: 'x', tagName: 'div', ancestorClasses: [] },
+      resolution: { status: 'read_only', reason: 'Dynamic classes.' },
+      instanceCount: 1,
+      locator: LOCATOR,
+      mark: 'm3b',
+    });
+    expect(screen.getByRole('button', { name: 'Add request' })).toBeInTheDocument();
+  });
+
   it('warns when multiple elements share the source', () => {
     renderPanel({ ...resolvedSelection, instanceCount: 4 });
     expect(screen.getByText(/Editing 4 elements/)).toBeInTheDocument();
-  });
-
-  it('shows the manual Save button when auto-save is off and there are edits', () => {
-    renderPanel(resolvedSelection, 'p-9'); // dirty (≠ source p-3), auto-save off
-    expect(screen.getByRole('button', { name: 'Save to source' })).toBeInTheDocument();
-    const toggle = screen.getByRole('switch', { name: /auto-save/i });
-    expect(toggle).toHaveAttribute('aria-checked', 'false');
-  });
-
-  it('toggling auto-save calls the handler', () => {
-    const onToggle = vi.fn();
-    renderPanel(resolvedSelection, 'p-9', BASE_BREAKPOINT, vi.fn(), false, false, onToggle);
-    screen.getByRole('switch', { name: /auto-save/i }).click();
-    expect(onToggle).toHaveBeenCalledTimes(1);
-  });
-
-  it('hides the Save button and shows "Saving…" while auto-save has pending edits', () => {
-    renderPanel(resolvedSelection, 'p-9', BASE_BREAKPOINT, vi.fn(), false, true);
-    expect(screen.queryByRole('button', { name: 'Save to source' })).not.toBeInTheDocument();
-    expect(screen.getByText('Saving…')).toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: /auto-save/i })).toHaveAttribute(
-      'aria-checked',
-      'true'
-    );
   });
 
   it('renders the breakpoint dropdown showing the active breakpoint', () => {
@@ -193,16 +198,7 @@ describe('VisualEditorPanel', () => {
 
   it('flags an invalid typed value and does not apply it', () => {
     const onApplyEnum = vi.fn();
-    renderPanel(
-      resolvedSelection,
-      'gap-4',
-      BASE_BREAKPOINT,
-      vi.fn(),
-      false,
-      false,
-      vi.fn(),
-      onApplyEnum
-    );
+    renderPanel(resolvedSelection, 'gap-4', BASE_BREAKPOINT, vi.fn(), false, onApplyEnum);
     const gap = screen.getByLabelText('Gap');
     fireEvent.change(gap, { target: { value: '40xyz' } });
     fireEvent.keyDown(gap, { key: 'Enter' });
@@ -219,8 +215,6 @@ describe('VisualEditorPanel', () => {
       BASE_BREAKPOINT,
       vi.fn(), // onSelectBreakpoint
       false, // breakpointTooWide
-      false, // autoSave
-      vi.fn(), // onToggleAutoSave
       vi.fn(), // onApplyEnum
       vi.fn(), // onSetSide
       onReset
@@ -242,27 +236,7 @@ describe('VisualEditorPanel', () => {
       ],
     };
     render(
-      <VisualEditorPanel
-        selection={resolvedSelection}
-        currentClass="p-3"
-        projectPath="/Users/test/ShipStudio/demo"
-        onReplaceImage={vi.fn(async () => {})}
-        breakpoints={BREAKPOINTS}
-        activeBreakpoint={BASE_BREAKPOINT}
-        breakpointTooWide={false}
-        onSelectBreakpoint={vi.fn()}
-        autoSave={false}
-        onToggleAutoSave={vi.fn()}
-        onStepGap={vi.fn()}
-        onSetSide={vi.fn()}
-        onApplyEnum={vi.fn()}
-        onReset={vi.fn()}
-        multiTarget="all"
-        onMultiTargetChange={vi.fn()}
-        usage={usage}
-        onCommit={vi.fn()}
-        onClose={vi.fn()}
-      />
+      <VisualEditorPanel {...mk()} selection={resolvedSelection} currentClass="p-3" usage={usage} />
     );
     const scope = screen.getByRole('button', { name: /used in 3 places/i });
     fireEvent.click(scope);
@@ -274,29 +248,13 @@ describe('VisualEditorPanel', () => {
   });
 
   it('warns when editing a layout (every page)', () => {
-    renderPanel(resolvedSelection); // usage defaults to null → no scope line
     // With a layout usage, the panel surfaces the every-page warning.
     render(
       <VisualEditorPanel
+        {...mk()}
         selection={resolvedSelection}
         currentClass="p-3"
-        projectPath="/Users/test/ShipStudio/demo"
-        onReplaceImage={vi.fn(async () => {})}
-        breakpoints={BREAKPOINTS}
-        activeBreakpoint={BASE_BREAKPOINT}
-        breakpointTooWide={false}
-        onSelectBreakpoint={vi.fn()}
-        autoSave={false}
-        onToggleAutoSave={vi.fn()}
-        onStepGap={vi.fn()}
-        onSetSide={vi.fn()}
-        onApplyEnum={vi.fn()}
-        onReset={vi.fn()}
-        multiTarget="all"
-        onMultiTargetChange={vi.fn()}
         usage={{ component: null, selfKind: 'layout', sites: [] }}
-        onCommit={vi.fn()}
-        onClose={vi.fn()}
       />
     );
     expect(screen.getAllByText(/applies to/i).length).toBeGreaterThan(0);
@@ -311,8 +269,6 @@ describe('VisualEditorPanel', () => {
     activeBreakpoint: BASE_BREAKPOINT,
     breakpointTooWide: false,
     onSelectBreakpoint: vi.fn(),
-    autoSave: false,
-    onToggleAutoSave: vi.fn(),
     onStepGap: vi.fn(),
     onSetSide: vi.fn(),
     onApplyEnum: vi.fn(),
@@ -320,8 +276,16 @@ describe('VisualEditorPanel', () => {
     multiTarget: 'all' as const,
     onMultiTargetChange: vi.fn(),
     usage: null,
-    onCommit: vi.fn(),
     onClose: vi.fn(),
+    // Unified edit + request queues (all optional; spelled out so inline renders
+    // can override one handler without re-supplying the rest).
+    onApplyEdits: vi.fn(),
+    onAddRequest: vi.fn(),
+    onDiscardEdit: vi.fn(),
+    onDiscardRequest: vi.fn(),
+    onFocusRequest: vi.fn(),
+    onEditRequestLabel: vi.fn(),
+    onSendRequests: vi.fn(),
   });
 
   it('jumps to the Code tab from the source badge', () => {
@@ -372,25 +336,10 @@ describe('VisualEditorPanel', () => {
     const onMultiTargetChange = vi.fn();
     render(
       <VisualEditorPanel
+        {...mk()}
         selection={multiSelection}
         currentClass="flex p-4"
-        projectPath="/Users/test/ShipStudio/demo"
-        onReplaceImage={vi.fn(async () => {})}
-        breakpoints={BREAKPOINTS}
-        activeBreakpoint={BASE_BREAKPOINT}
-        breakpointTooWide={false}
-        onSelectBreakpoint={vi.fn()}
-        autoSave={false}
-        onToggleAutoSave={vi.fn()}
-        onStepGap={vi.fn()}
-        onSetSide={vi.fn()}
-        onApplyEnum={vi.fn()}
-        onReset={vi.fn()}
-        multiTarget="all"
         onMultiTargetChange={onMultiTargetChange}
-        usage={null}
-        onCommit={vi.fn()}
-        onClose={vi.fn()}
       />
     );
     fireEvent.click(screen.getByRole('button', { name: /Just one/ }));
@@ -408,21 +357,211 @@ describe('VisualEditorPanel', () => {
   it('applies a valid typed unit as an arbitrary gap value', () => {
     vi.stubGlobal('CSS', { supports: () => true });
     const onApplyEnum = vi.fn();
-    renderPanel(
-      resolvedSelection,
-      'gap-4',
-      BASE_BREAKPOINT,
-      vi.fn(),
-      false,
-      false,
-      vi.fn(),
-      onApplyEnum
-    );
+    renderPanel(resolvedSelection, 'gap-4', BASE_BREAKPOINT, vi.fn(), false, onApplyEnum);
     const gap = screen.getByLabelText('Gap');
     fireEvent.change(gap, { target: { value: '10rem' } });
     fireEvent.keyDown(gap, { key: 'Enter' });
     expect(onApplyEnum).toHaveBeenCalledWith('gap-[10rem]', { gap: '10rem' });
     vi.unstubAllGlobals();
+  });
+
+  // ── Request a change (agent-note intake) ──
+
+  it('adds a change request for the selected element', () => {
+    const onAddRequest = vi.fn();
+    render(
+      <VisualEditorPanel
+        {...mk()}
+        selection={resolvedSelection}
+        currentClass="p-3"
+        onAddRequest={onAddRequest}
+      />
+    );
+    const add = screen.getByRole('button', { name: 'Add request' });
+    expect(add).toBeDisabled(); // empty draft
+    fireEvent.change(screen.getByPlaceholderText(/Describe the change for your agent/i), {
+      target: { value: 'Make the heading bigger' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add request' }));
+    expect(onAddRequest).toHaveBeenCalledWith('Make the heading bigger');
+  });
+
+  it('lists pending requests and offers a Send button in the requests manager', () => {
+    const onSendRequests = vi.fn();
+    const requests: RedlineAnnotation[] = [
+      {
+        id: 'r1',
+        number: 1,
+        kind: 'change',
+        label: 'Tweak it',
+        signature: resolvedSelection.signature,
+        locator: LOCATOR,
+        resolvedLocation: { file: 'components/Hero.tsx', line: 11, column: 1 },
+        rect: { top: 0, left: 0, width: 0, height: 0 },
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    ];
+    render(
+      <VisualEditorPanel
+        {...mk()}
+        selection={resolvedSelection}
+        currentClass="p-3"
+        pendingRequests={requests}
+        onSendRequests={onSendRequests}
+      />
+    );
+    // The request label renders inline (editable) in the section's own list.
+    expect(screen.getByRole('button', { name: 'Tweak it' })).toBeInTheDocument();
+    // …and the section's own Send button ships them to the agent.
+    const send = screen.getByRole('button', { name: /Send 1 request to agent/i });
+    fireEvent.click(send);
+    expect(onSendRequests).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the requests manager (Send button) even with no live selection', () => {
+    // The section is no longer gated on a selection — the list + Send stay visible
+    // so a user who deselected can still send what they queued.
+    render(<VisualEditorPanel {...mk()} selection={null} currentClass="" />);
+    expect(screen.getByRole('button', { name: /Send 0 requests to agent/i })).toBeInTheDocument();
+    // With no selection the add-box is gated and the hint explains why.
+    expect(screen.getByRole('button', { name: 'Add request' })).toBeDisabled();
+    expect(screen.getByText(/Select an element in the preview/i)).toBeInTheDocument();
+  });
+
+  // ── Commit tray (Apply edits to source — EDITS ONLY) ──
+
+  const classEdit: PendingEdit = {
+    id: 'e1',
+    mark: 'm1',
+    signature: { className: 'p-3', tagName: 'div', ancestorClasses: [] },
+    kind: 'class',
+    resolution: {
+      status: 'resolved',
+      file: 'components/Hero.tsx',
+      line: 11,
+      column: 1,
+      class_name: 'p-3',
+      confidence: 'unique',
+    },
+    multiTarget: 'all',
+    fromClass: 'p-3',
+    toClass: 'p-8',
+  };
+
+  it('lists a staged direct edit and triggers Apply edits to source', () => {
+    const onApplyEdits = vi.fn();
+    render(
+      <VisualEditorPanel
+        {...mk()}
+        selection={resolvedSelection}
+        currentClass="p-8"
+        pendingEdits={[classEdit]}
+        onApplyEdits={onApplyEdits}
+      />
+    );
+    // The edit summary surfaces the old→new class and the source line.
+    expect(screen.getByText(/p-3 → p-8/)).toBeInTheDocument();
+    expect(screen.getByText('Hero.tsx:11')).toBeInTheDocument();
+    const apply = screen.getByRole('button', { name: /Apply edits to source \(1\)/ });
+    fireEvent.click(apply);
+    expect(onApplyEdits).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps requests OUT of the edits tray — they live in the requests manager', () => {
+    const request: RedlineAnnotation = {
+      id: 'r1',
+      number: 1,
+      kind: 'change',
+      label: 'Make it pop',
+      signature: { className: 'p-3', tagName: 'h1', ancestorClasses: [] },
+      locator: LOCATOR,
+      resolvedLocation: { file: 'components/Hero.tsx', line: 4, column: 1 },
+      rect: { top: 0, left: 0, width: 0, height: 0 },
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    render(
+      <VisualEditorPanel
+        {...mk()}
+        selection={resolvedSelection}
+        currentClass="p-8"
+        pendingEdits={[classEdit]}
+        pendingRequests={[request]}
+      />
+    );
+    // The edits tray counts ONLY edits now (not edits + requests).
+    expect(screen.getByRole('button', { name: /Apply edits to source \(1\)/ })).toBeInTheDocument();
+    // The request renders once, as an editable label in the requests section, and
+    // the section's own Send button counts it.
+    expect(screen.getByRole('button', { name: 'Make it pop' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Send 1 request to agent/i })).toBeInTheDocument();
+  });
+
+  it('discards a staged direct edit via its row control', () => {
+    const onDiscardEdit = vi.fn();
+    render(
+      <VisualEditorPanel
+        {...mk()}
+        selection={resolvedSelection}
+        currentClass="p-8"
+        pendingEdits={[classEdit]}
+        onDiscardEdit={onDiscardEdit}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Discard edit' }));
+    expect(onDiscardEdit).toHaveBeenCalledWith('e1');
+  });
+
+  it('discards a staged request via its row control', () => {
+    const onDiscardRequest = vi.fn();
+    const request: RedlineAnnotation = {
+      id: 'r9',
+      number: 1,
+      kind: 'change',
+      label: 'Remove this',
+      signature: { className: 'p-3', tagName: 'div', ancestorClasses: [] },
+      locator: LOCATOR,
+      resolvedLocation: null,
+      rect: { top: 0, left: 0, width: 0, height: 0 },
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    render(
+      <VisualEditorPanel
+        {...mk()}
+        selection={null}
+        currentClass=""
+        pendingRequests={[request]}
+        onDiscardRequest={onDiscardRequest}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Discard change request' }));
+    expect(onDiscardRequest).toHaveBeenCalledWith('r9');
+  });
+
+  it('renders the edits tray even with no live selection (queue persists)', () => {
+    render(
+      <VisualEditorPanel {...mk()} selection={null} currentClass="" pendingEdits={[classEdit]} />
+    );
+    // No selection → no controls, but the staged edit + Apply edits are still shown.
+    expect(screen.queryByTestId('spacing-box')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Apply edits to source \(1\)/ })).toBeInTheDocument();
+  });
+
+  it('disables Apply edits while applying', () => {
+    render(
+      <VisualEditorPanel
+        {...mk()}
+        selection={resolvedSelection}
+        currentClass="p-8"
+        pendingEdits={[classEdit]}
+        applying
+      />
+    );
+    expect(screen.getByRole('button', { name: /Applying/ })).toBeDisabled();
+  });
+
+  it('hides the edits tray entirely when no edit is staged', () => {
+    render(<VisualEditorPanel {...mk()} selection={resolvedSelection} currentClass="p-3" />);
+    expect(screen.queryByRole('button', { name: /Apply edits to source/ })).not.toBeInTheDocument();
   });
 
   // ── Image section (asset replacement) ──
@@ -441,6 +580,8 @@ describe('VisualEditorPanel', () => {
       reason: 'These classes aren’t a static string in source (dynamic or generated).',
     },
     instanceCount: 1,
+    locator: LOCATOR,
+    mark: 'mimg',
   };
 
   it('shows the Image section with Replace for a resolved image src', () => {

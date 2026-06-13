@@ -7,7 +7,7 @@
  * inert-until-activated, click → `ss:select` signature, and `ss:mutate` → live class.
  */
 
-import { beforeAll, expect, it } from 'vitest';
+import { beforeAll, expect, it, vi } from 'vitest';
 // Import the exact script Rust injects (via `include_str!`) as a raw string so
 // both consumers share one source of truth.
 import scriptHtml from '../../../src-tauri/src/proxy/select_script.html?raw';
@@ -19,17 +19,21 @@ function send(data: unknown) {
   window.dispatchEvent(new MessageEvent('message', { data }));
 }
 
-/** Resolve with the next `ss:select` the script posts to the parent. */
-function nextSelect(): Promise<{
+/** Shape of an `ss:select` payload (a subset of fields the tests assert on). */
+type SelectMsg = {
   signature: Record<string, unknown>;
   count: number;
   leafText?: boolean;
-}> {
+  locator?: Record<string, unknown>;
+};
+
+/** Resolve with the next `ss:select` the script posts to the parent. */
+function nextSelect(): Promise<SelectMsg> {
   return new Promise((res) => {
     const handler = (e: MessageEvent) => {
       if ((e.data as { type?: string })?.type === 'ss:select') {
         window.removeEventListener('message', handler);
-        res(e.data as { signature: Record<string, unknown>; count: number; leafText?: boolean });
+        res(e.data as SelectMsg);
       }
     };
     window.addEventListener('message', handler);
@@ -268,4 +272,163 @@ it('swaps the selected image src on ss:setSrc and clears a stale srcset', async 
   expect(img.getAttribute('src')).toBe('/new.png');
   // srcset would keep showing the old candidate set — it's cleared until HMR re-renders.
   expect(img.getAttribute('srcset')).toBe('');
+});
+
+// ── Unified selection: the ss:select payload now carries a resilient `locator` ──────
+
+it('includes a buildLocator() locator in the ss:select payload', async () => {
+  // A <button> is not an inline tag, so the editable-text walk stops at it (doesn't climb
+  // into the <nav>) — the button is the picked element and the locator describes it.
+  document.body.innerHTML =
+    '<nav aria-label="Primary"><button class="cta" data-track="hero-cta">Buy now</button></nav>';
+  send({ type: 'ss:activate' });
+  await flushMessages();
+  const selected = nextSelect();
+  document.querySelector('.cta')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  const msg = await selected;
+  // Every selection (not just redline) now gets the agent-resolvable locator.
+  expect(msg.locator).toBeTruthy();
+  const loc = msg.locator!;
+  expect(loc.tag).toBe('button');
+  expect(loc.classList).toEqual(['cta']);
+  // <button> resolves to its implicit ARIA role.
+  expect(loc.role).toBe('button');
+  expect(loc.textSnippet).toBe('Buy now');
+  // data-* attributes are captured (minus our own ss-* bookkeeping attrs).
+  expect(loc.dataAttributes).toEqual({ 'data-track': 'hero-cta' });
+  // Closest landmark is described by tag + role/label.
+  expect(loc.nearbyLandmark).toBe('nav (navigation): Primary');
+});
+
+// ── Host-driven annotation badges (ss:annotate:*) ───────────────────────────────────
+
+/** Visible numbered annotation badges currently on the page. */
+const badges = () =>
+  [...document.querySelectorAll('[data-ss-rl]')].filter(
+    (b) => (b as HTMLElement).style.display !== 'none'
+  );
+
+it('draws a numbered badge on the selected element via ss:annotate:set', async () => {
+  document.body.innerHTML = '<section class="hero"><button class="cta">Go</button></section>';
+  send({ type: 'ss:activate' });
+  await flushMessages();
+  const selected = nextSelect();
+  document.querySelector('.cta')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await selected;
+  // The host stages a "Request a change" note against the current selection.
+  send({ type: 'ss:annotate:set', id: 'a1', number: 1 });
+  const shown = badges();
+  expect(shown).toHaveLength(1);
+  expect(shown[0].textContent).toBe('1');
+  // Re-issuing the same id replaces (doesn't duplicate) its badge.
+  send({ type: 'ss:annotate:set', id: 'a1', number: 2 });
+  const reissued = badges();
+  expect(reissued).toHaveLength(1);
+  expect(reissued[0].textContent).toBe('2');
+});
+
+it('removes one badge via ss:annotate:remove and clears the rest via ss:annotate:clear', async () => {
+  document.body.innerHTML =
+    '<button class="one">1</button><button class="two">2</button><button class="three">3</button>';
+  send({ type: 'ss:activate' });
+  await flushMessages();
+
+  const sel1 = nextSelect();
+  document.querySelector('.one')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await sel1;
+  send({ type: 'ss:annotate:set', id: 'a1', number: 1 });
+
+  const sel2 = nextSelect();
+  document.querySelector('.two')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await sel2;
+  send({ type: 'ss:annotate:set', id: 'a2', number: 2 });
+
+  const sel3 = nextSelect();
+  document.querySelector('.three')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await sel3;
+  send({ type: 'ss:annotate:set', id: 'a3', number: 3 });
+
+  expect(badges()).toHaveLength(3);
+
+  // Remove only the middle one by id.
+  send({ type: 'ss:annotate:remove', id: 'a2' });
+  const after = badges();
+  expect(after).toHaveLength(2);
+  expect(after.map((b) => b.textContent).sort()).toEqual(['1', '3']);
+
+  // Clear wipes every remaining badge.
+  send({ type: 'ss:annotate:clear' });
+  expect(badges()).toHaveLength(0);
+});
+
+it('scrolls a badge element into view on ss:annotate:focus', async () => {
+  document.body.innerHTML = '<div class="target">x</div>';
+  send({ type: 'ss:activate' });
+  await flushMessages();
+  const selected = nextSelect();
+  const target = document.querySelector('.target') as HTMLElement;
+  target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await selected;
+  send({ type: 'ss:annotate:set', id: 'a1', number: 1 });
+
+  // jsdom doesn't implement scrollIntoView; stub it so we can assert the focus call.
+  const spy = vi.fn();
+  target.scrollIntoView = spy;
+  send({ type: 'ss:annotate:focus', id: 'a1' });
+  expect(spy).toHaveBeenCalledTimes(1);
+});
+
+// ── ss:revertMark: un-freeze a staged (committed) preview when the edit is discarded ──
+
+it('reverts a FROZEN preview via ss:revertMark (decoupled from any source write)', () => {
+  document.body.innerHTML = '<button class="frz">x</button>';
+  send({ type: 'ss:activate' });
+  document.querySelector('.frz')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  const btn = document.querySelector('button') as HTMLElement;
+  send({
+    type: 'ss:mutate',
+    className: 'frz p-8',
+    rules: [{ minPx: 0, decls: { padding: '2rem' } }],
+  });
+  // Freeze the preview as "kept" — in the unified model this is a STAGED edit, no write yet.
+  send({ type: 'ss:commit' });
+  const mark = btn.getAttribute('data-ss-sel')!;
+  expect(mark).toBeTruthy();
+  // This selection's rule is in the (global, possibly shared) preview sheet.
+  const ruleFor = (m: string) => {
+    const css = document.getElementById('ss-preview')!.textContent ?? '';
+    return new RegExp(`\\[data-ss-sel="${m}"\\]`).test(css);
+  };
+  expect(document.getElementById('ss-preview')!.textContent).toContain('padding:2rem !important');
+  expect(ruleFor(mark)).toBe(true);
+
+  // The staged edit is discarded host-side → un-freeze: class baseline restored, marker
+  // stripped, this marker's preview rule dropped — exactly as if the edit never happened.
+  // (Scope to this marker: the sheet is shared and may hold other tests' committed rules.)
+  send({ type: 'ss:revertMark', mark });
+  expect(btn.getAttribute('class')).toBe('frz');
+  expect(btn.getAttribute('data-ss-sel')).toBeNull();
+  expect(ruleFor(mark)).toBe(false);
+});
+
+it('ss:revertMark un-freezes ALL same-source elements sharing the marker', () => {
+  // Three elements rendered from one source literal → one shared marker on commit.
+  document.body.innerHTML =
+    '<div class="row">A</div><div class="row">B</div><div class="row">C</div>';
+  send({ type: 'ss:activate' });
+  document.querySelectorAll('.row')[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  send({ type: 'ss:mutate', className: 'row font-bold', rules: [{ minPx: 0, decls: {} }] });
+  send({ type: 'ss:commit' });
+  const mark = document.querySelector('.row')!.getAttribute('data-ss-sel');
+  expect(mark).toBeTruthy();
+  // All three carry the frozen class + marker.
+  expect(
+    [...document.querySelectorAll('.row')].every((e) => e.getAttribute('class') === 'row font-bold')
+  ).toBe(true);
+
+  send({ type: 'ss:revertMark', mark });
+  // Every same-source element is restored to its baseline class and demarked.
+  const rows = [...document.querySelectorAll('.row')];
+  expect(rows.every((e) => e.getAttribute('class') === 'row')).toBe(true);
+  expect(rows.every((e) => e.getAttribute('data-ss-sel') === null)).toBe(true);
 });

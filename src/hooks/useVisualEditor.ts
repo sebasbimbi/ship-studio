@@ -9,26 +9,37 @@
  * text/image resolutions guarded by a staleness token) → edits (`applyToken`,
  * `setBoxSide`, `stepSpacing`, `reset`) twMerge the live class and post
  * `ss:mutate` with breakpoint-scoped preview rules (instant DOM feedback, no
- * write) → `commit` writes the merged className back to source and advances
- * the drift baseline so consecutive edits keep working. Text and image edits
- * (`ss:textCommit`, `replaceImage`) write immediately on confirm.
+ * write).
  *
- * Exposes `editMode`, `selection`, `currentClass`, text/image resolutions,
- * `multiTarget`, auto-save, and the edit/commit callbacks — consumed by
- * Preview.tsx, which threads them into VisualEditorPanel.
+ * Commit model — accumulate then batch (the Edit/Redline unification):
+ * editing NEVER writes to disk. `stageCurrentEdit()` snapshots the dirty class
+ * into a `PendingEdit` and posts `ss:commit`, which FREEZES the live preview as
+ * "kept" WITHOUT writing — the freeze is decoupled from the write. Text/image
+ * edits stage the same way (the preview already reflects them). The queue
+ * persists across selection changes and mode toggles; only `applyAllEdits()`
+ * (which replays every queued write via the lib's drift-guarded byte-splices)
+ * or `discardAllEdits()` empties it. `discardEdit(id)` posts `ss:revertMark` to
+ * un-freeze a single staged preview.
+ *
+ * Exposes `editMode`, `selection` (now carrying the redline `locator`),
+ * `currentClass`, text/image resolutions, `multiTarget`, the staging callbacks,
+ * and `pendingEdits` / `applyAllEdits` / `discardEdit[s]` — consumed by
+ * Preview.tsx, which threads them into the unified VisualEditorPanel and the
+ * Apply-all tray.
  *
  * Boundaries: lib/edit wrappers (`resolveClassnameSource`, `applyClassnameEdit
  * [Multi]`, `resolveTextSource`/`applyTextEdit`, `resolveImageSource`/
  * `applySrcEdit`, `findComponentUsage`) over the Rust edit backend; the iframe
- * `ss:*` message protocol; localStorage for the auto-save opt-in.
+ * `ss:*` message protocol (incl. `ss:commit` to freeze and `ss:revertMark` to
+ * un-freeze a staged preview).
  *
  * Gotchas: incoming messages are trusted only when `e.source` is the preview
  * iframe's contentWindow — the iframe hosts untrusted project content, and a
- * forged `ss:textCommit` would otherwise write to the user's files. Every
- * write arms `ss:suppressReload` BEFORE touching disk: Astro's full reload can
- * beat the post-write `ss:commit`, briefly reverting the preview. Live values
- * (`currentClass`, text/image targets) are mirrored into refs so the commit
- * callbacks read fresh state without re-subscribing the message handler.
+ * forged `ss:textCommit` would otherwise touch the user's files. `applyAllEdits`
+ * arms `ss:suppressReload` ONCE before replaying: Astro's full reload can beat
+ * the staged preview, briefly reverting it. Live values (`currentClass`,
+ * text/image targets) are mirrored into refs so the staging callbacks read fresh
+ * state without re-subscribing the message handler.
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -67,6 +78,7 @@ import {
   type ImageResolution,
   type UsageReport,
 } from '../lib/edit';
+import type { RedlineLocator } from '../lib/redline';
 import { logger } from '../lib/logger';
 
 /** A breakpoint-scoped slice of the live-preview stylesheet: `decls` applied at
@@ -77,11 +89,61 @@ interface PreviewRule {
   decls: Record<string, string | null>;
 }
 
-/** Persisted opt-in for auto-save (off by default). */
-const AUTOSAVE_KEY = 'ss:visualEditor:autoSave';
-/** Quiet period after the last edit before an auto-save fires — long enough that a
- *  drag (many rapid mutations) saves once when it settles, not on every frame. */
-const AUTOSAVE_DEBOUNCE_MS = 700;
+/**
+ * A staged edit waiting in the queue: the preview is already frozen (its
+ * `ss:commit` fired) but nothing has been written to source. `mark` is the
+ * in-iframe selection marker (`data-ss-sel`) that froze the preview — sent back
+ * via `ss:revertMark` to un-freeze it if the edit is discarded. `signature` is
+ * the clicked-element snapshot (carried for the request/changelog handoff).
+ * Coalesced by `kind:file:line`: re-staging the same dimension of the same
+ * element replaces its queued entry.
+ */
+export type PendingEdit = {
+  id: string;
+  /** The frozen-preview marker to revert (`ss:revertMark`). */
+  mark: string;
+  signature: ElementSignature;
+} & (
+  | {
+      kind: 'class';
+      /** Single resolved location, or null for a multi-location write. */
+      resolution: Resolution;
+      /** For a 'multi' resolution: write all spots or one (index). */
+      multiTarget: 'all' | number;
+      /** Drift baseline (the resolution's `class_name` at stage time). */
+      fromClass: string;
+      /** The final merged class to write. */
+      toClass: string;
+    }
+  | {
+      kind: 'text';
+      file: string;
+      line: number;
+      column: number;
+      fromText: string;
+      toText: string;
+    }
+  | {
+      kind: 'image';
+      file: string;
+      line: number;
+      column: number;
+      fromSrc: string;
+      toSrc: string;
+    }
+);
+
+/** The coalescing key for a pending edit: one entry per element-dimension. A
+ *  class edit and a text edit on the same line are distinct dimensions and both
+ *  survive; re-staging the same dimension replaces. */
+function editKey(e: PendingEdit): string {
+  if (e.kind === 'class') {
+    const r = e.resolution;
+    const loc = r.status === 'resolved' ? r : r.status === 'multi' ? r.locations[0] : null;
+    return loc ? `class:${loc.file}:${loc.line}` : `class:${e.mark}`;
+  }
+  return `${e.kind}:${e.file}:${e.line}`;
+}
 
 interface Params {
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
@@ -103,7 +165,27 @@ export interface Selection {
   /** How many elements on the page share these exact classes (same source ⇒ a
    *  save updates all of them). 1 for a unique element. */
   instanceCount: number;
+  /** Redundant DOM locator from the `ss:select` payload — the redline
+   *  "Request a change" handoff captures it so an agent can relocate the element. */
+  locator: RedlineLocator;
+  /** The in-iframe selection marker (`data-ss-sel`) — captured so a staged edit
+   *  can later be reverted via `ss:revertMark`. */
+  mark: string;
 }
+
+/** A neutral locator for the rare case the iframe omits one (defensive — the
+ *  unified `ss:select` payload always carries it). */
+const EMPTY_LOCATOR: RedlineLocator = {
+  tag: '',
+  id: null,
+  classList: [],
+  role: null,
+  ariaLabel: null,
+  textSnippet: null,
+  dataAttributes: {},
+  ancestorClasses: [],
+  nearbyLandmark: null,
+};
 
 export function useVisualEditor({
   iframeRef,
@@ -121,27 +203,6 @@ export function useVisualEditor({
   // Known breakpoint prefixes, for scoping a class string to one variant layer.
   const known = useMemo(() => breakpointPrefixes(breakpoints), [breakpoints]);
 
-  // Auto-save: when on, edits persist to source automatically (debounced). Off by
-  // default; the choice is remembered across sessions.
-  const [autoSave, setAutoSave] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(AUTOSAVE_KEY) === '1';
-    } catch {
-      return false;
-    }
-  });
-  const toggleAutoSave = useCallback(() => {
-    setAutoSave((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(AUTOSAVE_KEY, next ? '1' : '0');
-      } catch {
-        /* ignore storage failures */
-      }
-      return next;
-    });
-  }, []);
-
   const [selection, setSelection] = useState<Selection | null>(null);
   // Where the selected element's component is used project-wide (scope hint).
   // Best-effort, fetched after a single-location resolve. Token guards staleness.
@@ -149,8 +210,8 @@ export function useVisualEditor({
   const usageTokenRef = useRef(0);
   /** The class string currently applied live in the iframe (merge baseline). */
   const [currentClass, setCurrentClass] = useState('');
-  // Mirror into a ref so `applyToken`/`commit` callbacks read the latest value
-  // without re-subscribing. Written only through `setLiveClass` (never in render).
+  // Mirror into a ref so `applyToken`/`stageCurrentEdit` callbacks read the latest
+  // value without re-subscribing. Written only through `setLiveClass` (never in render).
   const currentClassRef = useRef('');
   const setLiveClass = useCallback((value: string) => {
     currentClassRef.current = value;
@@ -198,7 +259,7 @@ export function useVisualEditor({
 
   // Image src editing: the resolved src target for the current selection (null when
   // the element isn't an image or its src isn't a static literal). Mirrored into a
-  // ref so `replaceImage` reads the latest baseline without re-subscribing.
+  // ref so `stageImageEdit` reads the latest baseline without re-subscribing.
   const [imageResolution, setImageResolution] = useState<ImageResolution | null>(null);
   const imageTargetRef = useRef<{
     file: string;
@@ -214,10 +275,37 @@ export function useVisualEditor({
     setImageResolution(res);
   }, []);
 
+  // The accumulate-then-batch queue. Each entry's preview is already frozen
+  // (ss:commit fired); nothing is written until applyAllEdits replays them.
+  const [pendingEdits, setPendingEdits] = useState<PendingEdit[]>([]);
+  // Mirror so the message handler + toggleEditMode read the latest queue without
+  // re-subscribing, and so stageCurrentEdit can dedupe synchronously.
+  const pendingRef = useRef<PendingEdit[]>([]);
+  const setPending = useCallback((next: PendingEdit[]) => {
+    pendingRef.current = next;
+    setPendingEdits(next);
+  }, []);
+  /** Enqueue an edit, coalescing by `editKey` so re-staging the same
+   *  element-dimension replaces its prior entry (rather than double-writing). */
+  const enqueue = useCallback(
+    (edit: PendingEdit) => {
+      const key = editKey(edit);
+      const next = pendingRef.current.filter((e) => editKey(e) !== key);
+      next.push(edit);
+      setPending(next);
+    },
+    [setPending]
+  );
+
   const post = useCallback(
     (msg: unknown) => iframeRef.current?.contentWindow?.postMessage(msg, '*'),
     [iframeRef]
   );
+
+  const newId = () =>
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `edit-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
   // Activate/deactivate the in-iframe selection layer (external-system sync), and
   // keep it active across HMR reloads (each reload resets the script to inert).
@@ -232,13 +320,41 @@ export function useVisualEditor({
     post({ type: 'ss:deactivate' });
   }, [editMode, post, iframeRef]);
 
+  /**
+   * Snapshot the current selection's dirty class into a `PendingEdit` and FREEZE
+   * its preview (post `ss:commit`) — no write. Generalized from the old immediate
+   * `commit`: the actual disk write now happens later in `applyAllEdits`. A no-op
+   * when the class is clean (live == source) or the element isn't class-editable.
+   */
+  const stageCurrentEdit = useCallback(() => {
+    const sel = selection;
+    const res = sel?.resolution;
+    if (!sel || !res || (res.status !== 'resolved' && res.status !== 'multi')) return;
+    const toClass = currentClassRef.current;
+    if (toClass === res.class_name) return; // clean — nothing to stage
+    enqueue({
+      id: newId(),
+      mark: sel.mark,
+      signature: sel.signature,
+      kind: 'class',
+      resolution: res,
+      multiTarget: multiTargetRef.current,
+      fromClass: res.class_name,
+      toClass,
+    });
+    // Freeze the live preview as "kept" so deactivating / selecting elsewhere
+    // doesn't revert it. ss:commit decouples freeze from write — the write is
+    // replayed by applyAllEdits.
+    post({ type: 'ss:commit' });
+  }, [selection, enqueue, post]);
+
   // Resolve clicked elements + handle inline text-edit commits from the iframe.
   useEffect(() => {
     if (!editMode) return;
     const handler = (e: MessageEvent) => {
       // SECURITY: only trust messages from the actual preview iframe. The iframe
       // hosts untrusted project content; a forged `ss:textCommit` from another
-      // frame would otherwise write to the user's source files.
+      // frame would otherwise touch the user's source files.
       if (e.source !== iframeRef.current?.contentWindow) return;
       const d = e.data as {
         type?: string;
@@ -246,6 +362,8 @@ export function useVisualEditor({
         count?: number;
         leafText?: boolean;
         text?: string;
+        locator?: RedlineLocator;
+        mark?: string | number;
       } | null;
       if (!d) return;
 
@@ -257,12 +375,11 @@ export function useVisualEditor({
         return;
       }
 
-      // Inline text edit was confirmed in the iframe — write the new text to source.
+      // Inline text edit was confirmed in the iframe — STAGE it (the preview already
+      // shows the new text; freeze it and enqueue, do NOT write).
       if (d.type === 'ss:textCommit' && typeof d.text === 'string') {
         const next = d.text;
         const sig = selectedSigRef.current;
-        // Arm reload suppression before writing (same reasoning as a class commit).
-        post({ type: 'ss:suppressReload' });
         void (async () => {
           try {
             // The select-time resolve may not have landed yet (fast double-click →
@@ -277,28 +394,31 @@ export function useVisualEditor({
               textTargetRef.current = target;
             }
             if (next === target.text) {
-              post({ type: 'ss:commit' }); // unchanged — just re-baseline, no write
+              post({ type: 'ss:commit' }); // unchanged — just freeze, no enqueue
               return;
             }
-            await applyTextEdit(
-              projectPath,
-              target.file,
-              target.line,
-              target.column,
-              target.text,
-              next
-            );
-            // Advance the drift baseline so consecutive text edits keep working.
+            enqueue({
+              id: newId(),
+              mark: selection?.mark ?? '',
+              signature: sig ?? selection!.signature,
+              kind: 'text',
+              file: target.file,
+              line: target.line,
+              column: target.column,
+              fromText: target.text,
+              toText: next,
+            });
+            // Advance the local drift baseline so consecutive text edits keep working
+            // (each stages against the prior staged value, applied in order).
             target.text = next;
             setTextResolution((prev) =>
               prev?.status === 'resolved' ? { ...prev, text: next } : prev
             );
-            post({ type: 'ss:commit' });
-            onToast?.('Saved to source', 'success');
+            post({ type: 'ss:commit' }); // freeze the preview as kept
           } catch (err) {
-            logger.error('[VisualEditor] text write-back failed', { error: String(err) });
+            logger.error('[VisualEditor] text stage failed', { error: String(err) });
             onToast?.(String(err), 'error');
-            // Couldn't save — put the original text back in the preview.
+            // Couldn't stage — put the original text back in the preview.
             post({ type: 'ss:textRevert' });
           }
         })();
@@ -306,11 +426,17 @@ export function useVisualEditor({
       }
 
       if (d.type !== 'ss:select' || !d.signature) return;
+      // A click landed on a DIFFERENT element. If the outgoing selection is dirty,
+      // stage it first so the iframe keeps its preview (its ss:commit fires now)
+      // before the marker advances to the new element.
+      stageCurrentEdit();
       const sig = d.signature;
       const instanceCount = d.count ?? 1;
       const leafText = !!d.leafText;
+      const locator = d.locator ?? EMPTY_LOCATOR;
+      const mark = d.mark != null ? String(d.mark) : '';
       selectedSigRef.current = sig;
-      setSelection({ signature: sig, resolution: null, instanceCount });
+      setSelection({ signature: sig, resolution: null, instanceCount, locator, mark });
       setLiveClass(sig.className);
       setMultiTarget('all'); // a fresh selection defaults to editing all occurrences
       setUsage(null);
@@ -320,7 +446,8 @@ export function useVisualEditor({
       void (async () => {
         try {
           const resolution = await resolveClassnameSource(projectPath, sig);
-          setSelection({ signature: sig, resolution, instanceCount });
+          if (usageTokenRef.current !== usageToken) return; // selection moved on
+          setSelection((prev) => (prev && prev.signature === sig ? { ...prev, resolution } : prev));
           // Best-effort scope hint: where else this component is rendered.
           if (resolution.status === 'resolved') {
             try {
@@ -336,15 +463,19 @@ export function useVisualEditor({
           }
         } catch (err) {
           logger.error('[VisualEditor] resolve failed', { error: String(err) });
+          if (usageTokenRef.current !== usageToken) return;
           onToast?.(String(err), 'error');
-          setSelection({
-            signature: sig,
-            resolution: {
-              status: 'read_only',
-              reason: 'Could not resolve this element to source.',
-            },
-            instanceCount,
-          });
+          setSelection((prev) =>
+            prev && prev.signature === sig
+              ? {
+                  ...prev,
+                  resolution: {
+                    status: 'read_only',
+                    reason: 'Could not resolve this element to source.',
+                  },
+                }
+              : prev
+          );
         }
       })();
       // Text-editability runs in parallel: only for single-text-node leaves. The
@@ -392,6 +523,9 @@ export function useVisualEditor({
     onToast,
     post,
     iframeRef,
+    selection,
+    enqueue,
+    stageCurrentEdit,
     setLiveClass,
     setMultiTarget,
     setTextTarget,
@@ -468,7 +602,7 @@ export function useVisualEditor({
 
   /** Reset a property at the active breakpoint: remove its tokens from that layer
    *  and null out its preview decls so the value reverts to its inherited/default
-   *  state. The class change is dirty, so Save (or auto-save) persists the removal. */
+   *  state. The class change is dirty, so Apply all persists the removal. */
   const reset = useCallback(
     (spec: ResetSpec) => {
       const merged = removeAtLayer(currentClassRef.current, activeBreakpoint, known, spec.match);
@@ -485,105 +619,192 @@ export function useVisualEditor({
     [post, setLiveClass, activeBreakpoint, known]
   );
 
-  /** Persist the current live class to source. `silent` suppresses the success
-   *  toast (used by auto-save, which shouldn't toast on every debounced write —
-   *  errors still surface). */
-  const commit = useCallback(
-    async (opts?: { silent?: boolean }) => {
-      const sel = selection;
-      const res = sel?.resolution;
-      if (!res || (res.status !== 'resolved' && res.status !== 'multi')) return;
-      const next = currentClassRef.current;
-      if (next === res.class_name) return; // nothing changed
-      // Arm the reload-suppression window BEFORE writing: Astro's full-reload fires
-      // the instant the file changes, which can beat the post-write ss:commit. Setting
-      // it here means the reload our own save triggers is reliably swallowed (so the
-      // live preview doesn't briefly revert), while agent edits still reload.
-      post({ type: 'ss:suppressReload' });
+  /**
+   * Stage a new text value for the selected text leaf — the panel's "Text"
+   * section path, an alternative to the inline (double-click) editor. Resolves
+   * the text target on demand if the select-time resolve hasn't landed, enqueues
+   * a `PendingTextEdit`, freezes the preview (`ss:commit`), advances the local
+   * drift baseline, and mirrors the new text into the live preview. Resolves
+   * `true` when staged, `false` (no throw) when nothing changed so the caller can
+   * keep the field open. NO write — applyAllEdits writes later.
+   */
+  const stageTextEdit = useCallback(
+    async (next: string): Promise<boolean> => {
+      const sig = selectedSigRef.current;
       try {
-        if (res.status === 'resolved') {
-          await applyClassnameEdit(projectPath, res.file, res.line, res.class_name, next);
-        } else {
-          // Multi: write to all matching source spots, or the one the user picked.
-          const target = multiTargetRef.current;
-          const edits =
-            target === 'all' ? res.locations : res.locations.filter((_, i) => i === target);
-          await applyClassnameEditMulti(projectPath, edits, res.class_name, next);
+        let target = textTargetRef.current;
+        if (!target) {
+          if (!sig) throw new Error('Lost track of this element — reselect it and try again.');
+          const res = await resolveTextSource(projectPath, sig);
+          if (res.status !== 'resolved') throw new Error(res.reason || 'This text isn’t editable.');
+          target = { file: res.file, line: res.line, column: res.column, text: res.text };
+          textTargetRef.current = target;
         }
-        // Advance the drift baseline so consecutive edits keep working.
-        setSelection({ ...sel, resolution: { ...res, class_name: next } });
-        // Tell the in-iframe script this live state is now the saved baseline, so
-        // deactivating (closing the panel) doesn't revert the just-saved edit
-        // before HMR re-renders it from source.
+        if (next === target.text) {
+          post({ type: 'ss:commit' }); // unchanged — freeze, no enqueue
+          return false;
+        }
+        enqueue({
+          id: newId(),
+          mark: selection?.mark ?? '',
+          signature: sig ?? selection!.signature,
+          kind: 'text',
+          file: target.file,
+          line: target.line,
+          column: target.column,
+          fromText: target.text,
+          toText: next,
+        });
+        // Advance the local drift baseline so consecutive text edits keep working.
+        target.text = next;
+        setTextResolution((prev) => (prev?.status === 'resolved' ? { ...prev, text: next } : prev));
+        // The text already shows in the preview (inline editor / live DOM); freeze
+        // it as kept so closing the panel doesn't revert it before applyAll runs.
         post({ type: 'ss:commit' });
-        if (!opts?.silent) onToast?.('Saved to source', 'success');
+        return true;
       } catch (err) {
-        logger.error('[VisualEditor] write-back failed', { error: String(err) });
+        logger.error('[VisualEditor] text stage failed', { error: String(err) });
         onToast?.(String(err), 'error');
+        return false;
       }
     },
-    [selection, projectPath, onToast, post]
+    [projectPath, onToast, post, enqueue, selection]
   );
 
   /**
-   * Replace the selected image's src in source (immediate write, like a text
-   * commit — picking an asset IS the save) and swap the preview instantly.
-   * Throws on failure so the picker can stay open for another try.
+   * Stage a new image src for the selected <img> — swap the preview instantly
+   * (`ss:setSrc`), freeze it (`ss:commit`), and enqueue a `PendingImageEdit`.
+   * Throws on a resolution failure so the picker can stay open. NO write —
+   * applyAllEdits writes later.
    */
-  const replaceImage = useCallback(
-    async (newSrc: string) => {
+  const stageImageEdit = useCallback(
+    // Returns a Promise (the picker awaits it and `.catch`es a reject) but has no
+    // async work itself — the target is already resolved in the ref, so we only
+    // enqueue + post. A reject mirrors the old throw-to-keep-the-picker-open contract.
+    (newSrc: string): Promise<void> => {
       const target = imageTargetRef.current;
       if (!target) {
         onToast?.('Lost track of this image — reselect it and try again.', 'error');
-        throw new Error('no image target');
+        return Promise.reject(new Error('no image target'));
       }
-      if (newSrc === target.src) return; // already this asset — nothing to write
-      // Arm reload suppression before writing (same reasoning as a class commit).
-      post({ type: 'ss:suppressReload' });
-      try {
-        await applySrcEdit(
-          projectPath,
-          target.file,
-          target.line,
-          target.column,
-          target.src,
-          newSrc
-        );
-        // Advance the drift baseline so consecutive replacements keep working.
-        target.src = newSrc;
-        setImageResolution((prev) =>
-          prev?.status === 'resolved' ? { ...prev, src: newSrc } : prev
-        );
-        post({ type: 'ss:setSrc', value: newSrc }); // instant preview (HMR confirms)
-        post({ type: 'ss:commit' });
-        onToast?.('Image replaced', 'success');
-      } catch (err) {
-        logger.error('[VisualEditor] image write-back failed', { error: String(err) });
-        onToast?.(String(err), 'error');
-        throw err;
-      }
+      if (newSrc === target.src) return Promise.resolve(); // already this asset — nothing to stage
+      enqueue({
+        id: newId(),
+        mark: selection?.mark ?? '',
+        signature: selection!.signature,
+        kind: 'image',
+        file: target.file,
+        line: target.line,
+        column: target.column,
+        fromSrc: target.src,
+        toSrc: newSrc,
+      });
+      // Advance the drift baseline so consecutive replacements keep working.
+      target.src = newSrc;
+      setImageResolution((prev) => (prev?.status === 'resolved' ? { ...prev, src: newSrc } : prev));
+      post({ type: 'ss:setSrc', value: newSrc }); // instant preview (HMR confirms after apply)
+      post({ type: 'ss:commit' }); // freeze the preview as kept
+      return Promise.resolve();
     },
-    [projectPath, onToast, post]
+    [onToast, post, enqueue, selection]
   );
 
-  // Auto-save: debounce a silent commit after edits settle. Re-running on every
-  // class change clears the prior timer (so a drag saves once, when it stops); the
-  // resolved-and-dirty guard means it never fires on selection alone, and the
-  // baseline-advance inside `commit` makes the next run a no-op (no loop).
-  useEffect(() => {
-    if (!autoSave) return;
-    const res = selection?.resolution;
-    if (res?.status !== 'resolved' && res?.status !== 'multi') return;
-    if (currentClass === res.class_name) return; // clean
-    const id = window.setTimeout(() => void commit({ silent: true }), AUTOSAVE_DEBOUNCE_MS);
-    return () => window.clearTimeout(id);
-  }, [autoSave, currentClass, selection, commit]);
+  /**
+   * Replay every queued edit to source as one batch. Each lib call is a
+   * drift-guarded byte-splice (`oldClass`/`oldText`/`oldSrc` must still match);
+   * splices preserve line numbers, so applying class edits doesn't shift the
+   * lines a sibling text/image edit or a redline request points at. Arms
+   * `ss:suppressReload` once up front so the burst of writes doesn't bounce the
+   * preview. On full success the queue clears; failures are counted and toasted.
+   */
+  const applyAllEdits = useCallback(async (): Promise<{ ok: number; failed: number }> => {
+    const queue = pendingRef.current;
+    if (queue.length === 0) return { ok: 0, failed: 0 };
+    post({ type: 'ss:suppressReload' });
+    let ok = 0;
+    const survivors: PendingEdit[] = [];
+    for (const edit of queue) {
+      try {
+        if (edit.kind === 'class') {
+          const res = edit.resolution;
+          if (res.status === 'resolved') {
+            await applyClassnameEdit(projectPath, res.file, res.line, edit.fromClass, edit.toClass);
+          } else if (res.status === 'multi') {
+            const edits =
+              edit.multiTarget === 'all'
+                ? res.locations
+                : res.locations.filter((_, i) => i === edit.multiTarget);
+            await applyClassnameEditMulti(projectPath, edits, edit.fromClass, edit.toClass);
+          } else {
+            throw new Error('Element is read-only.');
+          }
+        } else if (edit.kind === 'text') {
+          await applyTextEdit(
+            projectPath,
+            edit.file,
+            edit.line,
+            edit.column,
+            edit.fromText,
+            edit.toText
+          );
+        } else {
+          await applySrcEdit(
+            projectPath,
+            edit.file,
+            edit.line,
+            edit.column,
+            edit.fromSrc,
+            edit.toSrc
+          );
+        }
+        ok++;
+      } catch (err) {
+        logger.error('[VisualEditor] apply-all write failed', {
+          kind: edit.kind,
+          error: String(err),
+        });
+        survivors.push(edit);
+      }
+    }
+    const failed = survivors.length;
+    if (failed === 0) {
+      setPending([]); // full success — the queue is drained
+      onToast?.(ok === 1 ? 'Applied 1 change' : `Applied ${ok} changes`, 'success');
+    } else {
+      setPending(survivors); // keep the ones that failed so the user can retry
+      onToast?.(`Applied ${ok}, ${failed} failed — see the queue`, 'error');
+    }
+    return { ok, failed };
+  }, [projectPath, onToast, post, setPending]);
+
+  /** Drop one staged edit and un-freeze its preview (post `ss:revertMark`). */
+  const discardEdit = useCallback(
+    (id: string) => {
+      const edit = pendingRef.current.find((e) => e.id === id);
+      if (!edit) return;
+      setPending(pendingRef.current.filter((e) => e.id !== id));
+      if (edit.mark) post({ type: 'ss:revertMark', mark: edit.mark });
+    },
+    [post, setPending]
+  );
+
+  /** Drop the whole queue and un-freeze every staged preview. */
+  const discardAllEdits = useCallback(() => {
+    for (const edit of pendingRef.current) {
+      if (edit.mark) post({ type: 'ss:revertMark', mark: edit.mark });
+    }
+    setPending([]);
+  }, [post, setPending]);
 
   const toggleEditMode = useCallback(() => {
     setEditModeOn((prev) => {
-      // Turning off: clear the current selection (event-handler context, so
-      // these state updates batch without a cascading-render effect).
+      // Turning off: stage any dirty current edit (so its frozen preview is kept),
+      // then clear the live selection. The queue + frozen previews PERSIST across
+      // the toggle — only applyAllEdits / discardAllEdits empty them. (ss:deactivate
+      // is posted by the activate effect; staged previews stay frozen since
+      // ss:commit already fired for them.)
       if (prev) {
+        stageCurrentEdit();
         setSelection(null);
         setLiveClass('');
         setTextTarget(null);
@@ -592,7 +813,7 @@ export function useVisualEditor({
       }
       return !prev;
     });
-  }, [setLiveClass, setTextTarget, setImageTarget]);
+  }, [stageCurrentEdit, setLiveClass, setTextTarget, setImageTarget]);
 
   return {
     editMode,
@@ -604,20 +825,31 @@ export function useVisualEditor({
     textResolution,
     /** Image-src editability of the current selection (drives the Image section). */
     imageResolution,
-    /** Write a new src to source and swap the preview (immediate save). */
-    replaceImage,
+    /** Stage a new text value for the selected text leaf (panel "Text" section
+     *  path — an alternative to the inline double-click editor). Resolves true when
+     *  staged, false when nothing changed or it failed (toast shown). No write. */
+    stageTextEdit,
+    /** Stage a new src and swap the preview (no write — applyAllEdits writes it). */
+    stageImageEdit,
     /** Bumps when a double-click hits dynamic text — pulses the hand-off block. */
     textBlockedNonce,
     multiTarget,
     setMultiTarget,
-    autoSave,
-    toggleAutoSave,
     stepSpacing,
     setBoxSide,
     // Enum controls apply an absolute token (twMerge swaps the prior one) plus an
     // inline-style preview — same path as spacing, just not relative to a scale.
     applyEnum: applyToken,
     reset,
-    commit,
+    /** The accumulate-then-batch queue (frozen previews awaiting a write). */
+    pendingEdits,
+    /** Freeze the current dirty class into the queue (no write). */
+    stageCurrentEdit,
+    /** Replay every queued edit to source as one batch. */
+    applyAllEdits,
+    /** Drop one staged edit and revert its frozen preview. */
+    discardEdit,
+    /** Drop the whole queue and revert every frozen preview. */
+    discardAllEdits,
   };
 }

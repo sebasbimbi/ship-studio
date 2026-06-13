@@ -1383,7 +1383,7 @@ export const WorkspaceView = memo(function WorkspaceView({
                         />
                       )}
                       {workspaceTab === 'preview' && isWebProject && !shopify.showGate && (
-                        <div style={{ flex: 1, display: 'flex' }}>
+                        <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
                           <Preview
                             key={`${currentProject.path}-${devServerPort}`}
                             ref={previewRef}
