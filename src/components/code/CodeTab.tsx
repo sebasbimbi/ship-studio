@@ -385,8 +385,16 @@ export function CodeTab({ projectPath, onSendToAgent, revealTarget }: CodeTabPro
       const nextRename = choice === 'rename' ? [...toRename, ...batch] : toRename;
       if (end >= conflicts.length) {
         setImportConflict(null);
-        if (nextReplace.length) void performImport(nextReplace, toDir, 'replace');
-        if (nextRename.length) void performImport(nextRename, toDir, 'rename');
+        // Run the two policy buckets sequentially: start rename only after the
+        // replace import settles, so they can't write into the same destination
+        // tree concurrently and race on final names/content.
+        if (nextReplace.length) {
+          void performImport(nextReplace, toDir, 'replace').then(() => {
+            if (nextRename.length) void performImport(nextRename, toDir, 'rename');
+          });
+        } else if (nextRename.length) {
+          void performImport(nextRename, toDir, 'rename');
+        }
       } else {
         setImportConflict({
           ...importConflict,
