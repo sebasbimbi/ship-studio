@@ -14,6 +14,7 @@
 :root {
   --rl-badge-size: 18px;
   --rl-action-size: 22px;
+  --rl-action-gap: 2px;
   --rl-tray-list-max-h: 180px;
 }
 
@@ -164,7 +165,7 @@
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--rl-action-gap);
   opacity: 0;
   transition: opacity var(--transition);
 }
