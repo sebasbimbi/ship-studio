@@ -1,5 +1,12 @@
 /* Code browser styles */
 
+/* File-tree highlight outlines — feature-local one-offs, off the global scale. */
+:root {
+  --cm-outline-w: 1px;
+  --cm-outline-offset: -1px;
+  --cm-root-outline-offset: -2px;
+}
+
 .code-tab {
   display: flex;
   flex: 1;
@@ -213,20 +220,20 @@
 
 .file-tree-item.drop-target {
   background: color-mix(in srgb, var(--accent) 18%, transparent);
-  outline: 1px solid var(--accent);
-  outline-offset: -1px;
+  outline: var(--cm-outline-w) solid var(--accent);
+  outline-offset: var(--cm-outline-offset);
 }
 
 /* Row whose right-click context menu is currently open. */
 .file-tree-item.context-target {
   background: var(--bg-tertiary);
-  outline: 1px solid var(--border);
-  outline-offset: -1px;
+  outline: var(--cm-outline-w) solid var(--border);
+  outline-offset: var(--cm-outline-offset);
 }
 
 .code-tab-sidebar-content.root-drop-target {
-  outline: 1px dashed var(--accent);
-  outline-offset: -2px;
+  outline: var(--cm-outline-w) dashed var(--accent);
+  outline-offset: var(--cm-root-outline-offset);
   border-radius: var(--radius-sm);
 }
 
