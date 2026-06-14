@@ -14,7 +14,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import type { UnlistenFn } from '@tauri-apps/api/event';
-import { elementAtPhysical, type PhysicalPosition } from '../lib/osDrop';
+import { cssCandidatesForDrop, type PhysicalPosition } from '../lib/osDrop';
 import { parentDir } from './useTreeDnd';
 
 interface UseOsImportArgs {
@@ -44,15 +44,20 @@ export function useOsImport({ zone, enabled = true, onImport }: UseOsImportArgs)
     if (!enabled) return;
 
     // Resolve a physical drop position to the target folder, or null when the
-    // point is not inside *our* drop zone.
+    // point is not inside *our* drop zone. The drop position's coordinate space
+    // differs by platform (logical on macOS, physical on Windows), so we try
+    // each candidate CSS point and use the first that lands inside our zone.
     const resolveTarget = (pos: PhysicalPosition): string | null => {
-      const el = elementAtPhysical(pos);
-      const zoneEl = el?.closest<HTMLElement>('[data-os-drop-zone]');
-      if (!zoneEl || zoneEl.dataset.osDropZone !== zone) return null;
-      const row = el?.closest<HTMLElement>('[data-tree-path]');
-      const path = row?.dataset.treePath;
-      if (path != null) return row?.dataset.treeDir === '1' ? path : parentDir(path);
-      return ''; // over the zone but not on a row → project root
+      for (const c of cssCandidatesForDrop(pos)) {
+        const el = document.elementFromPoint(c.x, c.y);
+        const zoneEl = el?.closest<HTMLElement>('[data-os-drop-zone]');
+        if (!zoneEl || zoneEl.dataset.osDropZone !== zone) continue;
+        const row = el?.closest<HTMLElement>('[data-tree-path]');
+        const path = row?.dataset.treePath;
+        if (path != null) return row?.dataset.treeDir === '1' ? path : parentDir(path);
+        return ''; // over the zone but not on a row → project root
+      }
+      return null;
     };
 
     let unlisten: UnlistenFn | null = null;
