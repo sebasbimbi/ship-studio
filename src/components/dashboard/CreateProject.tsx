@@ -26,6 +26,7 @@ import {
   STATUS_MESSAGES,
 } from '../../hooks/useProjectCreation';
 import { TemplateGallery, type CommunityTemplate } from './TemplateGallery';
+import { TemplateCard } from './TemplateCard';
 
 /** Props for the CreateProject component */
 interface CreateProjectProps {
@@ -278,11 +279,13 @@ export function CreateProject({ onComplete, onCancel }: CreateProjectProps) {
                     <h3 className="stack-group-title">{group.label}</h3>
                     <div className="stack-grid">
                       {groupTemplates.map((template) => (
-                        <button
+                        <TemplateCard
                           key={template.id}
-                          type="button"
-                          className={`stack-card ${selectedTemplate?.id === template.id && !hasZipTemplate ? 'stack-card-selected' : ''}`}
-                          onClick={() => {
+                          name={template.name}
+                          description={template.description}
+                          selected={selectedTemplate?.id === template.id && !hasZipTemplate}
+                          recommended={template.id === defaultTemplateId}
+                          onSelect={() => {
                             handleTemplateSelect(template);
                             void trackEvent('template_selected', {
                               template_id: template.id,
@@ -290,29 +293,7 @@ export function CreateProject({ onComplete, onCancel }: CreateProjectProps) {
                             });
                             setSetAsDefaultChecked(false);
                           }}
-                        >
-                          <span className="stack-card-name">
-                            {template.name}
-                            {template.id === defaultTemplateId && (
-                              <span className="stack-card-badge">Recommended</span>
-                            )}
-                          </span>
-                          <span className="stack-card-desc">{template.description}</span>
-                          {selectedTemplate?.id === template.id && !hasZipTemplate && (
-                            <div className="stack-card-check">
-                              <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="3"
-                              >
-                                <polyline points="20 6 9 17 4 12" />
-                              </svg>
-                            </div>
-                          )}
-                        </button>
+                        />
                       ))}
                     </div>
                   </div>
