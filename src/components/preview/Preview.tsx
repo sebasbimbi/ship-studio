@@ -566,7 +566,13 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   // onApplyEdits: write the pending direct edits to source. Local `applying`
   // flag drives the tray's disabled/"Applying…" state.
   const [applying, setApplying] = useState(false);
+  // Refs guard against re-entry (a rapid second click or a Cmd+K trigger while a
+  // run is in flight) so edits can't double-apply and requests can't double-send.
+  const applyingRef = useRef(false);
+  const sendingRef = useRef(false);
   const onApplyEdits = useCallback(async () => {
+    if (applyingRef.current) return;
+    applyingRef.current = true;
     try {
       setApplying(true);
       await editor.applyAllEdits();
@@ -574,6 +580,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
       onToast(String(e), 'error');
     } finally {
       setApplying(false);
+      applyingRef.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onToast is recreated each render; editor methods are stable
   }, [editor.applyAllEdits]);
@@ -583,10 +590,14 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   // self-clears the queue (+ on-page badges) on success — so this is just a
   // guarded await. Its own `redline.sending` flag drives the section's button.
   const onSendRequests = useCallback(async () => {
+    if (sendingRef.current) return;
+    sendingRef.current = true;
     try {
       await redline.sendToAgent();
     } catch (e) {
       onToast(String(e), 'error');
+    } finally {
+      sendingRef.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onToast is recreated each render; redline.sendToAgent is stable
   }, [redline.sendToAgent]);
@@ -732,14 +743,19 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   }
 
   if (conn.isLoading || conn.isStopped || conn.hasError) {
-    // The agent handoff only makes sense for real dev servers (static projects
-    // have no server log to diagnose) and when a Claude terminal is wired up.
-    const handleFixWithAgent =
-      onSendToClaude && !isStaticProject
-        ? () => {
-            const logs = stripAnsi(devServerOutput).split('\n').slice(-200).join('\n').trim();
-            const prompt =
-              `My dev server isn't coming up — Ship Studio is waiting on ` +
+    // Keep the agent handoff available as the always-present recovery whenever a
+    // Claude terminal is wired up — for static projects too (a different prompt,
+    // since they have no server log to attach).
+    const handleFixWithAgent = onSendToClaude
+      ? () => {
+          const logs = isStaticProject
+            ? ''
+            : stripAnsi(devServerOutput).split('\n').slice(-200).join('\n').trim();
+          const prompt = isStaticProject
+            ? `My site preview isn't loading. Ship Studio is serving this project as static ` +
+              `files on http://localhost:${port} but nothing shows up. Please check the project ` +
+              `has an index.html at its root (and any files it references) so the preview renders.`
+            : `My dev server isn't coming up — Ship Studio is waiting on ` +
               `http://localhost:${port} but it never responds.\n\n` +
               (logs
                 ? `Recent dev-server output:\n\n\`\`\`\n${logs}\n\`\`\`\n\n`
@@ -747,10 +763,13 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
               `Please work out why it won't start — a busy port, a crash, a missing ` +
               `dependency, or a wrong or missing dev script — and fix it so it serves on ` +
               `port ${port}.`;
-            onSendToClaude(prompt);
-            void trackEvent('preview_fix_with_agent', { has_logs: !!logs });
-          }
-        : undefined;
+          onSendToClaude(prompt);
+          void trackEvent('preview_fix_with_agent', {
+            has_logs: !!logs,
+            is_static: isStaticProject,
+          });
+        }
+      : undefined;
 
     return (
       <DevServerStatus

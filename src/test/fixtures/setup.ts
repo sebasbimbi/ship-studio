@@ -23,7 +23,7 @@ function item(
 const HOMEBREW_READY = item('homebrew', 'Package Manager', 'ready', { version: '4.2.0' });
 const NODE_READY = item('node', 'Node.js', 'ready', { version: 'v20.11.0' });
 const GIT_READY = item('git', 'Git', 'ready', { version: 'git version 2.43.0' });
-const GH_READY = item('gh', 'GitHub CLI', 'ready', { version: 'gh version 2.40.0' });
+const GH_READY = item('gh', 'GitHub connector', 'ready', { version: 'gh version 2.40.0' });
 const GH_AUTH_READY = item('gh_auth', 'GitHub Account', 'ready', { username: 'testuser' });
 const CLAUDE_READY = item('claude', 'Claude Code', 'ready', { version: '1.0.0' });
 const CLAUDE_AUTH_READY = item('claude_auth', 'Claude Account', 'ready', {
@@ -32,7 +32,7 @@ const CLAUDE_AUTH_READY = item('claude_auth', 'Claude Account', 'ready', {
 const CODEX_READY = item('codex', 'Codex', 'ready', { version: '0.1.0' });
 const CODEX_AUTH_READY = item('codex_auth', 'Codex Account', 'ready', { username: 'codex-user' });
 const OPENCODE_READY = item('opencode', 'Opencode', 'ready', { version: '0.1.0' });
-const VERCEL_READY = item('vercel', 'Vercel CLI', 'ready', { version: '33.0.0' });
+const VERCEL_READY = item('vercel', 'Vercel (hosting)', 'ready', { version: '33.0.0' });
 const VERCEL_AUTH_READY = item('vercel_auth', 'Vercel Account', 'ready', {
   username: 'vercel-user',
 });
@@ -42,7 +42,7 @@ const VERCEL_AUTH_READY = item('vercel_auth', 'Vercel Account', 'ready', {
 const HOMEBREW_MISSING = item('homebrew', 'Package Manager', 'not_installed');
 const NODE_MISSING = item('node', 'Node.js', 'not_installed');
 const GIT_MISSING = item('git', 'Git', 'not_installed');
-const GH_MISSING = item('gh', 'GitHub CLI', 'not_installed');
+const GH_MISSING = item('gh', 'GitHub connector', 'not_installed');
 const GH_AUTH_MISSING = item('gh_auth', 'GitHub Account', 'not_authenticated');
 const CLAUDE_MISSING = item('claude', 'Claude Code', 'not_installed');
 const CLAUDE_AUTH_MISSING = item('claude_auth', 'Claude Account', 'not_authenticated');
@@ -50,7 +50,7 @@ const CODEX_MISSING = item('codex', 'Codex', 'not_installed');
 const CODEX_AUTH_MISSING = item('codex_auth', 'Codex Account', 'not_authenticated');
 const OPENCODE_MISSING = item('opencode', 'Opencode', 'not_installed');
 const OPENCODE_AUTH_MISSING = item('opencode_auth', 'Opencode Account', 'not_authenticated');
-const VERCEL_MISSING = item('vercel', 'Vercel CLI', 'not_installed');
+const VERCEL_MISSING = item('vercel', 'Vercel (hosting)', 'not_installed');
 const VERCEL_AUTH_MISSING = item('vercel_auth', 'Vercel Account', 'not_authenticated');
 
 // ============ Pre-built item arrays ============

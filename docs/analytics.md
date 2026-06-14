@@ -85,6 +85,7 @@ Fired from `useIntegrationStatus` once GitHub auth resolves with a username.
 | `screenshot_captured` | `mode` (`viewport`/`fullpage`), `success`, `fell_back` |
 | `preview_refreshed` | `trigger: 'user'` |
 | `preview_page_selected` | `route_pattern` (id segments → `:id`, capped 200), `depth` |
+| `preview_fix_with_agent` | `has_logs`, `is_static` |
 | `logs_sent_to_agent` | `source` (`full_buffer`/`selection`), `char_count`, `line_count`, `had_question` |
 | `browser_tools_subtab_switched` | `from_tab`, `to_tab` |
 | `browser_tools_cleared` | `tab` |
@@ -92,6 +93,9 @@ Fired from `useIntegrationStatus` once GitHub auth resolves with a username.
 | `browser_tools_sent_to_agent` | `tab`, `entry_count` (null for elements), `had_data`, `char_count` |
 | `code_file_opened` | `file_extension` |
 | `code_tree_refreshed` | — |
+| `code_entry_moved` | — |
+| `code_paths_imported` | `count` |
+| `code_entry_deleted` | `is_dir` |
 | `code_snippet_sent_to_agent` | `file_extension`, `language`, `line_count`, `char_count`, `had_question` |
 | `code_snippet_copied` | `file_extension`, `line_count` |
 | `search_performed` (`code_files`) | Debounced |

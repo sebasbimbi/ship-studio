@@ -122,7 +122,9 @@ describe('OnboardingScreen', () => {
       expect(screen.getByText('Quick Setup')).toBeInTheDocument();
       // Step title appears in both indicator and header — check the header h2
       expect(
-        screen.getByText('Install the tools needed to manage dependencies')
+        screen.getByText(
+          'A one-time setup of the free developer tools your AI needs to build and run your site.'
+        )
       ).toBeInTheDocument();
     });
   });
@@ -135,7 +137,9 @@ describe('OnboardingScreen', () => {
     render(<OnboardingScreen onComplete={onComplete} />);
 
     await waitFor(() => {
-      expect(screen.getByText('Set up version control and repository hosting')).toBeInTheDocument();
+      expect(
+        screen.getByText('Save your work safely and publish it online. Required.')
+      ).toBeInTheDocument();
     });
   });
 
@@ -145,7 +149,9 @@ describe('OnboardingScreen', () => {
     render(<OnboardingScreen onComplete={onComplete} />);
 
     await waitFor(() => {
-      expect(screen.getByText('Install at least one AI coding assistant')).toBeInTheDocument();
+      expect(
+        screen.getByText('Your AI agent is what builds your app. Connect at least one to continue.')
+      ).toBeInTheDocument();
     });
   });
 
@@ -155,7 +161,9 @@ describe('OnboardingScreen', () => {
     render(<OnboardingScreen onComplete={onComplete} />);
 
     await waitFor(() => {
-      expect(screen.getByText('Set up version control and repository hosting')).toBeInTheDocument();
+      expect(
+        screen.getByText('Save your work safely and publish it online. Required.')
+      ).toBeInTheDocument();
     });
   });
 
@@ -458,7 +466,9 @@ describe('OnboardingScreen', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText('Install the tools needed to manage dependencies')
+          screen.getByText(
+            'A one-time setup of the free developer tools your AI needs to build and run your site.'
+          )
         ).toBeInTheDocument();
       });
 
@@ -500,7 +510,7 @@ describe('OnboardingScreen', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText('Set up version control and repository hosting')
+          screen.getByText('Save your work safely and publish it online. Required.')
         ).toBeInTheDocument();
       });
 
@@ -510,7 +520,9 @@ describe('OnboardingScreen', () => {
       });
 
       expect(
-        screen.getByText('Install the tools needed to manage dependencies')
+        screen.getByText(
+          'A one-time setup of the free developer tools your AI needs to build and run your site.'
+        )
       ).toBeInTheDocument();
     });
 
@@ -534,7 +546,7 @@ describe('OnboardingScreen', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText('Set up version control and repository hosting')
+          screen.getByText('Save your work safely and publish it online. Required.')
         ).toBeInTheDocument();
       });
 
@@ -564,7 +576,9 @@ describe('OnboardingScreen', () => {
         fireEvent.click(screen.getByText('Next'));
       });
 
-      expect(screen.getByText('Install at least one AI coding assistant')).toBeInTheDocument();
+      expect(
+        screen.getByText('Your AI agent is what builds your app. Connect at least one to continue.')
+      ).toBeInTheDocument();
     });
 
     it('hosting step shows Skip for Now button that advances to celebration', async () => {
@@ -587,7 +601,9 @@ describe('OnboardingScreen', () => {
 
       // Should land on hosting step
       await waitFor(() => {
-        expect(screen.getByText('Deploy your projects to the web')).toBeInTheDocument();
+        expect(
+          screen.getByText('Optional. Connect later to put your site on the web.')
+        ).toBeInTheDocument();
       });
 
       // Skip for Now should be visible
@@ -610,7 +626,7 @@ describe('OnboardingScreen', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText('Set up version control and repository hosting')
+          screen.getByText('Save your work safely and publish it online. Required.')
         ).toBeInTheDocument();
       });
 
@@ -627,7 +643,9 @@ describe('OnboardingScreen', () => {
         fireEvent.click(screen.getByText('Next'));
       });
 
-      expect(screen.getByText('Set up version control and repository hosting')).toBeInTheDocument();
+      expect(
+        screen.getByText('Save your work safely and publish it online. Required.')
+      ).toBeInTheDocument();
     });
   });
 
@@ -659,7 +677,11 @@ describe('OnboardingScreen', () => {
       render(<OnboardingScreen onComplete={onComplete} />);
 
       await waitFor(() => {
-        expect(screen.getByText('Install at least one AI coding assistant')).toBeInTheDocument();
+        expect(
+          screen.getByText(
+            'Your AI agent is what builds your app. Connect at least one to continue.'
+          )
+        ).toBeInTheDocument();
       });
 
       const nextButton = screen.getByText('Next');
@@ -673,7 +695,11 @@ describe('OnboardingScreen', () => {
       render(<OnboardingScreen onComplete={onComplete} />);
 
       await waitFor(() => {
-        expect(screen.getByText('Install at least one AI coding assistant')).toBeInTheDocument();
+        expect(
+          screen.getByText(
+            'Your AI agent is what builds your app. Connect at least one to continue.'
+          )
+        ).toBeInTheDocument();
       });
 
       // Next should be disabled (no agent pair ready)
@@ -764,7 +790,9 @@ describe('OnboardingScreen', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText('Install the tools needed to manage dependencies')
+          screen.getByText(
+            'A one-time setup of the free developer tools your AI needs to build and run your site.'
+          )
         ).toBeInTheDocument();
       });
 
@@ -807,13 +835,13 @@ describe('OnboardingScreen', () => {
       // Auto-advances to step 2
       await waitFor(() => {
         expect(
-          screen.getByText('Set up version control and repository hosting')
+          screen.getByText('Save your work safely and publish it online. Required.')
         ).toBeInTheDocument();
       });
 
       // Step 2 items should be visible
       expect(screen.getByText('Git')).toBeInTheDocument();
-      expect(screen.getByText('GitHub CLI')).toBeInTheDocument();
+      expect(screen.getByText('GitHub connector')).toBeInTheDocument();
       expect(screen.getByText('GitHub Account')).toBeInTheDocument();
     });
 
@@ -825,7 +853,7 @@ describe('OnboardingScreen', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText('Set up version control and repository hosting')
+          screen.getByText('Save your work safely and publish it online. Required.')
         ).toBeInTheDocument();
       });
 
@@ -858,7 +886,9 @@ describe('OnboardingScreen', () => {
         fireEvent.click(screen.getByText('Next'));
       });
 
-      expect(screen.getByText('Install at least one AI coding assistant')).toBeInTheDocument();
+      expect(
+        screen.getByText('Your AI agent is what builds your app. Connect at least one to continue.')
+      ).toBeInTheDocument();
 
       // Now install Claude (terminal item) — after it succeeds, we're all done
       const claudeInstalls = screen.getAllByText('Install');
@@ -921,7 +951,9 @@ describe('OnboardingScreen', () => {
       await waitFor(() => {
         expect(screen.getByText('Quick Setup')).toBeInTheDocument();
         expect(
-          screen.getByText('Install the tools needed to manage dependencies')
+          screen.getByText(
+            'A one-time setup of the free developer tools your AI needs to build and run your site.'
+          )
         ).toBeInTheDocument();
       });
     });
@@ -1121,7 +1153,7 @@ describe('OnboardingScreen', () => {
   // ============ Auth verification after terminal ============
 
   describe('auth verification after terminal', () => {
-    it('gh_auth terminal exit 0 but not authenticated shows error', async () => {
+    it('gh_auth opens the friendly browser sign-in modal (not the terminal)', async () => {
       // Start on step 2 with git+gh ready, gh_auth not authenticated
       const items = STEP1_COMPLETE_ITEMS.map((i) => {
         if (i.id === 'git') return { ...i, status: 'ready' as const, version: '2.43.0' };
@@ -1130,39 +1162,125 @@ describe('OnboardingScreen', () => {
       });
       const status = makeSetupStatus({ items, detectedAgents: [] });
       mockInvoke('get_full_setup_status', status);
+      mockInvoke(
+        'start_github_auth',
+        'A code has been copied to your clipboard. Paste it in the browser to connect.'
+      );
+      // Stay unauthenticated for the pre-check AND the background poll, so the
+      // modal stays open for the assertion.
+      mockCheckGitHubCliStatus.mockResolvedValue({ installed: true, authenticated: false });
 
       render(<OnboardingScreen onComplete={onComplete} />);
 
       await waitFor(() => {
         expect(
-          screen.getByText('Set up version control and repository hosting')
+          screen.getByText('Save your work safely and publish it online. Required.')
         ).toBeInTheDocument();
       });
 
-      // Find Connect button for gh_auth
       const connectButtons = screen.getAllByText('Connect');
       expect(connectButtons.length).toBeGreaterThan(0);
-
-      // Pre-check returns NOT authenticated — terminal will open
-      mockCheckGitHubCliStatus.mockResolvedValueOnce({ installed: true, authenticated: false });
-      // Post-terminal auth check also returns NOT authenticated
-      mockCheckGitHubCliStatus.mockResolvedValueOnce({ installed: true, authenticated: false });
-
-      // Click Connect → opens terminal
       act(() => {
         fireEvent.click(connectButtons[0]);
       });
 
+      // The friendly browser-auth modal appears with the returned message —
+      // NOT the raw terminal.
+      await waitFor(() => {
+        expect(
+          screen.getByText(
+            'A code has been copied to your clipboard. Paste it in the browser to connect.'
+          )
+        ).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('mock-terminal')).not.toBeInTheDocument();
+
+      // Close dismisses the modal.
+      act(() => {
+        fireEvent.click(screen.getByText('Close'));
+      });
+      await waitFor(() => {
+        expect(
+          screen.queryByText(
+            'A code has been copied to your clipboard. Paste it in the browser to connect.'
+          )
+        ).not.toBeInTheDocument();
+      });
+    });
+
+    it('gh_auth browser sign-in auto-closes once the poll detects authentication', async () => {
+      const items = STEP1_COMPLETE_ITEMS.map((i) => {
+        if (i.id === 'git') return { ...i, status: 'ready' as const, version: '2.43.0' };
+        if (i.id === 'gh') return { ...i, status: 'ready' as const, version: '2.40.0' };
+        return i;
+      });
+      mockInvoke('get_full_setup_status', makeSetupStatus({ items, detectedAgents: [] }));
+      mockInvoke('start_github_auth', 'A code has been copied to your clipboard.');
+      // Not authed for the pre-check (opens the modal).
+      mockCheckGitHubCliStatus.mockResolvedValue({ installed: true, authenticated: false });
+
+      render(<OnboardingScreen onComplete={onComplete} />);
+      await waitFor(() => {
+        expect(
+          screen.getByText('Save your work safely and publish it online. Required.')
+        ).toBeInTheDocument();
+      });
+
+      act(() => {
+        fireEvent.click(screen.getAllByText('Connect')[0]);
+      });
+      await waitFor(() => {
+        expect(screen.getByText('A code has been copied to your clipboard.')).toBeInTheDocument();
+      });
+
+      // Auth completes in the browser → the next poll detects it and closes.
+      mockCheckGitHubCliStatus.mockResolvedValue({ installed: true, authenticated: true });
+      await waitFor(
+        () => {
+          expect(
+            screen.queryByText('A code has been copied to your clipboard.')
+          ).not.toBeInTheDocument();
+        },
+        { timeout: 4000 }
+      );
+    });
+
+    it('gh_auth "Use the terminal instead" falls back to the terminal and still verifies', async () => {
+      const items = STEP1_COMPLETE_ITEMS.map((i) => {
+        if (i.id === 'git') return { ...i, status: 'ready' as const, version: '2.43.0' };
+        if (i.id === 'gh') return { ...i, status: 'ready' as const, version: '2.40.0' };
+        return i;
+      });
+      mockInvoke('get_full_setup_status', makeSetupStatus({ items, detectedAgents: [] }));
+      mockInvoke('start_github_auth', 'A code has been copied to your clipboard.');
+      mockCheckGitHubCliStatus.mockResolvedValue({ installed: true, authenticated: false });
+
+      render(<OnboardingScreen onComplete={onComplete} />);
+      await waitFor(() => {
+        expect(
+          screen.getByText('Save your work safely and publish it online. Required.')
+        ).toBeInTheDocument();
+      });
+
+      act(() => {
+        fireEvent.click(screen.getAllByText('Connect')[0]);
+      });
+      await waitFor(() => {
+        expect(screen.getByText('Use the terminal instead')).toBeInTheDocument();
+      });
+
+      // Fall back to the terminal.
+      act(() => {
+        fireEvent.click(screen.getByText('Use the terminal instead'));
+      });
       await waitFor(() => {
         expect(screen.getByTestId('mock-terminal')).toBeInTheDocument();
       });
 
-      // Terminal exits 0 (user thought auth was done, but it wasn't)
+      // Terminal exits 0 but still not authed → handleTerminalExit surfaces the error.
       act(() => {
         fireEvent.click(screen.getByTestId('terminal-exit-0'));
       });
-
-      // Auth verification should fail → show error
       await waitFor(() => {
         expect(
           screen.getByText('Authentication not completed. Click to try again.')
@@ -1170,7 +1288,37 @@ describe('OnboardingScreen', () => {
       });
     });
 
-    it('claude_auth terminal exit 0 but not authenticated shows error', async () => {
+    it('gh_auth surfaces an error and clears progress when sign-in fails to start', async () => {
+      const items = STEP1_COMPLETE_ITEMS.map((i) => {
+        if (i.id === 'git') return { ...i, status: 'ready' as const, version: '2.43.0' };
+        if (i.id === 'gh') return { ...i, status: 'ready' as const, version: '2.40.0' };
+        return i;
+      });
+      mockInvoke('get_full_setup_status', makeSetupStatus({ items, detectedAgents: [] }));
+      mockInvokeErr('start_github_auth', new Error('gh not found'));
+      mockCheckGitHubCliStatus.mockResolvedValue({ installed: true, authenticated: false });
+
+      render(<OnboardingScreen onComplete={onComplete} />);
+      await waitFor(() => {
+        expect(
+          screen.getByText('Save your work safely and publish it online. Required.')
+        ).toBeInTheDocument();
+      });
+
+      act(() => {
+        fireEvent.click(screen.getAllByText('Connect')[0]);
+      });
+
+      // No modal; the item shows an actionable error and Connect is clickable again.
+      await waitFor(() => {
+        expect(
+          screen.getByText('Could not start GitHub sign-in. Click to try again.')
+        ).toBeInTheDocument();
+      });
+      expect(screen.queryByText('Use the terminal instead')).not.toBeInTheDocument();
+    });
+
+    it('claude_auth opens the friendly browser sign-in modal (not the terminal)', async () => {
       // Start on step 3 with Claude installed but not authenticated
       const items = HAS_BASE_NO_AGENTS_ITEMS.map((i) => {
         if (i.id === 'claude') return { ...i, status: 'ready' as const, version: '1.0.0' };
@@ -1182,38 +1330,32 @@ describe('OnboardingScreen', () => {
         detectedAgents: [],
       });
       mockInvoke('get_full_setup_status', status);
-
-      // Mock claude auth check to return NOT authenticated
+      // Unauthenticated for both pre-check and poll; start returns a message.
       mockInvoke('check_claude_auth_status', false);
+      mockInvoke('start_claude_auth', 'Browser opened. Log in to your Claude account to continue.');
 
       render(<OnboardingScreen onComplete={onComplete} />);
 
       await waitFor(() => {
-        expect(screen.getByText('Install at least one AI coding assistant')).toBeInTheDocument();
+        expect(
+          screen.getByText(
+            'Your AI agent is what builds your app. Connect at least one to continue.'
+          )
+        ).toBeInTheDocument();
       });
 
-      // Find Connect button for claude_auth
       const connectButtons = screen.getAllByText('Connect');
       expect(connectButtons.length).toBeGreaterThan(0);
-
       act(() => {
         fireEvent.click(connectButtons[0]);
       });
 
       await waitFor(() => {
-        expect(screen.getByTestId('mock-terminal')).toBeInTheDocument();
-      });
-
-      // Terminal exits 0 but auth check fails
-      act(() => {
-        fireEvent.click(screen.getByTestId('terminal-exit-0'));
-      });
-
-      await waitFor(() => {
         expect(
-          screen.getByText('Authentication not completed. Click to try again.')
+          screen.getByText('Browser opened. Log in to your Claude account to continue.')
         ).toBeInTheDocument();
       });
+      expect(screen.queryByTestId('mock-terminal')).not.toBeInTheDocument();
     });
 
     it('gh_auth pre-check finds existing auth and skips terminal', async () => {
@@ -1230,7 +1372,7 @@ describe('OnboardingScreen', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText('Set up version control and repository hosting')
+          screen.getByText('Save your work safely and publish it online. Required.')
         ).toBeInTheDocument();
       });
 
@@ -1267,7 +1409,11 @@ describe('OnboardingScreen', () => {
       render(<OnboardingScreen onComplete={onComplete} />);
 
       await waitFor(() => {
-        expect(screen.getByText('Install at least one AI coding assistant')).toBeInTheDocument();
+        expect(
+          screen.getByText(
+            'Your AI agent is what builds your app. Connect at least one to continue.'
+          )
+        ).toBeInTheDocument();
       });
 
       const connectButtons = screen.getAllByText('Connect');
@@ -1531,7 +1677,7 @@ describe('OnboardingScreen', () => {
       });
 
       // Node depends on homebrew — with homebrew not installed, node should show "Waiting for..."
-      expect(screen.getByText('Waiting for Package Manager')).toBeInTheDocument();
+      expect(screen.getByText('Unlocks after Package Manager')).toBeInTheDocument();
     });
 
     it('node becomes installable after homebrew is installed', async () => {
@@ -1549,7 +1695,7 @@ describe('OnboardingScreen', () => {
       });
 
       // Node should NOT show "Waiting for..." anymore
-      expect(screen.queryByText('Waiting for Package Manager')).not.toBeInTheDocument();
+      expect(screen.queryByText('Unlocks after Package Manager')).not.toBeInTheDocument();
 
       // Node should have an Install button
       const installButtons = screen.getAllByText('Install');
@@ -1563,12 +1709,12 @@ describe('OnboardingScreen', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText('Set up version control and repository hosting')
+          screen.getByText('Save your work safely and publish it online. Required.')
         ).toBeInTheDocument();
       });
 
       // gh_auth depends on gh — with gh not installed, should show blocked
-      expect(screen.getByText('Waiting for GitHub CLI')).toBeInTheDocument();
+      expect(screen.getByText('Unlocks after GitHub connector')).toBeInTheDocument();
     });
 
     it('claude_auth shows as blocked when claude is not installed (step 3)', async () => {
@@ -1577,11 +1723,15 @@ describe('OnboardingScreen', () => {
       render(<OnboardingScreen onComplete={onComplete} />);
 
       await waitFor(() => {
-        expect(screen.getByText('Install at least one AI coding assistant')).toBeInTheDocument();
+        expect(
+          screen.getByText(
+            'Your AI agent is what builds your app. Connect at least one to continue.'
+          )
+        ).toBeInTheDocument();
       });
 
       // claude_auth depends on claude — should show blocked
-      expect(screen.getByText('Waiting for Claude Code')).toBeInTheDocument();
+      expect(screen.getByText('Unlocks after Claude Code')).toBeInTheDocument();
     });
   });
 
@@ -1600,7 +1750,7 @@ describe('OnboardingScreen', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText('Set up version control and repository hosting')
+          screen.getByText('Save your work safely and publish it online. Required.')
         ).toBeInTheDocument();
       });
 
@@ -1620,7 +1770,7 @@ describe('OnboardingScreen', () => {
       // Insert npm_fix after node
       const npmFixItem = {
         id: 'npm_fix',
-        friendlyName: 'Fix npm Permissions',
+        friendlyName: 'Repair file access',
         status: 'not_installed' as const,
       };
       const nodeIndex = items.findIndex((i) => i.id === 'node');
@@ -1638,8 +1788,8 @@ describe('OnboardingScreen', () => {
       // npm_fix is present and not ready — Next should be disabled
       expect(screen.getByText('Next')).toBeDisabled();
 
-      // Fix npm Permissions should appear
-      expect(screen.getByText('Fix npm Permissions')).toBeInTheDocument();
+      // Repair file access should appear
+      expect(screen.getByText('Repair file access')).toBeInTheDocument();
     });
 
     it('agent step complete with only codex pair ready', async () => {
@@ -1649,7 +1799,11 @@ describe('OnboardingScreen', () => {
       render(<OnboardingScreen onComplete={onComplete} />);
 
       await waitFor(() => {
-        expect(screen.getByText('Install at least one AI coding assistant')).toBeInTheDocument();
+        expect(
+          screen.getByText(
+            'Your AI agent is what builds your app. Connect at least one to continue.'
+          )
+        ).toBeInTheDocument();
       });
 
       // Next should be disabled (no agent pair ready)
@@ -1715,7 +1869,11 @@ describe('OnboardingScreen', () => {
       render(<OnboardingScreen onComplete={onComplete} />);
 
       await waitFor(() => {
-        expect(screen.getByText('Install at least one AI coding assistant')).toBeInTheDocument();
+        expect(
+          screen.getByText(
+            'Your AI agent is what builds your app. Connect at least one to continue.'
+          )
+        ).toBeInTheDocument();
       });
 
       // Next should be disabled (binary ready but auth not = no complete pair)
@@ -1839,7 +1997,7 @@ describe('OnboardingScreen', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText('Set up version control and repository hosting')
+          screen.getByText('Save your work safely and publish it online. Required.')
         ).toBeInTheDocument();
       });
 
@@ -1888,7 +2046,9 @@ describe('OnboardingScreen', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText('Install the tools needed to manage dependencies')
+          screen.getByText(
+            'A one-time setup of the free developer tools your AI needs to build and run your site.'
+          )
         ).toBeInTheDocument();
       });
     });
@@ -1899,7 +2059,11 @@ describe('OnboardingScreen', () => {
       render(<OnboardingScreen onComplete={onComplete} />);
 
       await waitFor(() => {
-        expect(screen.getByText('Install at least one AI coding assistant')).toBeInTheDocument();
+        expect(
+          screen.getByText(
+            'Your AI agent is what builds your app. Connect at least one to continue.'
+          )
+        ).toBeInTheDocument();
       });
     });
   });

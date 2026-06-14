@@ -175,6 +175,8 @@
   /* Element tree (navigator) panel width — the preview's left grid column in
      fullscreen edit mode. */
   --tree-panel-w: 240px;
+  /* Max width for the terminal first-run hint card. */
+  --hint-card-max-w: 360px;
   --z-modal-overlay: 1000;
   --z-modal: 1001;
   --z-tooltip: 1100;

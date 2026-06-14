@@ -134,7 +134,7 @@ function EditorIntro() {
         </li>
         <li>
           <IntroCheck />
-          <span>Updates live and saves to your source instantly</span>
+          <span>Updates live; saved when you Apply edits to source</span>
         </li>
       </ul>
     </div>

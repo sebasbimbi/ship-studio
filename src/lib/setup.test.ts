@@ -305,15 +305,15 @@ describe('SETUP_FRIENDLY_NAMES', () => {
   it('has entries for all items including codex and vercel', () => {
     expect(SETUP_FRIENDLY_NAMES.homebrew).toBe('Package Manager');
     expect(SETUP_FRIENDLY_NAMES.node).toBe('Node.js');
-    expect(SETUP_FRIENDLY_NAMES.npm_fix).toBe('Fix npm Permissions');
+    expect(SETUP_FRIENDLY_NAMES.npm_fix).toBe('Repair file access');
     expect(SETUP_FRIENDLY_NAMES.git).toBe('Git');
-    expect(SETUP_FRIENDLY_NAMES.gh).toBe('GitHub CLI');
+    expect(SETUP_FRIENDLY_NAMES.gh).toBe('GitHub connector');
     expect(SETUP_FRIENDLY_NAMES.gh_auth).toBe('GitHub Account');
     expect(SETUP_FRIENDLY_NAMES.claude).toBe('Claude Code');
     expect(SETUP_FRIENDLY_NAMES.claude_auth).toBe('Claude Account');
     expect(SETUP_FRIENDLY_NAMES.codex).toBe('Codex');
     expect(SETUP_FRIENDLY_NAMES.codex_auth).toBe('Codex Account');
-    expect(SETUP_FRIENDLY_NAMES.vercel).toBe('Vercel CLI');
+    expect(SETUP_FRIENDLY_NAMES.vercel).toBe('Vercel (hosting)');
     expect(SETUP_FRIENDLY_NAMES.vercel_auth).toBe('Vercel Account');
   });
 });
@@ -505,6 +505,14 @@ describe('isWizardStepComplete', () => {
 
   it('package-manager is incomplete on fresh install', () => {
     expect(isWizardStepComplete('package-manager', FRESH_INSTALL_ITEMS)).toBe(false);
+  });
+
+  it('package-manager is complete when Node is ready even if the package manager is not', () => {
+    // A user with Node via another route (no Homebrew) should not be blocked.
+    const items = STEP1_COMPLETE_ITEMS.map((i) =>
+      i.id === 'homebrew' ? { ...i, status: 'not_installed' as const } : i
+    );
+    expect(isWizardStepComplete('package-manager', items)).toBe(true);
   });
 
   it('git-github is complete when git + gh + gh_auth are ready', () => {

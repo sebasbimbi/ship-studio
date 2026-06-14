@@ -1,0 +1,99 @@
+/* First-run workspace tour (F23 / PART B). A sequenced spotlight walkthrough
+   layered on the existing data-education-id anchors. */
+
+/* Tour-local sizing tokens — intentional one-offs, not part of the global scale.
+   The scrim spread is a "cover the whole viewport" value. */
+:root {
+  --wt-ring-border-w: 2px;
+  --wt-scrim-spread: 9999px;
+  --wt-card-w: 320px;
+}
+
+.workspace-tour {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal-overlay);
+}
+
+/* Click-blocker for anchored steps: transparent because the ring's box-shadow
+   provides the surrounding dim. (Centered steps use ModalFrame's own overlay.) */
+.workspace-tour-scrim {
+  position: fixed;
+  inset: 0;
+}
+
+/* Spotlight: a bordered cutout whose huge box-shadow IS the surrounding scrim,
+   so the highlighted element stays bright. */
+.workspace-tour-ring {
+  position: fixed;
+  border-radius: var(--radius-md);
+  border: var(--wt-ring-border-w) solid var(--accent);
+  box-shadow: 0 0 0 var(--wt-scrim-spread) var(--overlay-60);
+  pointer-events: none;
+  transition:
+    top var(--transition),
+    left var(--transition),
+    width var(--transition),
+    height var(--transition);
+}
+
+.workspace-tour-card {
+  position: fixed;
+  width: var(--wt-card-w);
+  max-width: calc(100vw - var(--spacing-xl));
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-lg);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+/* Centered / anchorless steps render inside ModalFrame; size the box and lay out
+   the body (ModalFrame's content provides the card chrome + padding). */
+.workspace-tour-modal {
+  width: var(--wt-card-w);
+}
+
+.workspace-tour-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  outline: none;
+}
+
+.workspace-tour-step {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.workspace-tour-title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.workspace-tour-body {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.workspace-tour-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--spacing-sm);
+}
+
+.workspace-tour-nav {
+  display: flex;
+  gap: var(--spacing-sm);
+}

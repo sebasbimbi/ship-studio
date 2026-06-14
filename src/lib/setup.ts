@@ -155,9 +155,9 @@ export const SETUP_ITEM_ORDER = [
 export const SETUP_FRIENDLY_NAMES: Record<string, string> = {
   homebrew: 'Package Manager',
   node: 'Node.js',
-  npm_fix: 'Fix npm Permissions',
+  npm_fix: 'Repair file access',
   git: 'Git',
-  gh: 'GitHub CLI',
+  gh: 'GitHub connector',
   gh_auth: 'GitHub Account',
   claude: 'Claude Code',
   claude_auth: 'Claude Account',
@@ -165,7 +165,7 @@ export const SETUP_FRIENDLY_NAMES: Record<string, string> = {
   codex_auth: 'Codex Account',
   opencode: 'Opencode',
   opencode_auth: 'Opencode Account',
-  vercel: 'Vercel CLI',
+  vercel: 'Vercel (hosting)',
   vercel_auth: 'Vercel Account',
 };
 
@@ -299,28 +299,29 @@ export const WIZARD_STEPS: WizardStepDef[] = [
   {
     id: 'package-manager',
     title: 'Package Manager & Node.js',
-    subtitle: 'Install the tools needed to manage dependencies',
+    subtitle:
+      'A one-time setup of the free developer tools your AI needs to build and run your site.',
     itemIds: ['homebrew', 'node', 'npm_fix'],
     skippable: false,
   },
   {
     id: 'git-github',
     title: 'Git & GitHub',
-    subtitle: 'Set up version control and repository hosting',
+    subtitle: 'Save your work safely and publish it online. Required.',
     itemIds: ['git', 'gh', 'gh_auth'],
     skippable: false,
   },
   {
     id: 'agent',
     title: 'AI Agent',
-    subtitle: 'Install at least one AI coding assistant',
+    subtitle: 'Your AI agent is what builds your app. Connect at least one to continue.',
     itemIds: ['claude', 'claude_auth', 'codex', 'codex_auth', 'opencode', 'opencode_auth'],
     skippable: false,
   },
   {
     id: 'hosting',
     title: 'Hosting Provider',
-    subtitle: 'Deploy your projects to the web',
+    subtitle: 'Optional. Connect later to put your site on the web.',
     itemIds: ['vercel', 'vercel_auth'],
     skippable: true,
   },
@@ -356,6 +357,21 @@ export function isWizardStepComplete(stepId: WizardStepId, items: SetupItem[]): 
     return isAtLeastOneAgentReady(items);
   }
 
+  if (stepId === 'package-manager') {
+    // The package manager (Homebrew) is only a means to install Node; if Node is
+    // already present the step's goal is met regardless of Homebrew — so a user
+    // who has Node via another route isn't blocked into installing Homebrew.
+    // A surfaced npm_fix (a permissions repair) must still be resolved.
+    const node = items.find((i) => i.id === 'node');
+    const npmFix = items.find((i) => i.id === 'npm_fix');
+    if (node?.status === 'ready') {
+      return !npmFix || npmFix.status === 'ready';
+    }
+    // Node missing → the package manager is genuinely needed to install it.
+    const stepItems = getStepItems(stepId, items);
+    return stepItems.length > 0 && stepItems.every((i) => i.status === 'ready');
+  }
+
   const stepItems = getStepItems(stepId, items);
   return stepItems.length > 0 && stepItems.every((i) => i.status === 'ready');
 }
@@ -387,6 +403,15 @@ export async function getFullSetupStatus(): Promise<FullSetupStatus> {
  */
 export async function startGitHubAuth(): Promise<string> {
   return invoke<string>('start_github_auth');
+}
+
+/**
+ * Kill any tracked, still-running auth CLI processes (gh/agent `... auth login`).
+ * Call before starting a fresh auth or falling back to the terminal so two
+ * concurrent logins don't contend for the same token write. Returns the count.
+ */
+export async function cleanupAuthProcesses(): Promise<number> {
+  return invoke<number>('cleanup_auth_processes');
 }
 
 /**

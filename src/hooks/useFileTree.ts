@@ -28,7 +28,11 @@ interface UseFileTreeResult {
   treeError: string | null;
   fileError: string | null;
   toggleDirectory: (path: string) => void;
+  /** Expand a directory and all its ancestors (e.g. to reveal a moved entry). */
+  expandDir: (path: string) => void;
   selectFile: (path: string) => void;
+  /** Clear the current selection + viewer (e.g. after the open file is deleted). */
+  clearSelection: () => void;
   refreshTree: () => void;
 }
 
@@ -128,6 +132,25 @@ export function useFileTree(projectPath: string): UseFileTreeResult {
     [projectPath, executeLoadFileAndClear]
   );
 
+  const expandDir = useCallback((path: string) => {
+    if (!path) return;
+    setExpandedPaths((prev) => {
+      const next = new Set(prev);
+      let acc = '';
+      for (const part of path.split('/')) {
+        acc = acc ? `${acc}/${part}` : part;
+        next.add(acc);
+      }
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setSelectedFilePath(null);
+    setFileContent(null);
+    resetFile();
+  }, [setFileContent, resetFile]);
+
   const refreshTree = useCallback(() => {
     void loadTree();
   }, [loadTree]);
@@ -142,7 +165,9 @@ export function useFileTree(projectPath: string): UseFileTreeResult {
     treeError,
     fileError,
     toggleDirectory,
+    expandDir,
     selectFile: (path: string) => void selectFile(path),
+    clearSelection,
     refreshTree,
   };
 }

@@ -26,7 +26,7 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
             ("homebrew", "Package Manager", None),
             ("node", "Node.js", Some("homebrew")),
             ("git", "Git", Some("homebrew")),
-            ("gh", "GitHub CLI", Some("homebrew")),
+            ("gh", "GitHub connector", Some("homebrew")),
             ("gh_auth", "GitHub Account", Some("gh")),
             ("claude", "Claude Code", None),
             ("claude_auth", "Claude Account", Some("claude")),
@@ -34,7 +34,7 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
             ("codex_auth", "Codex Account", Some("codex")),
             ("opencode", "Opencode", None),
             ("opencode_auth", "Opencode Account", Some("opencode")),
-            ("vercel", "Vercel CLI", None),
+            ("vercel", "Vercel (hosting)", None),
             ("vercel_auth", "Vercel Account", Some("vercel")),
         ];
 
@@ -202,7 +202,7 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
         if !npm_cache_ok {
             items.push(SetupItemInfo {
                 id: "npm_fix".to_string(),
-                friendly_name: "Fix npm Permissions".to_string(),
+                friendly_name: "Repair file access".to_string(),
                 status: SetupItemStatus::NotInstalled,
                 version: None,
                 username: None,
@@ -259,7 +259,7 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
     });
     items.push(SetupItemInfo {
         id: "gh".to_string(),
-        friendly_name: "GitHub CLI".to_string(),
+        friendly_name: "GitHub connector".to_string(),
         status: if gh_path.is_some() {
             SetupItemStatus::Ready
         } else {
@@ -393,7 +393,7 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
     });
     items.push(SetupItemInfo {
         id: "vercel".to_string(),
-        friendly_name: "Vercel CLI".to_string(),
+        friendly_name: "Vercel (hosting)".to_string(),
         status: if vercel_path.is_some() {
             SetupItemStatus::Ready
         } else {
@@ -450,8 +450,12 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
         error_message: None,
     });
 
-    // Required base items for setup completion (GitHub auth and individual agent items are optional)
-    const REQUIRED_ITEMS: &[&str] = &["homebrew", "node", "git", "gh"];
+    // Required base items for setup completion (GitHub auth and individual agent
+    // items are optional). Homebrew is intentionally NOT required: it's only an
+    // installer for node/git/gh, so if those are present it isn't needed — this
+    // matches the frontend isWizardStepComplete rule and keeps a user who has
+    // Node via another version manager (no Homebrew) from being re-nagged.
+    const REQUIRED_ITEMS: &[&str] = &["node", "git", "gh"];
 
     let base_ready = items
         .iter()
@@ -518,12 +522,9 @@ pub async fn quick_setup_check() -> crate::types::QuickSetupCheck {
         };
     }
 
-    // Fast Tier-1 checks: binary existence only (no --version calls)
-    #[cfg(windows)]
-    let pkg_mgr_present = check_winget().0;
-    #[cfg(not(windows))]
-    let pkg_mgr_present = check_homebrew().0;
-
+    // Fast Tier-1 checks: binary existence only (no --version calls). The package
+    // manager (Homebrew/Winget) is only an installer — not required when the
+    // tools it installs are already present (mirrors all_ready below).
     let node_present = find_executable("node").is_some();
     let git_present = find_executable("git").is_some();
     let gh_present = find_executable("gh").is_some();
@@ -548,8 +549,7 @@ pub async fn quick_setup_check() -> crate::types::QuickSetupCheck {
     // For gh_auth, we trust the cached state since checking requires subprocess
     // It will be verified in the background after showing projects
 
-    let all_present =
-        pkg_mgr_present && node_present && git_present && gh_present && at_least_one_agent;
+    let all_present = node_present && git_present && gh_present && at_least_one_agent;
 
     crate::types::QuickSetupCheck {
         all_present,

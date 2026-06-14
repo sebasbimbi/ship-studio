@@ -55,6 +55,9 @@ tauri-plugin-dialog = "2"
 walkdir = "2"
 ignore = "0.4"
 dunce = "1"
+# Move deleted files to the OS Trash / Recycle Bin (recoverable) instead of
+# permanently unlinking them — used by the Code-tab delete action.
+trash = "5"
 urlencoding = "2"
 hyper = { version = "1", features = ["http1", "server", "client"] }
 # Android mirror bridge: WebSocket server streaming screenrecord H.264 to the webview.

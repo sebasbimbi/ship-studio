@@ -185,8 +185,10 @@ function appendTextEdit(out: string[], change: RedlineAnnotation): void {
   out.push(`### ${change.number}. Text edit`);
   out.push('');
   out.push('- Change type: text replacement');
-  out.push(`- Old text: "${change.oldText ?? ''}"`);
-  out.push(`- New text: "${change.newText ?? ''}"`);
+  // JSON-encode so quotes/newlines in the copy survive exactly (round-trippable);
+  // for plain text this is identical to wrapping the value in double quotes.
+  out.push(`- Old text: ${JSON.stringify(change.oldText ?? '')}`);
+  out.push(`- New text: ${JSON.stringify(change.newText ?? '')}`);
   if (change.hasInlineMarkup) {
     out.push(
       '- Contains inline markup: yes. The element holds child elements ' +

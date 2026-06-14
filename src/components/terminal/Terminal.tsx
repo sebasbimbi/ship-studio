@@ -15,6 +15,8 @@
 import { useEffect, useRef, useCallback, useState, forwardRef, useImperativeHandle } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { createWebLinksAddon } from '../../lib/terminalLinks';
+import { osDropZoneAt } from '../../lib/osDrop';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebglAddon } from '@xterm/addon-webgl';
@@ -39,7 +41,6 @@ interface SessionHandle {
   pid: number | null;
 }
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
 import { homeDir } from '@tauri-apps/api/path';
 import { loadNerdFonts } from '../../lib/fonts';
 import { isWindows } from '../../lib/setup';
@@ -50,6 +51,12 @@ import '@xterm/xterm/css/xterm.css';
 
 /** Agent status based on terminal title */
 export type AgentStatus = 'thinking' | 'waiting' | 'idle';
+
+/** Set once the user sends their first input to any agent terminal. */
+const FIRST_AGENT_INPUT_KEY = 'shipstudio.sentFirstAgentMessage';
+/** In-process broadcast so every mounted terminal (split panes / tabs) clears
+ *  its first-run hint the moment the user types into ANY of them. */
+const FIRST_AGENT_INPUT_EVENT = 'shipstudio:first-agent-input';
 
 /** Props for the Terminal component */
 interface TerminalProps {
@@ -119,6 +126,24 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   const ptyDisposablesRef = useRef<Array<{ dispose(): void }>>([]);
   const [isReady, setIsReady] = useState(false);
   const [isFocused, setIsFocused] = useState(false); // Start unfocused to show overlay until user clicks
+
+  // First-run hint: show "this is your AI builder, type here" over the terminal
+  // until the user sends their first input, then never again (global flag, so it
+  // covers every agent terminal / tab / project, not just this one).
+  const [showFirstRunHint, setShowFirstRunHint] = useState(
+    () => localStorage.getItem(FIRST_AGENT_INPUT_KEY) !== '1'
+  );
+  const firstInputDoneRef = useRef(!showFirstRunHint);
+  // Clear this instance's hint when any sibling terminal reports first input.
+  useEffect(() => {
+    if (firstInputDoneRef.current) return;
+    const onFirstInput = () => {
+      firstInputDoneRef.current = true;
+      setShowFirstRunHint(false);
+    };
+    window.addEventListener(FIRST_AGENT_INPUT_EVENT, onFirstInput);
+    return () => window.removeEventListener(FIRST_AGENT_INPUT_EVENT, onFirstInput);
+  }, []);
 
   // Mirror `isActive` to a ref so non-effect closures (input handler,
   // resize observer) can read it without re-creating.
@@ -250,33 +275,43 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     let mounted = true;
 
     const setupDropListener = async () => {
-      // Listen for the tauri://drag-drop event
-      const unlistenFn = await listen<{ paths: string[]; position: { x: number; y: number } }>(
-        'tauri://drag-drop',
-        (event) => {
-          // Debounce - ignore duplicate events within 500ms
-          const now = Date.now();
-          if (now - lastDropTimeRef.current < 500) {
-            return;
-          }
-          lastDropTimeRef.current = now;
+      // Listen for OS file drops via the typed webview drag-drop event. (Using
+      // onDragDropEvent rather than the raw `tauri://drag-drop` listen() gives a
+      // wrapped flat PhysicalPosition — the raw payload nests it as
+      // `{ Physical: { x, y } }`, which the hit-test below can't read.)
+      const unlistenFn = await getCurrentWebview().onDragDropEvent((event) => {
+        if (event.payload.type !== 'drop') return;
 
-          const pty = ptyRef.current;
-          const term = terminalRef.current;
-
-          if (pty && term && event.payload.paths && event.payload.paths.length > 0) {
-            // Quote paths that contain spaces
-            const quotedPaths = event.payload.paths
-              .map((p) => (p.includes(' ') ? `"${p}"` : p))
-              .join(' ');
-
-            // Focus terminal and paste the path
-            term.focus();
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
-            (term as any).paste(quotedPaths);
-          }
+        // If the drop landed on a region that owns its OS drops (e.g. the code
+        // file tree, which imports the files), don't also paste the path into the
+        // terminal — let that region handle it. Checked BEFORE the debounce so a
+        // tree-owned drop doesn't burn the terminal's debounce window.
+        if (osDropZoneAt(event.payload.position)) {
+          return;
         }
-      );
+
+        // Debounce duplicate drop events within 500ms (only for drops we handle).
+        const now = Date.now();
+        if (now - lastDropTimeRef.current < 500) {
+          return;
+        }
+        lastDropTimeRef.current = now;
+
+        const pty = ptyRef.current;
+        const term = terminalRef.current;
+
+        if (pty && term && event.payload.paths.length > 0) {
+          // Quote paths that contain spaces
+          const quotedPaths = event.payload.paths
+            .map((p) => (p.includes(' ') ? `"${p}"` : p))
+            .join(' ');
+
+          // Focus terminal and paste the path
+          term.focus();
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
+          (term as any).paste(quotedPaths);
+        }
+      });
 
       // If component unmounted while awaiting, clean up immediately
       if (!mounted) {
@@ -793,6 +828,14 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
         // Handle terminal input -> PTY. Resolves the session id lazily
         // from the ref so re-attach doesn't need a new listener.
         const inputDisposable = term.onData((data) => {
+          // Dismiss the first-run hint the moment the user types anything — and
+          // broadcast so sibling terminals (split panes / tabs) clear theirs too.
+          if (!firstInputDoneRef.current) {
+            firstInputDoneRef.current = true;
+            localStorage.setItem(FIRST_AGENT_INPUT_KEY, '1');
+            setShowFirstRunHint(false);
+            window.dispatchEvent(new Event(FIRST_AGENT_INPUT_EVENT));
+          }
           const sid = ptyRef.current?.sessionId;
           if (sid) void writePtySession(sid, data);
           // When user sends input to an agent without title-based status detection,
@@ -1000,6 +1043,20 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
           cursor: 'text',
         }}
       />
+      {/* First-run instruction so a non-developer knows this is a chat box, not
+          a scary console. pointer-events:none lets the click-to-focus below it
+          still work; it clears on the first keystroke. */}
+      {isReady && showFirstRunHint && (
+        <div className="terminal-firstrun-hint">
+          <div className="terminal-firstrun-hint-card" role="note">
+            <strong>This is your AI builder</strong>
+            <span>
+              Type what you want to build in plain English (like "make me a landing page for a
+              coffee shop"), then press Enter.
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 });
