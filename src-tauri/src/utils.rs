@@ -222,15 +222,24 @@ fn build_extended_path() -> String {
         }
     }
 
-    // Merge the user's login-shell PATH (covers nvm/volta/fnm/asdf/custom that a
-    // Finder-launched bundle wouldn't otherwise see). Non-Windows only.
+    // Merge the user's login-shell PATH FIRST (covers nvm/volta/fnm/asdf/custom
+    // that a Finder-launched bundle wouldn't otherwise see). It must take
+    // precedence over the hard-coded fallbacks below so the active version-
+    // manager binary the user's terminal resolves wins over a stale system copy
+    // in /usr/local/bin etc. Non-Windows only.
     #[cfg(not(windows))]
     if let Some(shell_path) = get_login_shell_path() {
-        for dir in shell_path.split(':') {
-            if !dir.is_empty() && !paths.iter().any(|p| p == dir) {
-                paths.push(dir.to_string());
-            }
-        }
+        let shell_dirs: Vec<String> = shell_path
+            .split(':')
+            .filter(|dir| !dir.is_empty())
+            .map(|dir| dir.to_string())
+            .collect();
+        // Drop the fallbacks that the shell PATH already covers, then prepend
+        // the shell dirs so they are searched first.
+        paths.retain(|p| !shell_dirs.contains(p));
+        let mut merged = shell_dirs;
+        merged.append(&mut paths);
+        paths = merged;
     }
 
     // Append existing PATH
