@@ -8,7 +8,7 @@
  * {@link Button}; never silently overwrites.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ModalFrame } from '../primitives/ModalFrame';
 import { Button } from '../primitives/Button';
 import type { ConflictResolution } from '../../lib/code';
@@ -44,6 +44,12 @@ export function ConflictPromptModal({
   onClose,
 }: ConflictPromptModalProps) {
   const [applyToAll, setApplyToAll] = useState(false);
+  // Reset the sticky "apply to the rest" toggle when the modal closes, so a
+  // dismissal (ESC / overlay) can't carry a stale choice into the next batch.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: reset transient UI state on close
+    if (!isOpen) setApplyToAll(false);
+  }, [isOpen]);
   const where = targetLabel ? `"${targetLabel}"` : 'this folder';
 
   const resolve = (choice: ConflictChoice) => {
