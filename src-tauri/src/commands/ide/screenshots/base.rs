@@ -8,8 +8,9 @@ use tauri::Manager;
 /// Crop an image and save it to the project's screenshots folder
 /// Takes the source image path, crop bounds (x, y, width, height), and returns the saved path
 #[tauri::command]
-#[tracing::instrument(fields(project = %project_path))]
+#[tracing::instrument(skip(app), fields(project = %project_path))]
 pub async fn crop_and_save_screenshot(
+    app: tauri::AppHandle,
     project_path: String,
     source_path: String,
     x: u32,
@@ -18,6 +19,20 @@ pub async fn crop_and_save_screenshot(
     height: u32,
 ) -> Result<String, CommandError> {
     let project = validate_project_path(&project_path)?;
+
+    // The source is a throwaway full-window capture from tauri-plugin-screenshots,
+    // living in a temp/cache dir — never inside a ShipStudio project. Canonicalize
+    // it and require it under a known capture dir before we read or delete it, so a
+    // caller can't point this command at an arbitrary file. (Mirrors the guard in
+    // crop_screenshot_bytes; validate_project_path is the wrong boundary here.)
+    let source_canonical = std::fs::canonicalize(&source_path)
+        .map_err(|e| format!("Invalid screenshot source: {e}"))?;
+    if !is_under_capture_dir(&app, &source_canonical) {
+        return Err(
+            format!("Screenshot source is outside the capture directory: {source_path}").into(),
+        );
+    }
+
     let screenshots_dir = project.join(".shipstudio").join("screenshots");
 
     // Ensure screenshots directory exists
@@ -33,8 +48,8 @@ pub async fn crop_and_save_screenshot(
     let screenshot_path = screenshots_dir.join(format!("screenshot-{timestamp}.png"));
     let screenshot_path_str = screenshot_path.to_string_lossy().to_string();
 
-    // Load the source image
-    let img = image::open(&source_path).map_err(|e| format!("Failed to open image: {e}"))?;
+    // Load the source image (guarded canonical path)
+    let img = image::open(&source_canonical).map_err(|e| format!("Failed to open image: {e}"))?;
 
     // Crop the image (ensure bounds are within image dimensions)
     let img_width = img.width();
@@ -52,8 +67,8 @@ pub async fn crop_and_save_screenshot(
         .save(&screenshot_path)
         .map_err(|e| format!("Failed to save cropped image: {e}"))?;
 
-    // Clean up the source temp file
-    let _ = std::fs::remove_file(&source_path);
+    // Clean up the source temp file (guarded canonical path)
+    let _ = std::fs::remove_file(&source_canonical);
 
     Ok(screenshot_path_str)
 }
