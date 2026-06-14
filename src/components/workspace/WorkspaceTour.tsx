@@ -131,10 +131,11 @@ export function WorkspaceTour({ tour }: { tour: WorkspaceTourState }) {
 
   if (!isOpen || !step) return null;
 
-  // Position the card below the anchor if it fits, else above, else fall back to
-  // a centered dialog (e.g. a full-height anchor with no room either side, or the
-  // anchorless finale).
-  let centered = !rect;
+  // An anchored card positions below the anchor if it fits, else above. When the
+  // anchor leaves no room either way (e.g. a full-height terminal/preview pane),
+  // the card centers on screen — but the spotlight ring still highlights the
+  // anchor, so it stays in the anchored render path (not the plain ModalFrame).
+  let cardCentered = false;
   let cardStyle: React.CSSProperties = {};
   if (rect) {
     const left = Math.max(GAP, Math.min(rect.left, window.innerWidth - CARD_WIDTH - GAP));
@@ -143,7 +144,7 @@ export function WorkspaceTour({ tour }: { tour: WorkspaceTourState }) {
     } else if (rect.top - GAP - CARD_HEIGHT_EST >= 0) {
       cardStyle = { bottom: window.innerHeight - rect.top + GAP, left };
     } else {
-      centered = true;
+      cardCentered = true;
     }
   }
 
@@ -172,9 +173,9 @@ export function WorkspaceTour({ tour }: { tour: WorkspaceTourState }) {
     </>
   );
 
-  // Centered / anchorless steps reuse the shared ModalFrame (overlay + ESC +
+  // Anchorless steps (the finale) reuse the shared ModalFrame (overlay + ESC +
   // overlay-click dismiss + portal + aria) — the modal stack where it fits.
-  if (centered || !rect) {
+  if (!rect) {
     return (
       <ModalFrame
         isOpen
@@ -209,8 +210,8 @@ export function WorkspaceTour({ tour }: { tour: WorkspaceTourState }) {
         role="dialog"
         aria-modal="true"
         aria-label="Workspace tour"
-        className="workspace-tour-card"
-        style={cardStyle}
+        className={`workspace-tour-card${cardCentered ? ' centered' : ''}`}
+        style={cardCentered ? undefined : cardStyle}
       >
         {cardBody}
       </div>

@@ -51,8 +51,16 @@
   box-shadow: var(--shadow-md);
 }
 
-/* Centered / anchorless steps render inside ModalFrame; size the box and lay out
-   the body (ModalFrame's content provides the card chrome + padding). */
+/* Anchored step whose anchor leaves no room above/below: center the card on
+   screen, but the spotlight ring still highlights the anchor behind it. */
+.workspace-tour-card.centered {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* Anchorless steps (the finale) render inside ModalFrame; size the box and lay
+   out the body (ModalFrame's content provides the card chrome + padding). */
 .workspace-tour-modal {
   width: var(--wt-card-w);
 }
@@ -61,6 +69,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
+  /* .modal-frame-content has no padding of its own, so match the anchored card. */
+  padding: var(--spacing-lg);
   outline: none;
 }
 
