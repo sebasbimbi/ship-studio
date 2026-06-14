@@ -656,6 +656,83 @@ pub async fn import_paths_to_project(
     Ok(outcomes)
 }
 
+/// Validate a project-relative path for deletion and return the absolute target.
+///
+/// Resolves the PARENT directory's canonical path (not the entry itself) so a
+/// symlinked entry is deleted as the link rather than followed out of the
+/// project, then confirms that parent is inside `root`. Rejects traversal, the
+/// empty/root path, and an entry that no longer exists. `root` must already be
+/// canonical (as returned by `validate_project_path`). Pure (no deletion) so the
+/// guard logic is unit-testable without touching the OS trash.
+fn resolve_deletable(root: &Path, rel: &str) -> Result<std::path::PathBuf, CommandError> {
+    let rel = sanitize_rel(rel)?;
+    if rel.is_empty() {
+        return Err(CommandError::Validation {
+            field: "path".to_string(),
+            reason: "Cannot delete the project root".to_string(),
+        });
+    }
+
+    let target = root.join(&rel);
+    let parent = target.parent().ok_or_else(|| CommandError::Validation {
+        field: "path".to_string(),
+        reason: "Invalid path".to_string(),
+    })?;
+    let parent_canon = dunce::canonicalize(parent).map_err(|e| CommandError::Validation {
+        field: "path".to_string(),
+        reason: format!("Cannot find '{rel}': {e}"),
+    })?;
+    if !parent_canon.starts_with(root) {
+        return Err(CommandError::Validation {
+            field: "path".to_string(),
+            reason: "Target is outside the project".to_string(),
+        });
+    }
+
+    let file_name = target.file_name().ok_or_else(|| CommandError::Validation {
+        field: "path".to_string(),
+        reason: "Invalid path".to_string(),
+    })?;
+    let final_target = parent_canon.join(file_name);
+    if final_target == *root {
+        return Err(CommandError::Validation {
+            field: "path".to_string(),
+            reason: "Cannot delete the project root".to_string(),
+        });
+    }
+    // symlink_metadata (via occupied) counts a broken symlink as present, so a
+    // dangling link is still deletable rather than reported as "missing".
+    if !occupied(&final_target) {
+        return Err(CommandError::Validation {
+            field: "path".to_string(),
+            reason: format!("'{rel}' no longer exists"),
+        });
+    }
+    Ok(final_target)
+}
+
+/// Delete a file or directory from the project by moving it to the OS Trash /
+/// Recycle Bin (recoverable), rather than permanently unlinking it. `rel` is
+/// project-relative; traversal, the project root, and missing entries are
+/// rejected before anything is touched.
+#[tauri::command]
+#[tracing::instrument(skip(project_path), fields(project = %project_path))]
+pub async fn delete_project_entry(project_path: String, rel: String) -> Result<(), CommandError> {
+    let root = validate_project_path(&project_path)?;
+    let target = resolve_deletable(&root, &rel)?;
+    // trash::delete is a synchronous platform call; trashing a large directory
+    // tree can take a while, so run it off the async runtime's worker threads.
+    tokio::task::spawn_blocking(move || trash::delete(&target))
+        .await
+        .map_err(|e| CommandError::Io {
+            message: format!("Delete task panicked: {e}"),
+        })?
+        .map_err(|e| CommandError::Io {
+            message: format!("Failed to move to Trash: {e}"),
+        })?;
+    Ok(())
+}
+
 /// Infer the Shiki language identifier from a file path.
 ///
 /// Checks the filename first for well-known extensionless files (Dockerfile, Makefile, etc.),
@@ -915,5 +992,78 @@ mod tests {
         }
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_resolve_deletable() {
+        // Canonicalize the root so parent_canon.starts_with(root) holds (the
+        // command path canonicalizes via validate_project_path).
+        let base = std::env::temp_dir().join(format!("ss-code-del-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(base.join("src")).unwrap();
+        std::fs::write(base.join("src").join("main.rs"), b"x").unwrap();
+        std::fs::write(base.join("README.md"), b"x").unwrap();
+        let root = dunce::canonicalize(&base).unwrap();
+
+        // Valid file → returns its absolute path (no deletion happens here).
+        assert_eq!(
+            resolve_deletable(&root, "src/main.rs").unwrap(),
+            root.join("src").join("main.rs")
+        );
+        assert_eq!(
+            resolve_deletable(&root, "README.md").unwrap(),
+            root.join("README.md")
+        );
+
+        // A directory is deletable too.
+        assert_eq!(resolve_deletable(&root, "src").unwrap(), root.join("src"));
+
+        // Empty / root path is refused.
+        match resolve_deletable(&root, "") {
+            Err(CommandError::Validation { field, reason }) => {
+                assert_eq!(field, "path");
+                assert!(reason.contains("project root"));
+            }
+            other => panic!("expected root refusal, got {other:?}"),
+        }
+
+        // Traversal is rejected by sanitize_rel before any fs touch.
+        assert!(resolve_deletable(&root, "../outside").is_err());
+        assert!(resolve_deletable(&root, "src/../../etc").is_err());
+
+        // A path that does not exist is reported as missing, not deleted.
+        match resolve_deletable(&root, "src/ghost.rs") {
+            Err(CommandError::Validation { field, reason }) => {
+                assert_eq!(field, "path");
+                assert!(reason.contains("no longer exists"));
+            }
+            other => panic!("expected missing-entry error, got {other:?}"),
+        }
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A symlink entry inside the project is deleted as the LINK, not followed
+    /// out of the sandbox: resolve_deletable returns the in-project link path
+    /// (its parent is canonicalized, the final component is not).
+    #[test]
+    #[cfg(unix)]
+    fn test_resolve_deletable_symlink_not_followed() {
+        use std::os::unix::fs::symlink;
+        let base = std::env::temp_dir().join(format!("ss-code-del-link-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        // A symlink pointing OUTSIDE the project.
+        symlink("/tmp/ss-del-external-target", base.join("escape")).unwrap();
+        let root = dunce::canonicalize(&base).unwrap();
+
+        // Resolves to the link's own in-project path (broken link still counts
+        // as occupied), so trashing it removes the link, not its target.
+        assert_eq!(
+            resolve_deletable(&root, "escape").unwrap(),
+            root.join("escape")
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

@@ -23,6 +23,10 @@ interface FileTreeProps {
   dnd?: TreeDnd;
   /** Folder highlighted as the OS-import drop target (`''` = root), if any. */
   osDropTargetDir?: string | null;
+  /** Right-click handler; enables the per-entry context menu (delete, …). */
+  onContextMenu?: (node: FileTreeNode, e: React.MouseEvent) => void;
+  /** Path whose row is the current context-menu target (subtle highlight). */
+  contextTargetPath?: string | null;
   level?: number;
 }
 
@@ -34,6 +38,8 @@ export function FileTree({
   onSelectFile,
   dnd,
   osDropTargetDir,
+  onContextMenu,
+  contextTargetPath,
   level = 0,
 }: FileTreeProps) {
   return (
@@ -48,6 +54,8 @@ export function FileTree({
           onSelectFile={onSelectFile}
           dnd={dnd}
           osDropTargetDir={osDropTargetDir}
+          onContextMenu={onContextMenu}
+          contextTargetPath={contextTargetPath}
           level={level}
         />
       ))}
@@ -63,6 +71,8 @@ interface FileTreeItemProps {
   onSelectFile: (path: string) => void;
   dnd?: TreeDnd;
   osDropTargetDir?: string | null;
+  onContextMenu?: (node: FileTreeNode, e: React.MouseEvent) => void;
+  contextTargetPath?: string | null;
   level: number;
 }
 
@@ -74,6 +84,8 @@ function FileTreeItem({
   onSelectFile,
   dnd,
   osDropTargetDir,
+  onContextMenu,
+  contextTargetPath,
   level,
 }: FileTreeItemProps) {
   const isExpanded = expandedPaths.has(node.path);
@@ -93,12 +105,14 @@ function FileTreeItem({
     node.isDirectory &&
     ((!!dnd && dnd.dropTargetDir === node.path) || osDropTargetDir === node.path);
   const isDragging = dnd?.draggingPath === node.path;
+  const isContextTarget = !!contextTargetPath && node.path === contextTargetPath;
 
   const className = [
     'file-tree-item',
     isSelected ? 'selected' : '',
     isDropTarget ? 'drop-target' : '',
     isDragging ? 'dragging' : '',
+    isContextTarget ? 'context-target' : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -109,6 +123,7 @@ function FileTreeItem({
         className={className}
         style={{ paddingLeft: `${12 + level * 16}px` }}
         onClick={handleClick}
+        onContextMenu={onContextMenu ? (e) => onContextMenu(node, e) : undefined}
         title={node.path}
         role="treeitem"
         aria-expanded={node.isDirectory ? isExpanded : undefined}
@@ -141,6 +156,8 @@ function FileTreeItem({
           onSelectFile={onSelectFile}
           dnd={dnd}
           osDropTargetDir={osDropTargetDir}
+          onContextMenu={onContextMenu}
+          contextTargetPath={contextTargetPath}
           level={level + 1}
         />
       )}

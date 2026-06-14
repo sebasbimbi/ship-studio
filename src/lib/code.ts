@@ -153,6 +153,16 @@ export async function importPathsToProject(
   });
 }
 
+/**
+ * Delete a file or directory from the project. The entry is moved to the OS
+ * Trash / Recycle Bin (recoverable), not permanently unlinked. `rel` is
+ * project-relative; deleting the project root, traversal paths, and missing
+ * entries are rejected by the backend with a `Validation` error.
+ */
+export async function deleteProjectEntry(projectPath: string, rel: string): Promise<void> {
+  await invoke('delete_project_entry', { projectPath, rel });
+}
+
 /** Build a nested tree structure from a flat list of file entries. */
 export function buildFileTree(entries: FileEntry[]): FileTreeNode[] {
   const root: FileTreeNode[] = [];

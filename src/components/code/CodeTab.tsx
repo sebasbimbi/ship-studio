@@ -10,14 +10,17 @@ import { useFileTree } from '../../hooks/useFileTree';
 import { useTreeDnd } from '../../hooks/useTreeDnd';
 import { useOsImport } from '../../hooks/useOsImport';
 import { FileTree } from './FileTree';
+import { FileTreeContextMenu } from './FileTreeContextMenu';
 import { CodeViewer } from './CodeViewer';
 import { ConflictPromptModal, type ConflictChoice } from './ConflictPromptModal';
+import { ModalFrame } from '../primitives/ModalFrame';
 import { Spinner } from '../primitives/Spinner';
 import { Button } from '../primitives/Button';
-import { ResetIcon, SearchIcon } from '../icons';
+import { ResetIcon, SearchIcon, TrashIcon } from '../icons';
 import {
   moveProjectEntry,
   importPathsToProject,
+  deleteProjectEntry,
   type ConflictResolution,
   type ImportOutcome,
   type FileTreeNode,
@@ -26,6 +29,7 @@ import {
 import { asCommandError, formatCommandError } from '../../lib/errors';
 import { useOptionalToast } from '../../contexts/ToastContext';
 import { trackEvent, trackSearch } from '../../lib/analytics';
+import { useCommands } from '../../commands/useCommands';
 
 /** Extensions whose moves can break source-level imports/references. */
 const CODE_EXTENSIONS = new Set([
@@ -77,6 +81,7 @@ export function CodeTab({ projectPath, onSendToAgent, revealTarget }: CodeTabPro
     toggleDirectory,
     expandDir,
     selectFile: selectFileRaw,
+    clearSelection,
     refreshTree: refreshTreeRaw,
   } = useFileTree(projectPath);
 
@@ -275,6 +280,99 @@ export function CodeTab({ projectPath, onSendToAgent, revealTarget }: CodeTabPro
     onImport: handleOsImport,
   });
 
+  // ---- Delete (right-click menu / Cmd+Delete) ----
+  const [contextMenu, setContextMenu] = useState<{
+    node: FileTreeNode;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    rel: string;
+    name: string;
+    isDir: boolean;
+  } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const requestDelete = useCallback((rel: string, name: string, isDir: boolean) => {
+    setContextMenu(null);
+    setDeleteTarget({ rel, name, isDir });
+  }, []);
+
+  // Stable so FileTreeContextMenu's document-listener effect doesn't re-attach
+  // on every CodeTab render.
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+  const performDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    const { rel, name, isDir } = deleteTarget;
+    setIsDeleting(true);
+    try {
+      await deleteProjectEntry(projectPath, rel);
+      refreshTreeRaw();
+      // If the open file — or a folder containing it — was deleted, clear the
+      // viewer so it doesn't point at a now-dead path.
+      if (selectedFilePath === rel || selectedFilePath?.startsWith(`${rel}/`)) {
+        clearSelection();
+      }
+      void trackEvent('code_entry_deleted', { is_dir: isDir });
+      toast.showToast(`Moved ${name} to Trash.`, 'success');
+      setDeleteTarget(null);
+    } catch (e) {
+      toast.showToast(formatCommandError(asCommandError(e)), 'error');
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [deleteTarget, projectPath, refreshTreeRaw, selectedFilePath, clearSelection, toast]);
+
+  const handleContextMenu = useCallback(
+    (node: FileTreeNode, e: React.MouseEvent) => {
+      e.preventDefault();
+      // Select files on right-click so the menu's target reads unambiguously;
+      // folders aren't part of the selection model, so just open the menu.
+      if (!node.isDirectory) selectFile(node.path);
+      setContextMenu({ node, x: e.clientX, y: e.clientY });
+    },
+    [selectFile]
+  );
+
+  const handleSidebarKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      // Don't hijack editing in the search box, and don't fire while a prompt
+      // is already open.
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+      if (deleteTarget) return;
+      // Cmd/Ctrl + Delete (or Backspace, the Mac "Delete" key) removes the
+      // selected file — folders are deleted via the right-click menu.
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'Backspace' || e.key === 'Delete')) {
+        if (selectedFilePath) {
+          e.preventDefault();
+          requestDelete(selectedFilePath, baseName(selectedFilePath), false);
+        }
+      }
+    },
+    [selectedFilePath, deleteTarget, requestDelete]
+  );
+
+  // Expose "Delete file" in the Cmd+K palette while a file is open.
+  useCommands(
+    () =>
+      selectedFilePath
+        ? [
+            {
+              id: 'code.deleteSelected',
+              title: 'Delete file…',
+              icon: <TrashIcon size={14} />,
+              category: 'action' as const,
+              when: 'project' as const,
+              keywords: ['remove', 'trash', 'delete'],
+              run: () => requestDelete(selectedFilePath, baseName(selectedFilePath), false),
+            },
+          ]
+        : [],
+    [selectedFilePath, requestDelete]
+  );
+
   // Resolve OS-import name collisions one at a time (with "apply to the rest"),
   // then re-import the chosen sources grouped by policy. Skipped ones are dropped.
   const resolveImportConflict = useCallback(
@@ -310,7 +408,11 @@ export function CodeTab({ projectPath, onSendToAgent, revealTarget }: CodeTabPro
 
   return (
     <div className="code-tab" ref={containerRef}>
-      <div className="code-tab-sidebar" style={{ width: sidebarWidth }}>
+      <div
+        className="code-tab-sidebar"
+        style={{ width: sidebarWidth }}
+        onKeyDown={handleSidebarKeyDown}
+      >
         <div className="code-tab-sidebar-header">
           <span className="code-tab-sidebar-title">Files</span>
           <button className="code-tab-refresh-btn" onClick={refreshTree} title="Refresh file tree">
@@ -372,6 +474,8 @@ export function CodeTab({ projectPath, onSendToAgent, revealTarget }: CodeTabPro
               onSelectFile={selectFile}
               dnd={searchQuery.trim() ? undefined : dnd}
               osDropTargetDir={osImport.dropTargetDir}
+              onContextMenu={handleContextMenu}
+              contextTargetPath={contextMenu?.node.path ?? null}
             />
           )}
         </div>
@@ -413,6 +517,51 @@ export function CodeTab({ projectPath, onSendToAgent, revealTarget }: CodeTabPro
         onResolve={resolveImportConflict}
         onClose={dismissImportConflict}
       />
+      {contextMenu && (
+        <FileTreeContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          name={contextMenu.node.name}
+          onDelete={() =>
+            requestDelete(
+              contextMenu.node.path,
+              contextMenu.node.name,
+              contextMenu.node.isDirectory
+            )
+          }
+          onClose={closeContextMenu}
+        />
+      )}
+      {deleteTarget && (
+        <ModalFrame
+          isOpen
+          onClose={() => {
+            if (!isDeleting) setDeleteTarget(null);
+          }}
+          title="Move to Trash"
+          showCloseButton={false}
+        >
+          <div style={{ padding: 'var(--spacing-xl)' }}>
+            <p>
+              Move <strong>{deleteTarget.name}</strong>
+              {deleteTarget.isDir ? ' and everything inside it' : ''} to the Trash?
+            </p>
+            <p className="hint">You can restore it from your Trash.</p>
+            <div className="modal-actions">
+              <Button
+                variant="secondary"
+                onClick={() => setDeleteTarget(null)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button variant="danger" onClick={() => void performDelete()} disabled={isDeleting}>
+                {isDeleting ? 'Moving…' : 'Move to Trash'}
+              </Button>
+            </div>
+          </div>
+        </ModalFrame>
+      )}
     </div>
   );
 }

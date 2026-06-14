@@ -31,6 +31,8 @@ interface UseFileTreeResult {
   /** Expand a directory and all its ancestors (e.g. to reveal a moved entry). */
   expandDir: (path: string) => void;
   selectFile: (path: string) => void;
+  /** Clear the current selection + viewer (e.g. after the open file is deleted). */
+  clearSelection: () => void;
   refreshTree: () => void;
 }
 
@@ -143,6 +145,12 @@ export function useFileTree(projectPath: string): UseFileTreeResult {
     });
   }, []);
 
+  const clearSelection = useCallback(() => {
+    setSelectedFilePath(null);
+    setFileContent(null);
+    resetFile();
+  }, [setFileContent, resetFile]);
+
   const refreshTree = useCallback(() => {
     void loadTree();
   }, [loadTree]);
@@ -159,6 +167,7 @@ export function useFileTree(projectPath: string): UseFileTreeResult {
     toggleDirectory,
     expandDir,
     selectFile: (path: string) => void selectFile(path),
+    clearSelection,
     refreshTree,
   };
 }

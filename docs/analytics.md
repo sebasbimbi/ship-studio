@@ -95,6 +95,7 @@ Fired from `useIntegrationStatus` once GitHub auth resolves with a username.
 | `code_tree_refreshed` | — |
 | `code_entry_moved` | — |
 | `code_paths_imported` | `count` |
+| `code_entry_deleted` | `is_dir` |
 | `code_snippet_sent_to_agent` | `file_extension`, `language`, `line_count`, `char_count`, `had_question` |
 | `code_snippet_copied` | `file_extension`, `line_count` |
 | `search_performed` (`code_files`) | Debounced |
