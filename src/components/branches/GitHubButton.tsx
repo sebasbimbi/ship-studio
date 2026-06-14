@@ -177,6 +177,7 @@ export function GitHubButton({
         onClose={closeCreateModal}
         title="Create GitHub Repository"
         className="github-modal"
+        dismissable={!isLoading}
       >
         <p>Create a new GitHub repository for this project.</p>
 
