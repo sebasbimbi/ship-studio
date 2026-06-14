@@ -4,37 +4,6 @@
   max-width: 460px;
 }
 
-.import-picker-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px 24px 0;
-}
-
-.import-picker-header h2 {
-  margin: 0;
-  font-size: 17px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.import-picker-close {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 4px;
-  border-radius: var(--radius);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.import-picker-close:hover {
-  color: var(--text-primary);
-  background: var(--bg-tertiary);
-}
-
 .import-picker-options {
   display: flex;
   flex-direction: column;

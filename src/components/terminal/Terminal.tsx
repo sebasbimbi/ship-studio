@@ -42,6 +42,7 @@ interface SessionHandle {
 }
 import { invoke } from '@tauri-apps/api/core';
 import { homeDir } from '@tauri-apps/api/path';
+import { getShellPath, getSystemEnv } from '../../lib/project';
 import { loadNerdFonts } from '../../lib/fonts';
 import { isWindows } from '../../lib/setup';
 import { logger } from '../../lib/logger';
@@ -564,14 +565,14 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
         const isWin = isWindows();
         const sep = isWin ? '\\' : '/';
         const homeNormalized = home.endsWith(sep) ? home : `${home}${sep}`;
-        const fullPath = await invoke<string>('get_shell_path');
+        const fullPath = await getShellPath();
 
         // Build platform-appropriate env vars
         // Must pass all essential env vars since env replaces (not merges with) parent environment
         let env: Record<string, string>;
         if (isWin) {
           // Windows: get system env vars from backend and merge with PATH
-          const systemEnv = await invoke<Record<string, string>>('get_system_env');
+          const systemEnv = await getSystemEnv();
           env = {
             ...systemEnv,
             PATH: fullPath,
