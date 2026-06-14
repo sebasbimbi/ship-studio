@@ -178,8 +178,9 @@ function RequestRow({
             onCancel={onCancelEdit}
           />
         ) : (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             className={`ss-redline-panel__label${labelText ? '' : ' ss-redline-panel__label--empty'}`}
             title="Click to edit"
             onClick={(e) => {
@@ -188,7 +189,7 @@ function RequestRow({
             }}
           >
             {labelText || 'Describe the change…'}
-          </button>
+          </Button>
         )}
 
         <div className="ss-redline-panel__meta">
