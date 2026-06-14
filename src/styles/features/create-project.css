@@ -1,9 +1,13 @@
 /* Create Project Modal */
 
-/* Create-project-local colors — intentional one-offs, not part of the global scale. */
+/* Create-project-local colors + sizing — intentional one-offs, off the global scale. */
 :root {
   --create-default-green: #34c759;
   --create-default-green-rgb: 52, 199, 89;
+  --create-group-gap: 18px;
+  --create-grid-gap: 10px;
+  --create-card-pad-y: 14px;
+  --create-card-radius: 10px;
 }
 
 .create-modal-overlay {
@@ -133,11 +137,11 @@
 
 /* Stack Grid (Start from Scratch) */
 .stack-group {
-  margin-bottom: 18px;
+  margin-bottom: var(--create-group-gap);
 }
 
 .stack-group-title {
-  margin: 0 0 8px;
+  margin: 0 0 var(--spacing-sm);
   font-size: var(--font-size-xs);
   font-weight: 600;
   text-transform: uppercase;
@@ -148,7 +152,7 @@
 .stack-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  gap: var(--create-grid-gap);
 }
 
 .stack-card {
@@ -156,11 +160,11 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
-  padding: 14px 12px;
+  gap: var(--spacing-xs);
+  padding: var(--create-card-pad-y) var(--spacing-md);
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--create-card-radius);
   cursor: pointer;
   text-align: left;
   transition:
@@ -181,7 +185,7 @@
 .stack-card-name {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-sm);
   flex-wrap: wrap;
   font-size: var(--font-size-md);
   font-weight: 600;
@@ -192,7 +196,7 @@
    the pre-selected default tile "Recommended" reads as a separate signal from
    the green selected border/check rather than blurring into one. */
 .stack-card-badge {
-  padding: 1px 8px;
+  padding: 1px var(--spacing-sm);
   border-radius: var(--radius-sm);
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
