@@ -78,7 +78,7 @@ pub async fn crop_and_save_screenshot(
 /// unit-tested directly; [`crop_screenshot_bytes`] wraps it with a path guard
 /// and temp cleanup.
 fn crop_png_bytes(
-    source_path: &str,
+    source_path: &std::path::Path,
     x: u32,
     y: u32,
     width: u32,
@@ -144,7 +144,9 @@ pub async fn crop_screenshot_bytes(
         );
     }
 
-    let bytes = crop_png_bytes(&source_path, x, y, width, height)?;
+    // Read via the validated canonical path (not the raw source_path) so we
+    // can't open a different file than the one that passed the guard.
+    let bytes = crop_png_bytes(&canonical, x, y, width, height)?;
 
     // The decoded image now lives in memory, so delete the temp capture (otherwise
     // each redline export would leak a window PNG). Guarded by the dir check above.
@@ -252,8 +254,7 @@ mod tests {
 
         // Crop a 4x3 sub-rect at (2, 1). Tests the pure crop/encode helper; the
         // command wrapper adds the capture-dir guard + temp cleanup.
-        let bytes = crop_png_bytes(&tmp.to_string_lossy(), 2, 1, 4, 3)
-            .expect("crop_png_bytes should succeed");
+        let bytes = crop_png_bytes(&tmp, 2, 1, 4, 3).expect("crop_png_bytes should succeed");
 
         // The returned bytes must decode back to an image of the cropped dimensions.
         let decoded = image::load_from_memory(&bytes).expect("returned bytes should decode as PNG");
