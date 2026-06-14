@@ -41,7 +41,13 @@ export function useOsImport({ zone, enabled = true, onImport }: UseOsImportArgs)
   }, [onImport]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      // Drop any lingering highlight so a disable transition (e.g. a search
+      // filter going active) doesn't leave a stale drop target visible.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: reset transient UI state when the listener is disabled
+      setDropTargetDir(null);
+      return;
+    }
 
     // Resolve a physical drop position to the target folder, or null when the
     // point is not inside *our* drop zone. The drop position's coordinate space
