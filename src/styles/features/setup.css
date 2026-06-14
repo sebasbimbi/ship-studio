@@ -381,7 +381,7 @@
 }
 
 .wizard-nav-hint {
-  margin-right: 12px;
+  margin-right: var(--spacing-md);
   align-self: center;
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
@@ -493,7 +493,7 @@
 }
 
 .wizard-agent-card-desc {
-  margin: 4px 0 0;
+  margin: var(--spacing-xs) 0 0;
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
 }
@@ -881,7 +881,7 @@
 
 .onboarding-terminal-note {
   margin: 0;
-  padding: 10px 16px;
+  padding: var(--spacing-sm) var(--spacing-lg);
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
   color: var(--text-secondary);
