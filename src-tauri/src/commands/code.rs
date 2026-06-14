@@ -566,9 +566,34 @@ pub async fn import_paths_to_project(
     } else {
         root.join(&to_dir)
     };
-    // Create the target folder if needed, then canonicalize + confirm it is
+    // Validate containment BEFORE creating anything: walk up to the nearest
+    // existing ancestor, canonicalize it, and confirm it is inside the project.
+    // Otherwise create_dir_all could materialize directories THROUGH an
+    // in-project symlink that escapes the root before the post-check rejects it.
+    {
+        let mut ancestor: &Path = dest_dir.as_path();
+        while !ancestor.exists() {
+            match ancestor.parent() {
+                Some(parent) => ancestor = parent,
+                None => break,
+            }
+        }
+        let ancestor_canon =
+            dunce::canonicalize(ancestor).map_err(|e| CommandError::Validation {
+                field: "to".to_string(),
+                reason: format!("Target folder not found: {e}"),
+            })?;
+        if !ancestor_canon.starts_with(&root) {
+            return Err(CommandError::Validation {
+                field: "to".to_string(),
+                reason: "Target is outside the project".to_string(),
+            });
+        }
+    }
+    // Create the target folder if needed, then re-canonicalize + confirm it is
     // inside the project. canonicalize resolves symlinks, so a symlinked folder
-    // that escapes the root fails the containment check here.
+    // that escapes the root fails the containment check here too (defense in
+    // depth against a symlink created by the operation itself).
     if !dest_dir.exists() {
         std::fs::create_dir_all(&dest_dir).map_err(|e| CommandError::Io {
             message: format!("Failed to create folder: {e}"),
