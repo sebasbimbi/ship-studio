@@ -644,8 +644,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
-  /* Cap at 360px but never wider than the (possibly split) pane. */
-  max-width: min(360px, 100%);
+  /* Cap the width but never wider than the (possibly split) pane. */
+  max-width: min(var(--hint-card-max-w), 100%);
   padding: var(--spacing-lg);
   background: var(--bg-secondary);
   border: 1px solid var(--border);
