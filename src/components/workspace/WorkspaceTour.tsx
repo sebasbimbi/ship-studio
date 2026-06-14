@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '../primitives/Button';
+import { ModalFrame } from '../primitives/ModalFrame';
 import { GraduationCapIcon } from '../icons';
 import { useCommands } from '../../commands/useCommands';
 import {
@@ -130,8 +131,9 @@ export function WorkspaceTour({ tour }: { tour: WorkspaceTourState }) {
 
   if (!isOpen || !step) return null;
 
-  // Position the card below the anchor if it fits, else above, else centered
-  // (e.g. a full-height terminal/preview anchor where neither side has room).
+  // Position the card below the anchor if it fits, else above, else fall back to
+  // a centered dialog (e.g. a full-height anchor with no room either side, or the
+  // anchorless finale).
   let centered = !rect;
   let cardStyle: React.CSSProperties = {};
   if (rect) {
@@ -145,49 +147,72 @@ export function WorkspaceTour({ tour }: { tour: WorkspaceTourState }) {
     }
   }
 
+  const cardBody = (
+    <>
+      <div className="workspace-tour-step">
+        Step {stepIndex + 1} of {steps.length}
+      </div>
+      <h3 className="workspace-tour-title">{step.title}</h3>
+      <p className="workspace-tour-body">{step.body}</p>
+      <div className="workspace-tour-actions">
+        <Button variant="ghost" size="sm" onClick={close}>
+          Skip
+        </Button>
+        <div className="workspace-tour-nav">
+          {stepIndex > 0 && (
+            <Button variant="secondary" size="sm" onClick={back}>
+              Back
+            </Button>
+          )}
+          <Button variant="primary" size="sm" onClick={next}>
+            {isLast ? 'Done' : 'Next'}
+          </Button>
+        </div>
+      </div>
+    </>
+  );
+
+  // Centered / anchorless steps reuse the shared ModalFrame (overlay + ESC +
+  // overlay-click dismiss + portal + aria) — the modal stack where it fits.
+  if (centered || !rect) {
+    return (
+      <ModalFrame
+        isOpen
+        onClose={close}
+        ariaLabel="Workspace tour"
+        className="workspace-tour-modal"
+      >
+        <div ref={cardRef} tabIndex={-1} className="workspace-tour-modal-body">
+          {cardBody}
+        </div>
+      </ModalFrame>
+    );
+  }
+
+  // Anchored steps keep the spotlight render: a transparent scrim whose ring's
+  // box-shadow IS the surrounding dim, plus a card positioned by the anchor.
   return createPortal(
     <div className="workspace-tour">
-      <div className={`workspace-tour-scrim${rect ? '' : ' dim'}`} onClick={close} />
-      {rect && (
-        <div
-          className="workspace-tour-ring"
-          style={{
-            top: rect.top - 4,
-            left: rect.left - 4,
-            width: rect.width + 8,
-            height: rect.height + 8,
-          }}
-        />
-      )}
+      <div className="workspace-tour-scrim" onClick={close} />
+      <div
+        className="workspace-tour-ring"
+        style={{
+          top: rect.top - 4,
+          left: rect.left - 4,
+          width: rect.width + 8,
+          height: rect.height + 8,
+        }}
+      />
       <div
         ref={cardRef}
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label="Workspace tour"
-        className={`workspace-tour-card${centered ? ' centered' : ''}`}
+        className="workspace-tour-card"
         style={cardStyle}
       >
-        <div className="workspace-tour-step">
-          Step {stepIndex + 1} of {steps.length}
-        </div>
-        <h3 className="workspace-tour-title">{step.title}</h3>
-        <p className="workspace-tour-body">{step.body}</p>
-        <div className="workspace-tour-actions">
-          <Button variant="ghost" size="sm" onClick={close}>
-            Skip
-          </Button>
-          <div className="workspace-tour-nav">
-            {stepIndex > 0 && (
-              <Button variant="secondary" size="sm" onClick={back}>
-                Back
-              </Button>
-            )}
-            <Button variant="primary" size="sm" onClick={next}>
-              {isLast ? 'Done' : 'Next'}
-            </Button>
-          </div>
-        </div>
+        {cardBody}
       </div>
     </div>,
     document.body

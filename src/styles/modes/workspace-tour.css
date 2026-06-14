@@ -15,15 +15,11 @@
   z-index: var(--z-modal-overlay);
 }
 
-/* Click-blocker. For an anchored step it's transparent (the ring's box-shadow
-   provides the dimming); for a centered step it dims the whole screen. */
+/* Click-blocker for anchored steps: transparent because the ring's box-shadow
+   provides the surrounding dim. (Centered steps use ModalFrame's own overlay.) */
 .workspace-tour-scrim {
   position: fixed;
   inset: 0;
-}
-
-.workspace-tour-scrim.dim {
-  background: var(--overlay-60);
 }
 
 /* Spotlight: a bordered cutout whose huge box-shadow IS the surrounding scrim,
@@ -55,10 +51,17 @@
   box-shadow: var(--shadow-md);
 }
 
-.workspace-tour-card.centered {
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+/* Centered / anchorless steps render inside ModalFrame; size the box and lay out
+   the body (ModalFrame's content provides the card chrome + padding). */
+.workspace-tour-modal {
+  width: var(--wt-card-w);
+}
+
+.workspace-tour-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  outline: none;
 }
 
 .workspace-tour-step {
