@@ -66,33 +66,61 @@ pub fn get_extended_path() -> String {
 /// None on any failure.
 #[cfg(not(windows))]
 fn get_login_shell_path() -> Option<String> {
+    use std::io::Read;
+    use std::process::Stdio;
     use std::sync::mpsc;
     use std::time::Duration;
 
-    use std::process::Stdio;
-
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+
+    // -l (login) + -i (interactive) so the shell sources the rc files that set up
+    // version managers (nvm/fnm/asdf typically live in the interactive rc). A
+    // unique marker isolates the PATH from any banner/prompt a chatty rc prints;
+    // stdin is /dev/null so a prompting rc can't block on input. spawn() (not
+    // output()) keeps a handle so a slow rc can be killed, not just abandoned.
+    let mut child = create_command(&shell)
+        .args(["-lic", "echo \"__SHIPSTUDIO_PATH__${PATH}\""])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+
+    // Read stdout on a worker thread so the wait is bounded. Take the handle so
+    // killing the child closes the pipe, which unblocks the reader and lets the
+    // thread exit (no leaked thread).
+    let stdout = match child.stdout.take() {
+        Some(stdout) => stdout,
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return None;
+        }
+    };
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
-        // -l (login) + -i (interactive) so the shell sources the rc files that
-        // set up version managers (nvm/fnm/asdf typically live in the interactive
-        // rc). A unique marker isolates the PATH from any banner/prompt a chatty
-        // rc prints to stdout; stdin is /dev/null so a prompting rc can't block.
-        let output = create_command(&shell)
-            .args(["-lic", "echo \"__SHIPSTUDIO_PATH__${PATH}\""])
-            .stdin(Stdio::null())
-            .output();
-        let _ = tx.send(output);
+        let mut stdout = stdout;
+        let mut buf = String::new();
+        let _ = stdout.read_to_string(&mut buf);
+        let _ = tx.send(buf);
     });
-    match rx.recv_timeout(Duration::from_secs(3)) {
-        Ok(Ok(o)) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+
+    let result = match rx.recv_timeout(Duration::from_secs(3)) {
+        Ok(buf) => buf
             .lines()
             .rev()
             .find_map(|line| line.trim().strip_prefix("__SHIPSTUDIO_PATH__"))
             .map(|p| p.trim().to_string())
             .filter(|p| !p.is_empty()),
-        _ => None,
-    }
+        Err(_) => None,
+    };
+
+    // Always terminate + reap the child so a slow/interactive rc can't leave the
+    // shell process lingering. kill() is a harmless no-op if it already exited.
+    let _ = child.kill();
+    let _ = child.wait();
+
+    result
 }
 
 /// Computes the extended PATH (uncached). Called by `get_extended_path()`.
