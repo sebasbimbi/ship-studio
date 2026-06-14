@@ -33,6 +33,7 @@ export function TemplateCard({
     <Button
       variant="ghost"
       className={`stack-card${selected ? ' stack-card-selected' : ''}`}
+      aria-pressed={selected}
       onClick={onSelect}
     >
       <span className="stack-card-name">
