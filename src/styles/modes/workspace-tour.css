@@ -1,6 +1,14 @@
 /* First-run workspace tour (F23 / PART B). A sequenced spotlight walkthrough
    layered on the existing data-education-id anchors. */
 
+/* Tour-local sizing tokens — intentional one-offs, not part of the global scale.
+   The scrim spread is a "cover the whole viewport" value. */
+:root {
+  --wt-ring-border-w: 2px;
+  --wt-scrim-spread: 9999px;
+  --wt-card-w: 320px;
+}
+
 .workspace-tour {
   position: fixed;
   inset: 0;
@@ -23,8 +31,8 @@
 .workspace-tour-ring {
   position: fixed;
   border-radius: var(--radius-md);
-  border: 2px solid var(--accent);
-  box-shadow: 0 0 0 9999px var(--overlay-60);
+  border: var(--wt-ring-border-w) solid var(--accent);
+  box-shadow: 0 0 0 var(--wt-scrim-spread) var(--overlay-60);
   pointer-events: none;
   transition:
     top var(--transition),
@@ -35,7 +43,7 @@
 
 .workspace-tour-card {
   position: fixed;
-  width: 320px;
+  width: var(--wt-card-w);
   max-width: calc(100vw - var(--spacing-xl));
   display: flex;
   flex-direction: column;
