@@ -11,6 +11,7 @@
 
 import { useEffect, useRef } from 'react';
 import { TrashIcon } from '../icons';
+import { Button } from '../primitives/Button';
 
 interface FileTreeContextMenuProps {
   /** Viewport coordinates (clientX/clientY) of the right-click. */
@@ -59,8 +60,8 @@ export function FileTreeContextMenu({ x, y, name, onDelete, onClose }: FileTreeC
       role="menu"
       aria-label={`Actions for ${name}`}
     >
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         className="file-tree-context-menu-item danger"
         role="menuitem"
         autoFocus
@@ -68,7 +69,7 @@ export function FileTreeContextMenu({ x, y, name, onDelete, onClose }: FileTreeC
       >
         <TrashIcon size={13} />
         <span>Delete</span>
-      </button>
+      </Button>
     </div>
   );
 }
