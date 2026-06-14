@@ -446,7 +446,12 @@ export function VisualEditorPanel({
               <PinIcon size={13} />
             </button>
           )}
-          <button className="ss-edit-panel__close" onClick={onClose} aria-label="Exit edit mode">
+          <button
+            className="ss-edit-panel__close"
+            onClick={onClose}
+            title="Exit edit mode"
+            aria-label="Exit edit mode"
+          >
             ×
           </button>
         </span>

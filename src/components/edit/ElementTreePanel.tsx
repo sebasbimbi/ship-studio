@@ -124,6 +124,7 @@ export function ElementTreePanel({ tree, truncated, selectedId, onSelect, onHove
                 e.stopPropagation();
                 toggle(node.id);
               }}
+              title={isCollapsed ? 'Expand' : 'Collapse'}
               aria-label={isCollapsed ? 'Expand' : 'Collapse'}
             >
               <ChevronRightIcon size={10} />
