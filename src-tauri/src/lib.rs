@@ -506,6 +506,7 @@ pub fn run() {
             commands::publishing::publish_to_staging,
             commands::publishing::publish_to_production,
             commands::publishing::publish_branch,
+            commands::vercel::get_vercel_production_domain,
             // Pull requests
             commands::pull_requests::list_pull_requests,
             commands::pull_requests::create_pull_request,
@@ -572,6 +573,8 @@ pub fn run() {
             commands::setup::install_brew_packages,
             commands::setup::install_winget_packages,
             commands::setup::start_github_auth,
+            commands::setup::logout_github,
+            commands::setup::logout_vercel,
             commands::setup::start_claude_auth,
             commands::setup::check_claude_auth_status,
             commands::setup::check_npm_cache_permissions,

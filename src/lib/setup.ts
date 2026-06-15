@@ -405,6 +405,16 @@ export async function startGitHubAuth(): Promise<string> {
   return invoke<string>('start_github_auth');
 }
 
+/** Sign out of the GitHub CLI (`gh auth logout`). Idempotent. */
+export async function logoutGithub(): Promise<void> {
+  return invoke<void>('logout_github');
+}
+
+/** Sign out of the Vercel CLI (`vercel logout`). Idempotent. */
+export async function logoutVercel(): Promise<void> {
+  return invoke<void>('logout_vercel');
+}
+
 /**
  * Kill any tracked, still-running auth CLI processes (gh/agent `... auth login`).
  * Call before starting a fresh auth or falling back to the terminal so two

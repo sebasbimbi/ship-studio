@@ -394,6 +394,14 @@
   cursor: default;
 }
 
+/* Active breakpoint + fit-scale chip inside the viewport readout. Inherits the
+   button's color so it follows the hover state; the divider marks it apart. */
+.preview-dimensions__bp {
+  margin-left: var(--spacing-xs);
+  padding-left: var(--spacing-xs);
+  border-left: 1px solid var(--border);
+}
+
 .preview-breakpoints {
   display: flex;
   align-self: stretch;

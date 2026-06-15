@@ -355,6 +355,16 @@ else if(d.type==='ss:revertMark'){var rmk=String(d.mark);delete pvDecls[rmk];reb
 document.addEventListener('mousemove',onMove,true);
 document.addEventListener('click',onClick,true);
 document.addEventListener('dblclick',onDbl,true);
+/* Arrow-key navigation from the current canvas selection: Up/Down move between
+   element siblings, Left selects the parent, Right dives into the first child —
+   the keyboard twin of clicking a sibling. This fires when focus is INSIDE the
+   iframe (a canvas selection); the host's tree panel owns arrows when focus is up
+   there, so the two never collide (key events stay in the focused document).
+   Computed from the live DOM, skipping the same non-visual nodes the tree does;
+   selectEl posts ss:select, so the tree row, edit panel and overlay all follow. */
+function ssFirstTreeChild(el){for(var i=0;i<el.children.length;i++){if(!treeSkip(el.children[i]))return el.children[i];}return null;}
+function ssNavTarget(dir){var cur=selPrimary;if(!cur||!cur.isConnected)return null;if(dir==='right')return ssFirstTreeChild(cur);if(cur===document.body)return null;if(dir==='left'){var p=cur.parentElement;return(p&&p!==document.documentElement)?p:null;}var step=dir==='up'?'previousElementSibling':'nextElementSibling',s=cur[step];while(s&&treeSkip(s))s=s[step];return s||null;}
+document.addEventListener('keydown',function(e){if(!active||txtEditing||!selPrimary)return;var k=e.key;if(k!=='ArrowUp'&&k!=='ArrowDown'&&k!=='ArrowLeft'&&k!=='ArrowRight')return;var ae=document.activeElement;if(ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.tagName==='SELECT'||ae.isContentEditable))return;var t=ssNavTarget(k==='ArrowUp'?'up':k==='ArrowDown'?'down':k==='ArrowLeft'?'left':'right');if(!t)return;e.preventDefault();e.stopPropagation();try{t.scrollIntoView({block:'nearest'});}catch(err){}selectEl(t);},true);
 /* Enter inserts a line break (<br>); Cmd/Ctrl+Enter commits; Esc reverts. Clicking
    away (blur) also commits. */
 document.addEventListener('keydown',function(e){if(!txtEditing)return;
