@@ -163,7 +163,7 @@ describe('VisualEditorPanel', () => {
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ name: 'lg', minPx: 1024 }));
   });
 
-  it('shows the "preview too narrow" note when the breakpoint exceeds the canvas', () => {
+  it('shows the "scaled to fit" note when the breakpoint exceeds the canvas', () => {
     renderPanel(
       resolvedSelection,
       'p-3',
@@ -172,7 +172,7 @@ describe('VisualEditorPanel', () => {
       true
     );
     const note = screen.getByRole('note');
-    expect(note).toHaveTextContent(/too narrow to show/i);
+    expect(note).toHaveTextContent(/scaled to fit/i);
     expect(note).toHaveTextContent('xl');
   });
 

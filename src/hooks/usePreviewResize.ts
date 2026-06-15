@@ -22,9 +22,6 @@ export const BREAKPOINTS: Record<Breakpoint, { width: string; label: string }> =
   mobile: { width: '375px', label: 'Mobile' },
 };
 
-/** Pixel widths for fixed breakpoints (excludes 'full' which is 100%) */
-const BREAKPOINT_WIDTHS: number[] = [1440, 1024, 768, 375];
-
 /** Space reserved for the resize handle on the right side of the viewport */
 const VIEWPORT_PADDING_PX = 12;
 
@@ -53,12 +50,6 @@ export function usePreviewResize({ iframeWrapperRef, onUserResize }: UsePreviewR
   useEffect(() => {
     onUserResizeRef.current = onUserResize;
   }, [onUserResize]);
-
-  // Ref mirrors customWidth state so the ResizeObserver callback can read the latest value
-  const customWidthRef = useRef<number | null>(null);
-  useEffect(() => {
-    customWidthRef.current = customWidth;
-  }, [customWidth]);
 
   // Determine which breakpoint matches the current width
   const getActiveBreakpoint = useCallback((): Breakpoint => {
@@ -94,18 +85,13 @@ export function usePreviewResize({ iframeWrapperRef, onUserResize }: UsePreviewR
       // Set initial width (subtract padding for resize handle)
       setViewportWidth(node.offsetWidth - VIEWPORT_PADDING_PX);
 
-      // Observe future size changes — also auto-switch breakpoint if current no longer fits
+      // Observe future size changes to keep `viewportWidth` current. We deliberately
+      // do NOT auto-shrink `customWidth` when the pane gets narrower than the chosen
+      // width — the frame scales the iframe down to fit instead (see Preview.tsx), so
+      // a selected breakpoint stays the emulated viewport even on a small pane.
       observerRef.current = new ResizeObserver((entries) => {
         for (const entry of entries) {
-          const newWidth = entry.contentRect.width - VIEWPORT_PADDING_PX;
-          setViewportWidth(newWidth);
-
-          const currentCustom = customWidthRef.current;
-          if (currentCustom !== null && currentCustom > newWidth) {
-            const fittingWidth = BREAKPOINT_WIDTHS.find((w) => w <= newWidth);
-            setCustomWidth(fittingWidth ?? null);
-            onUserResizeRef.current?.(); // pane shrank past the width — follow it
-          }
+          setViewportWidth(entry.contentRect.width - VIEWPORT_PADDING_PX);
         }
       });
       observerRef.current.observe(node);
@@ -216,9 +202,10 @@ export function usePreviewResize({ iframeWrapperRef, onUserResize }: UsePreviewR
   // Resize the canvas to an exact pixel width. Used by the editor's Tailwind
   // breakpoint selector so picking a breakpoint sets the preview to that width
   // (and the editor's derived active breakpoint follows). Deliberately NOT clamped
-  // to the viewport — like the device presets, the frame caps its visible width at
-  // the pane (CSS maxWidth), so a too-wide breakpoint stays the edit target even
-  // when it can't be shown; the panel surfaces a "preview too narrow" note instead.
+  // to the viewport — like the device presets, a too-wide breakpoint stays the
+  // emulated viewport: the frame renders the iframe at this width and scales it
+  // down to fit the pane (see Preview.tsx), so the page still lays out at the
+  // chosen width even when the pane is smaller.
   const previewAtWidth = useCallback((px: number) => {
     setCustomWidth(px);
   }, []);

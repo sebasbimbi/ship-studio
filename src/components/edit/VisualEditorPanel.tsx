@@ -486,9 +486,9 @@ export function VisualEditorPanel({
 
             {breakpointTooWide && (
               <p className="ss-edit-panel__bp-note" role="note">
-                Preview is too narrow to show <strong>{activeBreakpoint.name}</strong> (≥
-                {activeBreakpoint.minPx}px). Edits still apply at this breakpoint — widen the
-                preview to see them.
+                <strong>{activeBreakpoint.name}</strong> (≥{activeBreakpoint.minPx}px) is wider than
+                the pane, so the preview is scaled to fit. Edits apply at this breakpoint — widen
+                the preview for a 1:1 view.
               </p>
             )}
           </>
