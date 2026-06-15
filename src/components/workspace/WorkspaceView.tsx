@@ -55,6 +55,8 @@ import {
 } from '../icons';
 import { useSnapshots } from '../../hooks/useSnapshots';
 import { ToolbarDropdown } from './ToolbarDropdown';
+import { WorkspaceTour } from './WorkspaceTour';
+import { useWorkspaceTour } from '../../hooks/useWorkspaceTour';
 import { TerminalSplitHeaders } from './TerminalSplitHeaders';
 import { TerminalSplitDividers } from './TerminalSplitDividers';
 import { PluginsDropdown } from '../plugins/PluginsDropdown';
@@ -733,6 +735,7 @@ export const WorkspaceView = memo(function WorkspaceView({
     undo: undoSnapshot,
     redo: redoSnapshot,
   } = useSnapshots(currentProject.path, showToast);
+  const tour = useWorkspaceTour(); // first-run guided tour (replay via toolbar + Cmd+K)
 
   // Cmd+Z / Cmd+Shift+Z. We let native text-undo handle inputs and
   // contentEditable so a user editing a PR title still gets character-level
@@ -1159,6 +1162,7 @@ export const WorkspaceView = memo(function WorkspaceView({
                               </button>
                             )}
                             <ToolbarDropdown
+                              onTour={tour.start}
                               agent={getActiveTabAgent()}
                               autoAcceptMode={autoAcceptMode}
                               onNotificationSettings={() => setShowNotificationSettings(true)}
@@ -1471,6 +1475,7 @@ export const WorkspaceView = memo(function WorkspaceView({
         )}
 
         {!isCompact && header.supportPanel}
+        {!isCompact && <WorkspaceTour tour={tour} />}
         <WorkspaceModals
           projectPath={currentProject.path}
           currentProjectPath={currentProject.path}

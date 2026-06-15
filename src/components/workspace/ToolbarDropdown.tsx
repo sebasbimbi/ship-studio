@@ -22,6 +22,7 @@ import {
   HelpIcon,
   ChevronIcon,
   SettingsIcon,
+  GraduationCapIcon,
 } from '../icons';
 import { Dropdown, DropdownItem, DropdownDivider } from '../primitives/Dropdown';
 import { PluginSlot } from '../plugins/PluginSlot';
@@ -41,6 +42,8 @@ interface ToolbarDropdownProps {
   onMcp: () => void;
   onAutoAcceptToggle: () => void;
   onHelp: () => void;
+  /** Replay the first-run workspace tour. */
+  onTour: () => void;
   terminalPlugins: LoadedPlugin[];
   pluginProject: PluginProjectData | null;
   pluginActions: PluginAppActions;
@@ -55,6 +58,7 @@ export function ToolbarDropdown({
   onMcp,
   onAutoAcceptToggle,
   onHelp,
+  onTour,
   terminalPlugins,
   pluginProject,
   pluginActions,
@@ -118,6 +122,9 @@ export function ToolbarDropdown({
         </>
       )}
       <DropdownDivider />
+      <DropdownItem icon={<GraduationCapIcon size={14} />} onSelect={onTour}>
+        Take the tour
+      </DropdownItem>
       <DropdownItem icon={<HelpIcon size={14} />} onSelect={onHelp}>
         <span data-education-id="help-commands">Help &amp; Commands</span>
       </DropdownItem>
