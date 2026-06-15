@@ -21,6 +21,7 @@ import {
   useState,
   useEffect,
   type RefObject,
+  type CSSProperties,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { usePreviewConnection, SERVER_MAX_RETRIES } from '../../hooks/usePreviewConnection';
@@ -505,9 +506,9 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   const activeBreakpoint =
     (pinnedBreakpoint && breakpoints.find((b) => b.name === pinnedBreakpoint.name)) ||
     derivedBreakpoint;
-  // The selected breakpoint can exceed what the pane can show (the frame caps its
-  // visible width at the viewport). When so, edits still apply at that breakpoint
-  // but won't be visible here — the panel shows a note.
+  // The selected breakpoint can exceed the pane width. When so, the frame scales
+  // the iframe down to fit (see iframeScaleStyle), so the breakpoint's layout is
+  // shown (zoomed, not 1:1) and edits apply to it — the panel notes the scaling.
   const breakpointTooWide =
     activeBreakpoint.minPx > 0 &&
     resize.viewportWidth > 0 &&
@@ -743,14 +744,19 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   }
 
   if (conn.isLoading || conn.isStopped || conn.hasError) {
-    // The agent handoff only makes sense for real dev servers (static projects
-    // have no server log to diagnose) and when a Claude terminal is wired up.
-    const handleFixWithAgent =
-      onSendToClaude && !isStaticProject
-        ? () => {
-            const logs = stripAnsi(devServerOutput).split('\n').slice(-200).join('\n').trim();
-            const prompt =
-              `My dev server isn't coming up — Ship Studio is waiting on ` +
+    // Keep the agent handoff available as the always-present recovery whenever a
+    // Claude terminal is wired up — for static projects too (a different prompt,
+    // since they have no server log to attach).
+    const handleFixWithAgent = onSendToClaude
+      ? () => {
+          const logs = isStaticProject
+            ? ''
+            : stripAnsi(devServerOutput).split('\n').slice(-200).join('\n').trim();
+          const prompt = isStaticProject
+            ? `My site preview isn't loading. Ship Studio is serving this project as static ` +
+              `files on http://localhost:${port} but nothing shows up. Please check the project ` +
+              `has an index.html at its root (and any files it references) so the preview renders.`
+            : `My dev server isn't coming up — Ship Studio is waiting on ` +
               `http://localhost:${port} but it never responds.\n\n` +
               (logs
                 ? `Recent dev-server output:\n\n\`\`\`\n${logs}\n\`\`\`\n\n`
@@ -758,10 +764,13 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
               `Please work out why it won't start — a busy port, a crash, a missing ` +
               `dependency, or a wrong or missing dev script — and fix it so it serves on ` +
               `port ${port}.`;
-            onSendToClaude(prompt);
-            void trackEvent('preview_fix_with_agent', { has_logs: !!logs });
-          }
-        : undefined;
+          onSendToClaude(prompt);
+          void trackEvent('preview_fix_with_agent', {
+            has_logs: !!logs,
+            is_static: isStaticProject,
+          });
+        }
+      : undefined;
 
     return (
       <DevServerStatus
@@ -778,6 +787,47 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
       />
     );
   }
+
+  // ── Emulated viewport vs. visual fit ──────────────────────────────────────
+  // The page lays out at `customWidth` (the chosen device/breakpoint preset, or
+  // the pane width in Full mode). When the pane is narrower than that width we
+  // scale the iframe DOWN to fit visually — so the page still SEES the full width
+  // and renders the matching layout, like Chrome DevTools' "fit to window".
+  // Overlays injected into the iframe (visual editor, redline) scale with it, and
+  // the screenshot/crop path works in screen space, so neither needs scale-aware
+  // math here.
+  const previewScale =
+    resize.customWidth !== null &&
+    resize.viewportWidth > 0 &&
+    resize.customWidth > resize.viewportWidth
+      ? resize.viewportWidth / resize.customWidth
+      : 1;
+  const isScaledToFit = previewScale < 1;
+  // Width is absolute (the exact emulated CSS px the page sees); height is a
+  // percentage so the scaled iframe still fills the wrapper's height (the page
+  // gets a taller, scrollable viewport). transform-origin pins it to the
+  // wrapper's top-left, which `overflow: hidden` clips to the visible area.
+  const iframeScaleStyle: CSSProperties | undefined = isScaledToFit
+    ? {
+        width: `${resize.customWidth}px`,
+        height: `${100 / previewScale}%`,
+        transform: `scale(${previewScale})`,
+        transformOrigin: 'top left',
+      }
+    : undefined;
+  // Live readout: the CSS pixels the page actually sees (emulated), the active
+  // device breakpoint, and the fit scale — so it's obvious which layout is
+  // showing and why, even when the pane is below the chosen width.
+  const emulatedWidth = resize.customWidth ?? iframeSize?.w ?? null;
+  const emulatedHeight = iframeSize ? Math.round(iframeSize.h / previewScale) : null;
+  // `getActiveBreakpoint()` collapses any width > 1440 to 'full', but "Full" means
+  // "adapts to the pane" (customWidth === null) — labeling a fixed wide width (e.g.
+  // the editor's Tailwind 2xl = 1536px) that way would contradict itself, so a fixed
+  // width above the Desktop preset reads as "Desktop". The exact px is shown anyway.
+  const activeDeviceBreakpoint =
+    resize.customWidth !== null && resize.customWidth > 1440
+      ? BREAKPOINTS.desktop.label
+      : BREAKPOINTS[resize.getActiveBreakpoint()].label;
 
   return (
     <div
@@ -951,47 +1001,47 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
 
         {previewPlugins}
 
-        {iframeSize && iframeSize.w > 0 && iframeSize.h > 0 && (
-          <button
-            type="button"
-            className="preview-dimensions"
-            title={onSendToClaude ? 'Click to send to agent' : undefined}
-            disabled={!onSendToClaude}
-            aria-label={`Preview dimensions ${iframeSize.w} by ${iframeSize.h}${
-              onSendToClaude ? ', click to send to agent' : ''
-            }`}
-            onClick={() => {
-              if (!onSendToClaude) return;
-              onSendToClaude(
-                `The preview viewport is currently ${iframeSize.w} × ${iframeSize.h} (width × height in CSS pixels).`
-              );
-            }}
-          >
-            {iframeSize.w} × {iframeSize.h}
-          </button>
-        )}
+        {emulatedWidth !== null &&
+          emulatedHeight !== null &&
+          emulatedWidth > 0 &&
+          emulatedHeight > 0 && (
+            <button
+              type="button"
+              className="preview-dimensions"
+              title={onSendToClaude ? 'Click to send to agent' : undefined}
+              disabled={!onSendToClaude}
+              aria-label={`Preview viewport ${emulatedWidth} by ${emulatedHeight} pixels, ${activeDeviceBreakpoint}${
+                isScaledToFit ? `, scaled to ${Math.round(previewScale * 100)} percent to fit` : ''
+              }${onSendToClaude ? ', click to send to agent' : ''}`}
+              onClick={() => {
+                if (!onSendToClaude) return;
+                onSendToClaude(
+                  `The preview viewport is currently ${emulatedWidth} × ${emulatedHeight} (width × height in CSS pixels).`
+                );
+              }}
+            >
+              {emulatedWidth} × {emulatedHeight}
+              <span className="preview-dimensions__bp">
+                {activeDeviceBreakpoint}
+                {isScaledToFit ? ` · ${Math.round(previewScale * 100)}%` : ''}
+              </span>
+            </button>
+          )}
 
         <div className="preview-breakpoints" data-education-id="breakpoints">
-          {(Object.keys(BREAKPOINTS) as Breakpoint[]).map((bp) => {
-            // Always show 'full' - it adapts to any size
-            // Hide other breakpoints if they won't fit in the viewport
-            if (bp !== 'full') {
-              const bpWidth = parseInt(BREAKPOINTS[bp].width, 10);
-              if (resize.viewportWidth > 0 && bpWidth > resize.viewportWidth) {
-                return null;
-              }
-            }
-            return (
-              <button
-                key={bp}
-                className={`breakpoint-btn ${resize.getActiveBreakpoint() === bp ? 'active' : ''}`}
-                onClick={() => resize.handleBreakpointClick(bp)}
-                title={`${BREAKPOINTS[bp].label} (${BREAKPOINTS[bp].width})`}
-              >
-                <BreakpointIcon type={bp} />
-              </button>
-            );
-          })}
+          {/* Every preset stays selectable — one wider than the pane scales to
+              fit (see iframeScaleStyle) rather than being hidden, so the desktop
+              layout is always reachable even in a narrow pane. */}
+          {(Object.keys(BREAKPOINTS) as Breakpoint[]).map((bp) => (
+            <button
+              key={bp}
+              className={`breakpoint-btn ${resize.getActiveBreakpoint() === bp ? 'active' : ''}`}
+              onClick={() => resize.handleBreakpointClick(bp)}
+              title={`${BREAKPOINTS[bp].label} (${BREAKPOINTS[bp].width})`}
+            >
+              <BreakpointIcon type={bp} />
+            </button>
+          ))}
         </div>
 
         {conn.serverReady && conn.externalUrl && <BrowserDropdown url={conn.externalUrl} />}
@@ -1039,6 +1089,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
               src={conn.serverReady ? conn.currentUrl : 'about:blank'}
               className="preview-iframe"
               title="Preview"
+              style={iframeScaleStyle}
             />
             {/* Branch switching overlay */}
             {isBranchSwitching && (
