@@ -7,8 +7,12 @@ use super::{is_mock_installed, is_mock_mode, mock_install, AUTH_PIDS};
 use crate::agent::{get_active_agent, get_agent_by_id};
 use crate::commands::claude::find_binary_by_name;
 use crate::errors::CommandError;
+use crate::external_command::run_with_timeout;
 use crate::utils::{create_command, find_executable};
 use tauri::Emitter;
+
+/// Timeout for account sign-out CLI calls (they touch the network/keychain).
+const LOGOUT_TIMEOUT_SECS: u64 = 30;
 
 /// Start GitHub authentication (opens browser)
 #[tauri::command]
@@ -56,6 +60,73 @@ pub async fn start_github_auth(app: tauri::AppHandle) -> Result<String, CommandE
     });
 
     Ok("A code has been copied to your clipboard. Paste it in the browser to connect.".to_string())
+}
+
+/// Sign out of the GitHub CLI (`gh auth logout`). Idempotent: a "not logged in"
+/// result is treated as success so the Integrations panel's Disconnect always
+/// settles to a disconnected state.
+#[tauri::command]
+#[tracing::instrument]
+pub async fn logout_github() -> Result<(), CommandError> {
+    if is_mock_mode() {
+        return Ok(());
+    }
+
+    let gh_path = find_executable("gh").ok_or("GitHub CLI not installed")?;
+    let mut cmd = create_command(&gh_path);
+    cmd.args(["auth", "logout", "--hostname", "github.com"]);
+    let output = run_with_timeout(
+        tokio::process::Command::from(cmd),
+        "gh auth logout",
+        LOGOUT_TIMEOUT_SECS,
+    )
+    .await?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
+        if !stderr.contains("not logged in") && !stderr.contains("no accounts") {
+            return Err((format!(
+                "Failed to sign out of GitHub: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ))
+            .into());
+        }
+    }
+
+    crate::commands::github::invalidate_github_username_cache();
+    Ok(())
+}
+
+/// Sign out of the Vercel CLI (`vercel logout`). Idempotent like `logout_github`.
+#[tauri::command]
+#[tracing::instrument]
+pub async fn logout_vercel() -> Result<(), CommandError> {
+    if is_mock_mode() {
+        return Ok(());
+    }
+
+    let vercel_path = find_executable("vercel").ok_or("Vercel CLI not installed")?;
+    let mut cmd = create_command(&vercel_path);
+    cmd.args(["logout"]);
+    let output = run_with_timeout(
+        tokio::process::Command::from(cmd),
+        "vercel logout",
+        LOGOUT_TIMEOUT_SECS,
+    )
+    .await?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
+        if !stderr.contains("not logged in") {
+            return Err((format!(
+                "Failed to sign out of Vercel: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ))
+            .into());
+        }
+    }
+
+    Ok(())
 }
 
 /// Start agent authentication.

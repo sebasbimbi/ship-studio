@@ -572,6 +572,8 @@ pub fn run() {
             commands::setup::install_brew_packages,
             commands::setup::install_winget_packages,
             commands::setup::start_github_auth,
+            commands::setup::logout_github,
+            commands::setup::logout_vercel,
             commands::setup::start_claude_auth,
             commands::setup::check_claude_auth_status,
             commands::setup::check_npm_cache_permissions,
