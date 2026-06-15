@@ -19,14 +19,19 @@ export interface VercelDomainInfo {
 }
 
 /**
- * Fetch a linked project's production custom domain. Returns null when the
- * project isn't linked to Vercel, the CLI isn't authenticated, or there's no
- * domain to report — never a constructed URL.
+ * Fetch a project's production custom domain, matched by its GitHub repo
+ * (`owner/name`) across the user's personal scope and every Vercel team. Returns
+ * null when there's no repo, the CLI isn't authenticated, no Vercel project is
+ * linked to the repo, or there's no domain to report — never a constructed URL.
  */
 export async function getVercelProductionDomain(
-  projectPath: string
+  projectPath: string,
+  githubRepo: string | null
 ): Promise<VercelDomainInfo | null> {
-  return invoke<VercelDomainInfo | null>('get_vercel_production_domain', { projectPath });
+  return invoke<VercelDomainInfo | null>('get_vercel_production_domain', {
+    projectPath,
+    githubRepo,
+  });
 }
 
 /** The single address to show/open: the custom domain if any, else the system url. */

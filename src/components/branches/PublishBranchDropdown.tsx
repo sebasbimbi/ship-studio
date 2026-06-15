@@ -93,15 +93,18 @@ export function PublishBranchDropdown({
   const hasGitHubRepo =
     projectGithubStatus?.status === 'connected' && projectGithubStatus?.github_repo;
   const isMainBranch = currentBranch === 'main' || currentBranch === 'master';
+  const githubRepo =
+    projectGithubStatus?.status === 'connected' ? (projectGithubStatus.github_repo ?? null) : null;
 
   // The production custom domain is static Vercel project config (not tied to a
   // deploy completing), so we can fetch + show it as soon as the dropdown opens
-  // on the main branch. Silent on failure — it's an optional enhancement, never
-  // a constructed URL (the backend returns null when there's nothing real).
+  // on the main branch. We look the project up by its GitHub repo. Silent on
+  // failure — it's an optional enhancement, never a constructed URL (the backend
+  // returns null when there's nothing real).
   useEffect(() => {
-    if (!isOpen || !isMainBranch || !hasGitHubRepo) return;
+    if (!isOpen || !isMainBranch || !githubRepo) return;
     let cancelled = false;
-    void getVercelProductionDomain(projectPath)
+    void getVercelProductionDomain(projectPath, githubRepo)
       .then((d) => {
         if (!cancelled) setVercelDomain(d);
       })
@@ -109,7 +112,7 @@ export function PublishBranchDropdown({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, isMainBranch, hasGitHubRepo, projectPath]);
+  }, [isOpen, isMainBranch, githubRepo, projectPath]);
 
   const liveHost = liveSiteHost(vercelDomain);
   const liveDomainLink = liveHost ? (

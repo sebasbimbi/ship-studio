@@ -1,96 +1,102 @@
 //! # Vercel domain lookup
 //!
-//! Reads the production custom domain for a Vercel-linked project so the UI can
-//! show the real site address (e.g. `pop.bimbi.co`) instead of nothing. Ship
-//! Studio publishes via Vercel's GitHub integration and never knew the deployed
-//! domain; this asks Vercel for it.
+//! Reads the production custom domain for a project so the UI can show the real
+//! site address (e.g. `pop.bimbi.co`) instead of nothing. Ship Studio publishes
+//! through Vercel's GitHub integration and never knew the deployed domain.
+//!
+//! Projects deployed that way usually have **no** local `.vercel/project.json`
+//! (nobody ran `vercel link`), and they often live under a Vercel **team**
+//! rather than the personal scope — so we can't rely on a project id on disk.
+//! Instead we match the Vercel project by its linked **GitHub repo**
+//! (`owner/name`), searching the personal scope and every team, and read its
+//! `targets.production.alias` list.
 //!
 //! Auth: the app authenticates Vercel through the `vercel` CLI, so we reuse the
-//! token that CLI already stored on disk rather than adding a separate token
-//! flow. The token stays in the backend — it is never logged, never returned to
-//! the frontend, and only ever sent to api.vercel.com.
+//! token that CLI already stored on disk. The token stays in the backend — it is
+//! never logged, never returned to the frontend, and only sent to api.vercel.com.
 
 use crate::errors::CommandError;
 use crate::utils::validate_project_path;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 const VERCEL_API: &str = "https://api.vercel.com";
 const VERCEL_TIMEOUT_SECS: u64 = 15;
 
-/// The production domains Vercel knows about for a linked project.
+/// The production domains Vercel knows about for a project.
 #[derive(Serialize, Clone, Debug, Default, PartialEq)]
 pub struct VercelDomainInfo {
-    /// The verified production custom domain (e.g. "pop.bimbi.co"), if one exists.
+    /// The production custom domain (e.g. "pop.bimbi.co"), if one exists.
     pub custom_domain: Option<String>,
     /// The system `*.vercel.app` URL Vercel returned, used as a fallback display.
     pub system_url: Option<String>,
 }
 
-/// `.vercel/project.json` link written by `vercel link` / `vercel`.
 #[derive(Deserialize)]
-struct VercelProjectLink {
-    #[serde(rename = "projectId")]
-    project_id: String,
-    #[serde(rename = "orgId")]
-    org_id: Option<String>,
-}
-
-/// One entry from `GET /v9/projects/{id}/domains`.
-#[derive(Deserialize, Debug)]
-struct DomainEntry {
-    name: String,
-    #[serde(rename = "apexName")]
-    apex_name: Option<String>,
-    #[serde(default)]
-    verified: bool,
-    #[serde(default)]
-    redirect: Option<String>,
+struct ProjectLink {
+    org: Option<String>,
+    repo: Option<String>,
 }
 
 #[derive(Deserialize)]
-struct DomainsResponse {
-    domains: Vec<DomainEntry>,
+struct ProductionTarget {
+    #[serde(default)]
+    alias: Vec<String>,
 }
 
-fn is_system_domain(d: &DomainEntry) -> bool {
-    d.apex_name.as_deref() == Some("vercel.app") || d.name.ends_with(".vercel.app")
+#[derive(Deserialize)]
+struct ProjectTargets {
+    production: Option<ProductionTarget>,
 }
 
-/// Pick the production custom domain (and the system `*.vercel.app` fallback) from
-/// the domains Vercel returned. Pure filtering — never constructs a URL.
+#[derive(Deserialize)]
+struct VercelProject {
+    link: Option<ProjectLink>,
+    targets: Option<ProjectTargets>,
+}
+
+#[derive(Deserialize)]
+struct ProjectsResponse {
+    projects: Vec<VercelProject>,
+}
+
+#[derive(Deserialize)]
+struct Team {
+    id: String,
+}
+
+#[derive(Deserialize)]
+struct TeamsResponse {
+    teams: Vec<Team>,
+}
+
+fn is_system_domain(host: &str) -> bool {
+    host.ends_with(".vercel.app")
+}
+
+/// Pick the production custom domain (and the system `*.vercel.app` fallback)
+/// from a project's alias list. Pure filtering — never constructs a host.
 ///
-/// Preference: a verified, non-redirect custom domain; among several, the apex
-/// (name == apexName), then a `www.` host, else the first one Vercel listed. The
-/// system url is the first `*.vercel.app` entry.
-fn select_production_domain(domains: &[DomainEntry]) -> VercelDomainInfo {
-    let system_url = domains
+/// Among several custom domains, prefer a non-`www.` host, then the shortest,
+/// then alphabetical — a deterministic "canonical" pick (e.g. `src.mx` over
+/// `www.src.org.mx`). The system url is the first `*.vercel.app` alias.
+fn select_from_aliases(aliases: &[String]) -> VercelDomainInfo {
+    let system_url = aliases
         .iter()
-        .find(|d| is_system_domain(d))
-        .map(|d| d.name.clone());
+        .find(|a| is_system_domain(a))
+        .map(|a| a.to_string());
 
-    let pick = |verified_only: bool| -> Option<String> {
-        let mut pool: Vec<&DomainEntry> = domains
-            .iter()
-            .filter(|d| {
-                !is_system_domain(d) && d.redirect.is_none() && (!verified_only || d.verified)
-            })
-            .collect();
-        // Stable sort by preference (apex < www < other) keeps Vercel's order on ties.
-        pool.sort_by_key(|d| {
-            if d.apex_name.as_deref() == Some(d.name.as_str()) {
-                0
-            } else if d.name.starts_with("www.") {
-                1
-            } else {
-                2
-            }
-        });
-        pool.first().map(|d| d.name.clone())
-    };
+    let mut customs: Vec<&String> = aliases.iter().filter(|a| !is_system_domain(a)).collect();
+    customs.sort_by(|a, b| {
+        a.starts_with("www.")
+            .cmp(&b.starts_with("www."))
+            .then_with(|| a.len().cmp(&b.len()))
+            .then_with(|| a.as_str().cmp(b.as_str()))
+    });
 
     VercelDomainInfo {
-        custom_domain: pick(true).or_else(|| pick(false)),
+        custom_domain: customs.first().map(|s| s.to_string()),
         system_url,
     }
 }
@@ -105,64 +111,104 @@ async fn read_vercel_token() -> Option<String> {
         .map(|t| t.to_string())
 }
 
-/// Fetch the production custom domain for a Vercel-linked project.
+/// GET a Vercel API path and parse JSON. Returns `None` on timeout, transport
+/// error, non-2xx, or parse failure — the domain lookup is best-effort.
+async fn get_json<T: DeserializeOwned>(
+    client: &reqwest::Client,
+    url: &str,
+    token: &str,
+) -> Option<T> {
+    let req = client.get(url).bearer_auth(token).send();
+    let resp = tokio::time::timeout(Duration::from_secs(VERCEL_TIMEOUT_SECS), req)
+        .await
+        .ok()?
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    resp.json::<T>().await.ok()
+}
+
+/// Find the project linked to `owner/repo` in one scope (personal when `team_id`
+/// is `None`) and return its production aliases.
+async fn aliases_in_scope(
+    client: &reqwest::Client,
+    token: &str,
+    team_id: Option<&str>,
+    owner: &str,
+    repo: &str,
+) -> Option<Vec<String>> {
+    let mut url = format!("{VERCEL_API}/v9/projects?limit=100");
+    if let Some(team) = team_id {
+        url.push_str("&teamId=");
+        url.push_str(team);
+    }
+    let list: ProjectsResponse = get_json(client, &url, token).await?;
+    list.projects.into_iter().find_map(|p| {
+        let link = p.link?;
+        if link.org.as_deref() == Some(owner) && link.repo.as_deref() == Some(repo) {
+            Some(
+                p.targets
+                    .and_then(|t| t.production)
+                    .map(|pr| pr.alias)
+                    .unwrap_or_default(),
+            )
+        } else {
+            None
+        }
+    })
+}
+
+/// Fetch the production custom domain for a project, matched by its GitHub repo.
 ///
-/// Returns `Ok(None)` (never an error) when the project isn't linked to Vercel,
-/// the CLI isn't authenticated, or Vercel has no domain to report — so callers
-/// show the affordance only when a real value exists. Never constructs a URL.
+/// `github_repo` is the `owner/name` Ship Studio already resolved from the git
+/// remote. Returns `Ok(None)` (never an error) when there's no repo, the Vercel
+/// CLI isn't authenticated, no Vercel project is linked to that repo, or there's
+/// no domain to report — so callers show the affordance only when a real value
+/// exists. Never constructs a host.
 #[tauri::command]
-#[tracing::instrument(skip(project_path), fields(project = %project_path))]
+#[tracing::instrument(skip(project_path), fields(project = %project_path, repo = ?github_repo))]
 pub async fn get_vercel_production_domain(
     project_path: String,
+    github_repo: Option<String>,
 ) -> Result<Option<VercelDomainInfo>, CommandError> {
-    let path = validate_project_path(&project_path)?;
+    let _ = validate_project_path(&project_path)?;
 
-    let link_path = path.join(".vercel").join("project.json");
-    let Ok(link_raw) = tokio::fs::read_to_string(&link_path).await else {
-        return Ok(None); // not linked to Vercel
+    let Some(repo) = github_repo.filter(|r| !r.trim().is_empty()) else {
+        return Ok(None);
     };
-    let link: VercelProjectLink = serde_json::from_str(&link_raw)
-        .map_err(|e| format!("Failed to parse .vercel/project.json: {e}"))?;
+    let Some((owner, name)) = repo.split_once('/') else {
+        return Ok(None);
+    };
+    let name = name.trim_end_matches(".git");
 
     let Some(token) = read_vercel_token().await else {
         return Ok(None); // Vercel CLI not authenticated
     };
 
-    let mut url = format!(
-        "{VERCEL_API}/v9/projects/{}/domains?production=true",
-        link.project_id
-    );
-    if let Some(team) = link.org_id.as_deref() {
-        if team.starts_with("team_") {
-            url.push_str("&teamId=");
-            url.push_str(team);
+    let client = reqwest::Client::new();
+
+    // Personal scope first, then each team — stop at the first matching project.
+    let mut aliases = aliases_in_scope(&client, &token, None, owner, name).await;
+    if aliases.is_none() {
+        let teams_url = format!("{VERCEL_API}/v2/teams?limit=100");
+        if let Some(teams) = get_json::<TeamsResponse>(&client, &teams_url, &token).await {
+            for team in teams.teams {
+                if let Some(found) =
+                    aliases_in_scope(&client, &token, Some(&team.id), owner, name).await
+                {
+                    aliases = Some(found);
+                    break;
+                }
+            }
         }
     }
 
-    let client = reqwest::Client::new();
-    let request = client.get(&url).bearer_auth(&token).send();
-    let resp = match tokio::time::timeout(Duration::from_secs(VERCEL_TIMEOUT_SECS), request).await {
-        Ok(Ok(resp)) => resp,
-        Ok(Err(e)) => return Err(format!("Vercel API request failed: {e}").into()),
-        Err(_) => {
-            return Err(CommandError::Timeout {
-                cmd: "vercel domains".to_string(),
-                secs: VERCEL_TIMEOUT_SECS,
-            })
-        }
+    let Some(aliases) = aliases else {
+        return Ok(None); // no Vercel project linked to this repo in any scope
     };
 
-    // Token expired / project not found / no access — treat as "no domain", not an error.
-    if !resp.status().is_success() {
-        return Ok(None);
-    }
-
-    let data: DomainsResponse = resp
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse Vercel domains response: {e}"))?;
-
-    let info = select_production_domain(&data.domains);
+    let info = select_from_aliases(&aliases);
     if info.custom_domain.is_none() && info.system_url.is_none() {
         return Ok(None);
     }
@@ -173,23 +219,19 @@ pub async fn get_vercel_production_domain(
 mod tests {
     use super::*;
 
-    fn entry(name: &str, apex: &str, verified: bool, redirect: Option<&str>) -> DomainEntry {
-        DomainEntry {
-            name: name.to_string(),
-            apex_name: Some(apex.to_string()),
-            verified,
-            redirect: redirect.map(|s| s.to_string()),
-        }
+    fn aliases(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| s.to_string()).collect()
     }
 
     #[test]
-    fn picks_verified_custom_domain_over_system() {
-        // Real shape from the `pop` project.
-        let domains = vec![
-            entry("pop.bimbi.co", "bimbi.co", true, None),
-            entry("pop-sandy-five.vercel.app", "vercel.app", true, None),
-        ];
-        let info = select_production_domain(&domains);
+    fn picks_custom_domain_over_system() {
+        // Real `pop` project aliases.
+        let info = select_from_aliases(&aliases(&[
+            "pop.bimbi.co",
+            "pop-sandy-five.vercel.app",
+            "pop-bimbi-digital.vercel.app",
+            "pop-git-main-bimbi-digital.vercel.app",
+        ]));
         assert_eq!(info.custom_domain.as_deref(), Some("pop.bimbi.co"));
         assert_eq!(
             info.system_url.as_deref(),
@@ -198,15 +240,28 @@ mod tests {
     }
 
     #[test]
-    fn no_custom_domain_falls_back_to_system_only() {
-        // Real shape from `creatormatch-v2` (only vercel.app entries).
-        let domains = vec![entry(
+    fn picks_shortest_non_www_among_many() {
+        // Real `src-mx` project aliases.
+        let info = select_from_aliases(&aliases(&[
+            "www.src.org.mx",
+            "src-mx.vercel.app",
+            "src-mx-bimbi-digital.vercel.app",
+            "src.mx",
+            "src.org.mx",
+            "www.src.mx",
+            "statisticalresearch.org",
+            "www.statisticalresearch.org",
+        ]));
+        assert_eq!(info.custom_domain.as_deref(), Some("src.mx"));
+        assert_eq!(info.system_url.as_deref(), Some("src-mx.vercel.app"));
+    }
+
+    #[test]
+    fn no_custom_domain_falls_back_to_system() {
+        let info = select_from_aliases(&aliases(&[
             "creatormatch-v2.vercel.app",
-            "vercel.app",
-            true,
-            None,
-        )];
-        let info = select_production_domain(&domains);
+            "creatormatch-v2-bimbi-digital.vercel.app",
+        ]));
         assert_eq!(info.custom_domain, None);
         assert_eq!(
             info.system_url.as_deref(),
@@ -215,54 +270,13 @@ mod tests {
     }
 
     #[test]
-    fn ignores_redirect_domains() {
-        let domains = vec![
-            entry(
-                "redirect.example.com",
-                "example.com",
-                true,
-                Some("https://example.com"),
-            ),
-            entry("app.vercel.app", "vercel.app", true, None),
-        ];
-        let info = select_production_domain(&domains);
-        assert_eq!(
-            info.custom_domain, None,
-            "a redirect host is not the canonical domain"
-        );
-        assert_eq!(info.system_url.as_deref(), Some("app.vercel.app"));
+    fn falls_back_to_www_when_no_apex() {
+        let info = select_from_aliases(&aliases(&["www.example.com", "x.vercel.app"]));
+        assert_eq!(info.custom_domain.as_deref(), Some("www.example.com"));
     }
 
     #[test]
-    fn prefers_apex_then_www_among_multiple() {
-        let domains = vec![
-            entry(
-                "statisticalresearch.org",
-                "statisticalresearch.org",
-                true,
-                None,
-            ),
-            entry("www.src.org.mx", "src.org.mx", true, None),
-            entry("src.mx", "src.mx", true, None),
-        ];
-        // src.mx and statisticalresearch.org are both apex; stable order keeps the first apex.
-        let info = select_production_domain(&domains);
-        assert_eq!(
-            info.custom_domain.as_deref(),
-            Some("statisticalresearch.org")
-        );
-    }
-
-    #[test]
-    fn uses_unverified_custom_domain_only_when_no_verified_exists() {
-        let domains = vec![entry("pending.example.com", "example.com", false, None)];
-        let info = select_production_domain(&domains);
-        assert_eq!(info.custom_domain.as_deref(), Some("pending.example.com"));
-    }
-
-    #[test]
-    fn empty_domains_yields_nothing() {
-        let info = select_production_domain(&[]);
-        assert_eq!(info, VercelDomainInfo::default());
+    fn empty_yields_nothing() {
+        assert_eq!(select_from_aliases(&[]), VercelDomainInfo::default());
     }
 }
