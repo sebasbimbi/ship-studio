@@ -23,3 +23,10 @@ DONE · 11 commits green+built · final: check:all OK · 750 vitest · 405 rust 
 ## Batch 2 — ponytail review continuation (2026-06-15)
 
 Baseline: check:all OK · 758 vitest · 414 rust · tauri build compiles+bundles (signing-only gap)
+3a8abce · #A8 · fix · publishing.rs 5 network git ops -> run_git_net (60s timeout) + test · green
+2aa1891 · #A8b · fix · pull_requests.rs 6 network gh/git ops -> run_net (60s timeout) + 2 tests · green
+4aed1a3 · #P1 · refactor · reserve_port_force filter+map+collect -> HashMap::retain · green
+768154f · #P2 · refactor · drop dead rows/cols from SpawnPtyOptions · green
+b665ab8 · #A8c · fix · ai.rs 4 git context ops -> run_with_timeout (async, 60s) + test · green
+
+DONE (batch 2) · 5 commits green+built · final: check:all OK · 758 vitest · 418 rust · tauri build compiles+bundles (signing-only gap) · deferred B3 + D8-D13 · 5 findings declined (see REVIEW_QUEUE)
