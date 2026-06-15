@@ -81,4 +81,20 @@ describe('filterElementTree', () => {
     filterElementTree(tree, 'Buy');
     expect(JSON.stringify(tree)).toBe(snapshot);
   });
+
+  it('tolerates malformed nodes with missing/non-string fields (untrusted iframe boundary)', () => {
+    const malformed = {
+      id: 9,
+      tag: 'div',
+      cls: undefined,
+      text: undefined,
+      children: [],
+    } as unknown as ElementTreeNode;
+    const root = node(0, 'body', '', '', [malformed, node(1, 'p', 'hit', 'x')]);
+    expect(() => filterElementTree(root, 'hit')).not.toThrow();
+    // The valid match is still found; the malformed node is simply pruned.
+    expect(ids(filterElementTree(root, 'hit'))).toEqual([0, 1]);
+    // And a query that matches the malformed node's (valid) tag still works.
+    expect(ids(filterElementTree(root, 'div'))).toEqual([0, 9]);
+  });
 });

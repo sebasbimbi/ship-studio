@@ -139,6 +139,18 @@ export function ElementTreePanel({ tree, truncated, selectedId, onSelect, onHove
         return;
       }
 
+      // While filtering, the selected element may have been pruned out of the
+      // visible tree (selection comes from the canvas/iframe, independent of the
+      // query). Nav would otherwise be dead, so re-enter the filtered view at
+      // its root and let the user navigate the matches from there.
+      if (filtering && !navIndex.nodeById.has(selectedId)) {
+        if (displayTree) {
+          e.preventDefault();
+          onSelect(displayTree.id);
+        }
+        return;
+      }
+
       const parentId = navIndex.parentById.get(selectedId) ?? null;
 
       if (e.key === 'ArrowRight') {
@@ -170,7 +182,7 @@ export function ElementTreePanel({ tree, truncated, selectedId, onSelect, onHove
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [selectedId, navIndex, onSelect]);
+  }, [selectedId, navIndex, onSelect, displayTree, filtering]);
 
   const toggle = (id: number) => {
     setCollapsed((prev) => {
@@ -243,10 +255,18 @@ export function ElementTreePanel({ tree, truncated, selectedId, onSelect, onHove
       <div className="ss-tree-panel__body" ref={bodyRef} onMouseLeave={() => onHover(null)}>
         {!tree && <div className="ss-tree-panel__empty">Loading elements…</div>}
         {tree && displayTree && renderNode(displayTree, 0)}
-        {tree && !displayTree && <div className="ss-tree-panel__empty">No matching elements</div>}
-        {truncated && !filtering && (
+        {tree && !displayTree && (
+          <div className="ss-tree-panel__empty">
+            {truncated
+              ? 'No matches in the loaded part of this large page.'
+              : 'No matching elements'}
+          </div>
+        )}
+        {truncated && displayTree && (
           <div className="ss-tree-panel__note">
-            Large page — showing the first part of the tree.
+            {filtering
+              ? 'Large page — searched only the first part; some matches may be hidden.'
+              : 'Large page — showing the first part of the tree.'}
           </div>
         )}
       </div>

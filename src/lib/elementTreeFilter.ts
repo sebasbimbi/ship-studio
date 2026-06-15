@@ -23,10 +23,15 @@ export function isTreeQueryActive(query: string): boolean {
   return query.trim().length > 0;
 }
 
-/** Does this node itself match the (already lower-cased) query on tag/cls/text? */
+/**
+ * Does this node itself match the (already lower-cased) query on tag/cls/text?
+ * Fields are coerced with `String(field ?? '')` because the tree crosses an
+ * untrusted boundary (the preview iframe's DOM snapshot) — a malformed node with
+ * a missing/non-string field must not throw and tear down the whole panel.
+ */
 function selfMatches(node: ElementTreeNode, loweredQuery: string): boolean {
   return [node.tag, node.cls, node.text].some((field) =>
-    matchesFilter({ v: field.toLowerCase() }, { v: { $contains: loweredQuery } })
+    matchesFilter({ v: String(field ?? '').toLowerCase() }, { v: { $contains: loweredQuery } })
   );
 }
 

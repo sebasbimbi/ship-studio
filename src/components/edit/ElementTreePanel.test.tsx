@@ -172,4 +172,51 @@ describe('ElementTreePanel search', () => {
     expect(screen.getByText('header')).toBeInTheDocument();
     expect(screen.getByText('footer')).toBeInTheDocument();
   });
+
+  it('re-enters the filtered view when arrowing from a selection the query pruned out', () => {
+    const onSelect = vi.fn<(id: number) => void>();
+    render(
+      <ElementTreePanel
+        tree={TREE}
+        truncated={false}
+        selectedId={2} // header — NOT a match for the query below, so it gets pruned
+        onSelect={onSelect}
+        onHover={() => {}}
+      />
+    );
+    fireEvent.change(screen.getByLabelText('Search elements'), { target: { value: 'footer' } });
+    fireEvent.keyDown(document.body, { key: 'ArrowDown' });
+    // Nav would otherwise be dead; instead it re-enters at the filtered tree root (body, id 1).
+    expect(onSelect).toHaveBeenCalledWith(1);
+  });
+
+  it('shows a truncation-aware empty state when a search finds nothing in a truncated tree', () => {
+    render(
+      <ElementTreePanel
+        tree={TREE}
+        truncated={true}
+        selectedId={null}
+        onSelect={() => {}}
+        onHover={() => {}}
+      />
+    );
+    fireEvent.change(screen.getByLabelText('Search elements'), { target: { value: 'zzz-nope' } });
+    expect(
+      screen.getByText('No matches in the loaded part of this large page.')
+    ).toBeInTheDocument();
+  });
+
+  it('keeps a filtering-aware truncation note visible while searching a truncated tree', () => {
+    render(
+      <ElementTreePanel
+        tree={TREE}
+        truncated={true}
+        selectedId={null}
+        onSelect={() => {}}
+        onHover={() => {}}
+      />
+    );
+    fireEvent.change(screen.getByLabelText('Search elements'), { target: { value: 'footer' } });
+    expect(screen.getByText(/searched only the first part/i)).toBeInTheDocument();
+  });
 });
