@@ -389,6 +389,16 @@ export async function startGitHubAuth(): Promise<string> {
   return invoke<string>('start_github_auth');
 }
 
+/** Sign out of the GitHub CLI (`gh auth logout`). Idempotent. */
+export async function logoutGithub(): Promise<void> {
+  return invoke<void>('logout_github');
+}
+
+/** Sign out of the Vercel CLI (`vercel logout`). Idempotent. */
+export async function logoutVercel(): Promise<void> {
+  return invoke<void>('logout_vercel');
+}
+
 /**
  * Install Claude Code CLI.
  */
