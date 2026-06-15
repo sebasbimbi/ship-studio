@@ -19,3 +19,7 @@ d2c52fa · #12 · refactor · drop dead searchQuery useState in ProjectList · g
 (skipped) · #11 · perf · memoize tiny reduce() — DECLINED as cargo-cult memoization (see REVIEW_QUEUE)
 
 DONE · 11 commits green+built · final: check:all OK · 750 vitest · 405 rust · tauri build compiles+bundles (signing-only gap)
+
+## Batch 2 — ponytail review continuation (2026-06-15)
+
+Baseline: check:all OK · 758 vitest · 414 rust · tauri build compiles+bundles (signing-only gap)
