@@ -432,3 +432,96 @@ it('ss:revertMark un-freezes ALL same-source elements sharing the marker', () =>
   expect(rows.every((e) => e.getAttribute('class') === 'row')).toBe(true);
   expect(rows.every((e) => e.getAttribute('data-ss-sel') === null)).toBe(true);
 });
+
+// ── Arrow-key sibling/parent/child navigation from a canvas selection ─────────
+// The script handles arrows when focus is inside the iframe; selecting a target
+// re-posts ss:select, so the host tree row + edit panel follow. These drive the
+// real keydown listener and read the resulting ss:select. Because the script
+// posts asynchronously, we record the LAST ss:select and settle the queue around
+// each action (draining any backlog from earlier tests first) rather than racing
+// "the next message".
+const NAV_HTML =
+  '<main class="m">' +
+  '<section class="a">A</section>' +
+  '<section class="b"><h2 class="h">H</h2><p class="p">P</p></section>' +
+  '<section class="c">C</section>' +
+  '</main>';
+
+const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+
+let lastSelect: SelectMsg | null = null;
+window.addEventListener('message', (e: MessageEvent) => {
+  if ((e.data as { type?: string })?.type === 'ss:select') lastSelect = e.data as SelectMsg;
+});
+
+/** Run `fn`, ignoring any backlog, and return the ss:select it produced (or null). */
+async function act(fn: () => void): Promise<SelectMsg | null> {
+  await settle();
+  await settle(); // drain any messages queued by earlier tests
+  lastSelect = null;
+  fn();
+  await settle();
+  await settle(); // deliver our action's message
+  return lastSelect;
+}
+
+const clickEl = (cls: string) =>
+  document.querySelector('.' + cls)!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+const arrow = (key: string) => document.dispatchEvent(new KeyboardEvent('keydown', { key }));
+
+it('ArrowDown from a canvas selection selects the next sibling', async () => {
+  document.body.innerHTML = NAV_HTML;
+  send({ type: 'ss:activate' });
+  await act(() => clickEl('b'));
+  const msg = await act(() => arrow('ArrowDown'));
+  expect(msg?.signature.className).toBe('c');
+});
+
+it('ArrowUp selects the previous sibling', async () => {
+  document.body.innerHTML = NAV_HTML;
+  send({ type: 'ss:activate' });
+  await act(() => clickEl('b'));
+  const msg = await act(() => arrow('ArrowUp'));
+  expect(msg?.signature.className).toBe('a');
+});
+
+it('ArrowLeft selects the parent', async () => {
+  document.body.innerHTML = NAV_HTML;
+  send({ type: 'ss:activate' });
+  await act(() => clickEl('b'));
+  const msg = await act(() => arrow('ArrowLeft'));
+  expect(msg?.signature.className).toBe('m');
+  expect(msg?.signature.tagName).toBe('main');
+});
+
+it('ArrowRight dives into the first child', async () => {
+  document.body.innerHTML = NAV_HTML;
+  send({ type: 'ss:activate' });
+  await act(() => clickEl('b'));
+  const msg = await act(() => arrow('ArrowRight'));
+  expect(msg?.signature.className).toBe('h');
+  expect(msg?.signature.tagName).toBe('h2');
+});
+
+it('does not navigate past the last sibling', async () => {
+  document.body.innerHTML = NAV_HTML;
+  send({ type: 'ss:activate' });
+  await act(() => clickEl('c'));
+  expect(await act(() => arrow('ArrowDown'))).toBeNull();
+});
+
+it('ignores arrows while a form field in the page is focused', async () => {
+  document.body.innerHTML = NAV_HTML + '<input class="field" />';
+  send({ type: 'ss:activate' });
+  await act(() => clickEl('b'));
+  document.querySelector<HTMLElement>('.field')!.focus();
+  expect(await act(() => arrow('ArrowDown'))).toBeNull();
+});
+
+it('does not navigate when edit mode is inactive', async () => {
+  document.body.innerHTML = NAV_HTML;
+  send({ type: 'ss:activate' });
+  await act(() => clickEl('b'));
+  send({ type: 'ss:deactivate' });
+  expect(await act(() => arrow('ArrowDown'))).toBeNull();
+});

@@ -50,6 +50,22 @@ export function ElementTreePanel({ tree, truncated, selectedId, onSelect, onHove
 
   const ancestors = useMemo(() => (tree ? buildAncestors(tree) : null), [tree]);
 
+  // Flat lookups for keyboard navigation: each node by id, and each node's
+  // parent id (null for the root). Rebuilt only when the tree snapshot changes.
+  const navIndex = useMemo(() => {
+    const nodeById = new Map<number, ElementTreeNode>();
+    const parentById = new Map<number, number | null>();
+    if (tree) {
+      const walk = (node: ElementTreeNode, parent: number | null) => {
+        nodeById.set(node.id, node);
+        parentById.set(node.id, parent);
+        for (const child of node.children) walk(child, node.id);
+      };
+      walk(tree, null);
+    }
+    return { nodeById, parentById };
+  }, [tree]);
+
   // Selecting on the canvas should reveal the row: expand its ancestor chain
   // (presence in `collapsed` is depth-inverted — see collapsedState). Done as
   // a render-time state adjustment (the sanctioned "derive from prop change"
@@ -85,6 +101,64 @@ export function ElementTreePanel({ tree, truncated, selectedId, onSelect, onHove
     });
     return () => cancelAnimationFrame(raf);
   }, [selectedId]);
+
+  // Arrow-key navigation from the selected element: Up/Down move between
+  // siblings (no wrap), Left selects the parent, Right dives into the first
+  // child. `onSelect` runs the same path as a click, so the canvas + edit panel
+  // follow and the target row auto-reveals + scrolls into view. The listener is
+  // document-level (the tree rows aren't focusable), but it never steals arrows
+  // from a focused text field or arrow-driven control in the edit panel.
+  useEffect(() => {
+    const NAV_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (selectedId == null || !NAV_KEYS.includes(e.key)) return;
+
+      const el = document.activeElement;
+      const tag = el?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (el instanceof HTMLElement && el.isContentEditable) return;
+      const role = el?.getAttribute('role');
+      if (
+        role &&
+        ['combobox', 'listbox', 'menu', 'menuitem', 'slider', 'spinbutton', 'textbox'].includes(
+          role
+        )
+      ) {
+        return;
+      }
+
+      const parentId = navIndex.parentById.get(selectedId) ?? null;
+
+      if (e.key === 'ArrowRight') {
+        const first = navIndex.nodeById.get(selectedId)?.children[0];
+        if (first) {
+          e.preventDefault();
+          onSelect(first.id);
+        }
+        return;
+      }
+      if (e.key === 'ArrowLeft') {
+        if (parentId != null) {
+          e.preventDefault();
+          onSelect(parentId);
+        }
+        return;
+      }
+
+      // Up/Down: previous/next sibling. Root has no siblings; ends don't wrap.
+      if (parentId == null) return;
+      const siblings = navIndex.nodeById.get(parentId)?.children ?? [];
+      const idx = siblings.findIndex((s) => s.id === selectedId);
+      if (idx === -1) return;
+      const target = siblings[e.key === 'ArrowUp' ? idx - 1 : idx + 1];
+      if (target) {
+        e.preventDefault();
+        onSelect(target.id);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [selectedId, navIndex, onSelect]);
 
   const toggle = (id: number) => {
     setCollapsed((prev) => {
