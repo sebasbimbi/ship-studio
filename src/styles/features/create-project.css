@@ -160,6 +160,10 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  /* The card renders through the <Button> primitive, which sets
+     white-space: nowrap; reset it here so the multi-line descriptions wrap
+     within the card instead of overflowing on a single line and clipping. */
+  white-space: normal;
   gap: var(--spacing-xs);
   padding: var(--create-card-pad-y) var(--spacing-md);
   background: var(--bg-secondary);
