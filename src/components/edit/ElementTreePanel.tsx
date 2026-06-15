@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRightIcon } from '../icons';
 import type { ElementTreeNode } from '../../hooks/useElementTree';
+import { filterElementTree, isTreeQueryActive } from '../../lib/elementTreeFilter';
 
 interface Props {
   tree: ElementTreeNode | null;
@@ -46,25 +47,36 @@ function RowLabel({ node }: { node: ElementTreeNode }) {
 
 export function ElementTreePanel({ tree, truncated, selectedId, onSelect, onHover }: Props) {
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
+  const [query, setQuery] = useState('');
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  const ancestors = useMemo(() => (tree ? buildAncestors(tree) : null), [tree]);
+  // When a query is active, render a pruned copy of the tree (matches plus their
+  // ancestor paths) via the borrowed Meno filter; a blank query is identity, so
+  // selection, reveal, and keyboard nav are unchanged in the common case.
+  const filtering = isTreeQueryActive(query);
+  const displayTree = useMemo(() => filterElementTree(tree, query), [tree, query]);
+
+  const ancestors = useMemo(
+    () => (displayTree ? buildAncestors(displayTree) : null),
+    [displayTree]
+  );
 
   // Flat lookups for keyboard navigation: each node by id, and each node's
-  // parent id (null for the root). Rebuilt only when the tree snapshot changes.
+  // parent id (null for the root). Built from the displayed (possibly filtered)
+  // tree so arrow nav stays consistent with what's on screen.
   const navIndex = useMemo(() => {
     const nodeById = new Map<number, ElementTreeNode>();
     const parentById = new Map<number, number | null>();
-    if (tree) {
+    if (displayTree) {
       const walk = (node: ElementTreeNode, parent: number | null) => {
         nodeById.set(node.id, node);
         parentById.set(node.id, parent);
         for (const child of node.children) walk(child, node.id);
       };
-      walk(tree, null);
+      walk(displayTree, null);
     }
     return { nodeById, parentById };
-  }, [tree]);
+  }, [displayTree]);
 
   // Selecting on the canvas should reveal the row: expand its ancestor chain
   // (presence in `collapsed` is depth-inverted — see collapsedState). Done as
@@ -172,8 +184,10 @@ export function ElementTreePanel({ tree, truncated, selectedId, onSelect, onHove
   // Presence in `collapsed` flips the depth-based default: shallow nodes
   // default open (presence = collapsed), deep nodes default closed
   // (presence = expanded).
-  const collapsedState = (id: number, depth: number) =>
-    depth < AUTO_EXPAND_DEPTH ? collapsed.has(id) : !collapsed.has(id);
+  const collapsedState = (id: number, depth: number) => {
+    if (filtering) return false; // a filtered view stays fully expanded so every match shows
+    return depth < AUTO_EXPAND_DEPTH ? collapsed.has(id) : !collapsed.has(id);
+  };
 
   const renderNode = (node: ElementTreeNode, depth: number) => {
     const hasChildren = node.children.length > 0;
@@ -217,10 +231,20 @@ export function ElementTreePanel({ tree, truncated, selectedId, onSelect, onHove
     <div className="ss-tree-panel" data-testid="element-tree-panel">
       <div className="ss-tree-panel__header">
         <span className="ss-tree-panel__title">Elements</span>
+        <input
+          type="search"
+          className="ss-tree-panel__search"
+          placeholder="Search…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          aria-label="Search elements"
+        />
       </div>
       <div className="ss-tree-panel__body" ref={bodyRef} onMouseLeave={() => onHover(null)}>
-        {tree ? renderNode(tree, 0) : <div className="ss-tree-panel__empty">Loading elements…</div>}
-        {truncated && (
+        {!tree && <div className="ss-tree-panel__empty">Loading elements…</div>}
+        {tree && displayTree && renderNode(displayTree, 0)}
+        {tree && !displayTree && <div className="ss-tree-panel__empty">No matching elements</div>}
+        {truncated && !filtering && (
           <div className="ss-tree-panel__note">
             Large page — showing the first part of the tree.
           </div>

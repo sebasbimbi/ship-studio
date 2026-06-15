@@ -115,3 +115,61 @@ describe('ElementTreePanel keyboard navigation', () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 });
+
+describe('ElementTreePanel search', () => {
+  function renderPanel() {
+    render(
+      <ElementTreePanel
+        tree={TREE}
+        truncated={false}
+        selectedId={null}
+        onSelect={() => {}}
+        onHover={() => {}}
+      />
+    );
+    return screen.getByLabelText('Search elements');
+  }
+
+  const type = (input: HTMLElement, value: string) =>
+    fireEvent.change(input, { target: { value } });
+
+  it('renders a search box', () => {
+    renderPanel();
+    expect(screen.getByLabelText('Search elements')).toBeInTheDocument();
+  });
+
+  it('filters to matching nodes plus their ancestor path', () => {
+    const input = renderPanel();
+    type(input, 'footer');
+    expect(screen.getByText('footer')).toBeInTheDocument(); // the match
+    expect(screen.getByText('body')).toBeInTheDocument(); // its ancestor
+    expect(screen.queryByText('header')).not.toBeInTheDocument();
+    expect(screen.queryByText('div')).not.toBeInTheDocument();
+  });
+
+  it('matches on class and drops non-matching descendants', () => {
+    const input = renderPanel();
+    type(input, 'route'); // div.route-fade
+    expect(screen.getByText('div')).toBeInTheDocument();
+    expect(screen.getByText('body')).toBeInTheDocument();
+    expect(screen.queryByText('h2')).not.toBeInTheDocument();
+    expect(screen.queryByText('span')).not.toBeInTheDocument();
+    expect(screen.queryByText('header')).not.toBeInTheDocument();
+  });
+
+  it('shows an empty state when nothing matches', () => {
+    const input = renderPanel();
+    type(input, 'zzz-no-match');
+    expect(screen.getByText('No matching elements')).toBeInTheDocument();
+    expect(screen.queryByText('header')).not.toBeInTheDocument();
+  });
+
+  it('restores the full tree when the query is cleared', () => {
+    const input = renderPanel();
+    type(input, 'footer');
+    expect(screen.queryByText('header')).not.toBeInTheDocument();
+    type(input, '');
+    expect(screen.getByText('header')).toBeInTheDocument();
+    expect(screen.getByText('footer')).toBeInTheDocument();
+  });
+});
