@@ -45,6 +45,8 @@ import { BASE_BREAKPOINT, isTailwindActive, type Breakpoint as TwBreakpoint } fr
 import { VisualEditorPanel } from '../edit/VisualEditorPanel';
 import { ElementTreePanel } from '../edit/ElementTreePanel';
 import { useElementTree } from '../../hooks/useElementTree';
+import { useRedline } from '../../hooks/useRedline';
+import { useRedlineCommands } from '../../commands/useRedlineCommands';
 import { PreviewLocaleSwitcher, type PreviewLocaleConfig } from './PreviewLocaleSwitcher';
 import { CompactIcon, ExpandIcon, PanelLeftIcon, ResetIcon } from '../icons';
 import { Button } from '../primitives/Button';
@@ -536,6 +538,106 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   const showTree = isFullscreen && editor.editMode && treeVisible;
   const elementTree = useElementTree({ iframeRef, enabled: showTree });
 
+  // Change requests for the selected element (the "Request a change" half of the
+  // unified edit mode). HOST-driven: this hook no longer activates an in-iframe
+  // overlay — it only owns the request queue + export and posts numbered badges.
+  // Tied to the same edit-mode flag as direct edits, so one toggle drives both.
+  // A clean absolute URL for the current page (no cache-buster query) drives the
+  // export slug and the recorded URL; the route doubles as the human page title.
+  const redlinePageUrl = `${conn.baseUrl}${conn.currentPage === '/' ? '' : conn.currentPage}`;
+  const redline = useRedline({
+    iframeRef,
+    enabled: editor.editMode,
+    projectPath,
+    pageUrl: redlinePageUrl,
+    pageTitle: conn.currentPage,
+    onSendToClaude: onSendToClaude ?? (() => {}),
+    // Real screenshot of the preview (with the numbered badges, which are live
+    // DOM in the iframe) embedded in the .redline export. Mirrors the viewport
+    // crop math but returns the PNG as bytes instead of writing a file.
+    captureRedlinePng: capture.captureViewportBytes,
+    showToast: onToast,
+  });
+
+  // Two independent apply paths now. Direct edits flow to the commit tray's
+  // "Apply edits to source"; change requests flow to the Request-a-change
+  // section's own "Send N requests to agent". They no longer share a button.
+  //
+  // onApplyEdits: write the pending direct edits to source. Local `applying`
+  // flag drives the tray's disabled/"Applying…" state.
+  const [applying, setApplying] = useState(false);
+  // Refs guard against re-entry (a rapid second click or a Cmd+K trigger while a
+  // run is in flight) so edits can't double-apply and requests can't double-send.
+  const applyingRef = useRef(false);
+  const sendingRef = useRef(false);
+  const onApplyEdits = useCallback(async () => {
+    if (applyingRef.current) return;
+    applyingRef.current = true;
+    try {
+      setApplying(true);
+      await editor.applyAllEdits();
+    } catch (e) {
+      onToast(String(e), 'error');
+    } finally {
+      setApplying(false);
+      applyingRef.current = false;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onToast is recreated each render; editor methods are stable
+  }, [editor.applyAllEdits]);
+
+  // onSendRequests: ship every pending request to the agent. sendToAgent
+  // self-captures the screenshot, writes the per-project .redline export, and
+  // self-clears the queue (+ on-page badges) on success — so this is just a
+  // guarded await. Its own `redline.sending` flag drives the section's button.
+  const onSendRequests = useCallback(async () => {
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    try {
+      await redline.sendToAgent();
+    } catch (e) {
+      onToast(String(e), 'error');
+    } finally {
+      sendingRef.current = false;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onToast is recreated each render; redline.sendToAgent is stable
+  }, [redline.sendToAgent]);
+
+  // Record a change request for the currently-selected element. Maps the editor's
+  // resolution to the redline source location (resolved ⇒ {file,line,column} +
+  // confidence; otherwise null so the agent relocates it from the locator). Guarded
+  // against a null selection by the caller (the Add button only shows for a selection).
+  const onAddRequest = useCallback(
+    (label: string) => {
+      const sel = editor.selection;
+      if (!sel) return;
+      const res = sel.resolution;
+      const resolvedLocation =
+        res?.status === 'resolved' ? { file: res.file, line: res.line, column: res.column } : null;
+      redline.addRequestForSelection({
+        signature: sel.signature,
+        locator: sel.locator,
+        resolvedLocation,
+        confidence: res?.status === 'resolved' ? res.confidence : undefined,
+        rect: sel.signature.rect ?? { top: 0, left: 0, width: 0, height: 0 },
+        label,
+      });
+    },
+    [editor.selection, redline]
+  );
+
+  useRedlineCommands({
+    toggleEditMode: editor.toggleEditMode,
+    applyEdits: () => {
+      void onApplyEdits();
+    },
+    sendRequests: () => {
+      void onSendRequests();
+    },
+    editMode: editor.editMode,
+    hasEdits: editor.pendingEdits.length > 0,
+    hasRequests: redline.requests.length > 0,
+  });
+
   const [iframeSize, setIframeSize] = useState<{ w: number; h: number } | null>(null);
   const iframeSizeObserverRef = useRef<ResizeObserver | null>(null);
 
@@ -698,7 +800,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
             type="button"
             className={`preview-edit-toggle${editor.editMode ? ' active' : ''}`}
             onClick={editor.toggleEditMode}
-            title="Toggle visual editor"
+            title="Toggle edit & request mode"
             aria-pressed={editor.editMode}
           >
             <svg
@@ -1052,8 +1154,9 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
               projectPath={projectPath}
               currentClass={editor.currentClass}
               textResolution={editor.textResolution}
+              onApplyText={editor.stageTextEdit}
               imageResolution={editor.imageResolution}
-              onReplaceImage={editor.replaceImage}
+              onReplaceImage={editor.stageImageEdit}
               textBlockedNonce={editor.textBlockedNonce}
               breakpoints={breakpoints}
               activeBreakpoint={activeBreakpoint}
@@ -1064,8 +1167,6 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
                 // applies at all widths, so leave the canvas where it is.
                 if (bp.minPx > 0) resize.previewAtWidth(bp.minPx);
               }}
-              autoSave={editor.autoSave}
-              onToggleAutoSave={editor.toggleAutoSave}
               onStepGap={(dir) => editor.stepSpacing('gap', dir)}
               onSetSide={editor.setBoxSide}
               onApplyEnum={editor.applyEnum}
@@ -1074,10 +1175,22 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
               onMultiTargetChange={editor.setMultiTarget}
               usage={editor.usage}
               onOpenInCode={onOpenInCode}
-              onCommit={() => void editor.commit()}
               onClose={editor.toggleEditMode}
               pinned={editorPinned}
               onTogglePin={toggleEditorPinned}
+              // ── Edits queue → commit tray ("Apply edits to source") ──
+              pendingEdits={editor.pendingEdits}
+              applying={applying}
+              onApplyEdits={() => void onApplyEdits()}
+              onDiscardEdit={editor.discardEdit}
+              // ── Requests queue → Request-a-change section ("Send N to agent") ──
+              pendingRequests={redline.requests}
+              onAddRequest={onAddRequest}
+              onDiscardRequest={redline.remove}
+              onFocusRequest={redline.focus}
+              onEditRequestLabel={redline.updateLabel}
+              onSendRequests={() => void onSendRequests()}
+              sending={redline.sending}
             />
           );
           return editorPinned ? panel : createPortal(panel, document.body);

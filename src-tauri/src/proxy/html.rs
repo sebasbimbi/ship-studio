@@ -291,6 +291,15 @@ mod tests {
     }
 
     #[test]
+    fn select_script_supports_arrow_navigation() {
+        // Canvas-selection arrow nav (Up/Down siblings, Left parent, Right child)
+        // lives in the injected script; guard it so a build can't silently drop it.
+        assert!(SELECT_SCRIPT.contains("ssNavTarget"));
+        assert!(SELECT_SCRIPT.contains("ArrowUp"));
+        assert!(SELECT_SCRIPT.contains("previousElementSibling"));
+    }
+
+    #[test]
     fn scrollbar_style_lands_at_head_start_before_site_styles() {
         // The scrollbar-hiding style must come *before* the site's own <link>/<style>
         // so a site that styles its scrollbars overrides us (no hijack).

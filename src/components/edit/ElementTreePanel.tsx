@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRightIcon } from '../icons';
 import type { ElementTreeNode } from '../../hooks/useElementTree';
+import { filterElementTree, isTreeQueryActive } from '../../lib/elementTreeFilter';
 
 interface Props {
   tree: ElementTreeNode | null;
@@ -46,9 +47,36 @@ function RowLabel({ node }: { node: ElementTreeNode }) {
 
 export function ElementTreePanel({ tree, truncated, selectedId, onSelect, onHover }: Props) {
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
+  const [query, setQuery] = useState('');
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  const ancestors = useMemo(() => (tree ? buildAncestors(tree) : null), [tree]);
+  // When a query is active, render a pruned copy of the tree (matches plus their
+  // ancestor paths) via the borrowed Meno filter; a blank query is identity, so
+  // selection, reveal, and keyboard nav are unchanged in the common case.
+  const filtering = isTreeQueryActive(query);
+  const displayTree = useMemo(() => filterElementTree(tree, query), [tree, query]);
+
+  const ancestors = useMemo(
+    () => (displayTree ? buildAncestors(displayTree) : null),
+    [displayTree]
+  );
+
+  // Flat lookups for keyboard navigation: each node by id, and each node's
+  // parent id (null for the root). Built from the displayed (possibly filtered)
+  // tree so arrow nav stays consistent with what's on screen.
+  const navIndex = useMemo(() => {
+    const nodeById = new Map<number, ElementTreeNode>();
+    const parentById = new Map<number, number | null>();
+    if (displayTree) {
+      const walk = (node: ElementTreeNode, parent: number | null) => {
+        nodeById.set(node.id, node);
+        parentById.set(node.id, parent);
+        for (const child of node.children) walk(child, node.id);
+      };
+      walk(displayTree, null);
+    }
+    return { nodeById, parentById };
+  }, [displayTree]);
 
   // Selecting on the canvas should reveal the row: expand its ancestor chain
   // (presence in `collapsed` is depth-inverted — see collapsedState). Done as
@@ -86,6 +114,76 @@ export function ElementTreePanel({ tree, truncated, selectedId, onSelect, onHove
     return () => cancelAnimationFrame(raf);
   }, [selectedId]);
 
+  // Arrow-key navigation from the selected element: Up/Down move between
+  // siblings (no wrap), Left selects the parent, Right dives into the first
+  // child. `onSelect` runs the same path as a click, so the canvas + edit panel
+  // follow and the target row auto-reveals + scrolls into view. The listener is
+  // document-level (the tree rows aren't focusable), but it never steals arrows
+  // from a focused text field or arrow-driven control in the edit panel.
+  useEffect(() => {
+    const NAV_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (selectedId == null || !NAV_KEYS.includes(e.key)) return;
+
+      const el = document.activeElement;
+      const tag = el?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (el instanceof HTMLElement && el.isContentEditable) return;
+      const role = el?.getAttribute('role');
+      if (
+        role &&
+        ['combobox', 'listbox', 'menu', 'menuitem', 'slider', 'spinbutton', 'textbox'].includes(
+          role
+        )
+      ) {
+        return;
+      }
+
+      // While filtering, the selected element may have been pruned out of the
+      // visible tree (selection comes from the canvas/iframe, independent of the
+      // query). Nav would otherwise be dead, so re-enter the filtered view at
+      // its root and let the user navigate the matches from there.
+      if (filtering && !navIndex.nodeById.has(selectedId)) {
+        if (displayTree) {
+          e.preventDefault();
+          onSelect(displayTree.id);
+        }
+        return;
+      }
+
+      const parentId = navIndex.parentById.get(selectedId) ?? null;
+
+      if (e.key === 'ArrowRight') {
+        const first = navIndex.nodeById.get(selectedId)?.children[0];
+        if (first) {
+          e.preventDefault();
+          onSelect(first.id);
+        }
+        return;
+      }
+      if (e.key === 'ArrowLeft') {
+        if (parentId != null) {
+          e.preventDefault();
+          onSelect(parentId);
+        }
+        return;
+      }
+
+      // Up/Down: previous/next sibling. Root has no siblings; ends don't wrap.
+      if (parentId == null) return;
+      const siblings = navIndex.nodeById.get(parentId)?.children ?? [];
+      const idx = siblings.findIndex((s) => s.id === selectedId);
+      if (idx === -1) return;
+      const target = siblings[e.key === 'ArrowUp' ? idx - 1 : idx + 1];
+      if (target) {
+        e.preventDefault();
+        onSelect(target.id);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [selectedId, navIndex, onSelect, displayTree, filtering]);
+
   const toggle = (id: number) => {
     setCollapsed((prev) => {
       const next = new Set(prev);
@@ -98,8 +196,10 @@ export function ElementTreePanel({ tree, truncated, selectedId, onSelect, onHove
   // Presence in `collapsed` flips the depth-based default: shallow nodes
   // default open (presence = collapsed), deep nodes default closed
   // (presence = expanded).
-  const collapsedState = (id: number, depth: number) =>
-    depth < AUTO_EXPAND_DEPTH ? collapsed.has(id) : !collapsed.has(id);
+  const collapsedState = (id: number, depth: number) => {
+    if (filtering) return false; // a filtered view stays fully expanded so every match shows
+    return depth < AUTO_EXPAND_DEPTH ? collapsed.has(id) : !collapsed.has(id);
+  };
 
   const renderNode = (node: ElementTreeNode, depth: number) => {
     const hasChildren = node.children.length > 0;
@@ -124,6 +224,7 @@ export function ElementTreePanel({ tree, truncated, selectedId, onSelect, onHove
                 e.stopPropagation();
                 toggle(node.id);
               }}
+              title={isCollapsed ? 'Expand' : 'Collapse'}
               aria-label={isCollapsed ? 'Expand' : 'Collapse'}
             >
               <ChevronRightIcon size={10} />
@@ -142,12 +243,30 @@ export function ElementTreePanel({ tree, truncated, selectedId, onSelect, onHove
     <div className="ss-tree-panel" data-testid="element-tree-panel">
       <div className="ss-tree-panel__header">
         <span className="ss-tree-panel__title">Elements</span>
+        <input
+          type="search"
+          className="ss-tree-panel__search"
+          placeholder="Search…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          aria-label="Search elements"
+        />
       </div>
       <div className="ss-tree-panel__body" ref={bodyRef} onMouseLeave={() => onHover(null)}>
-        {tree ? renderNode(tree, 0) : <div className="ss-tree-panel__empty">Loading elements…</div>}
-        {truncated && (
+        {!tree && <div className="ss-tree-panel__empty">Loading elements…</div>}
+        {tree && displayTree && renderNode(displayTree, 0)}
+        {tree && !displayTree && (
+          <div className="ss-tree-panel__empty">
+            {truncated
+              ? 'No matches in the loaded part of this large page.'
+              : 'No matching elements'}
+          </div>
+        )}
+        {truncated && displayTree && (
           <div className="ss-tree-panel__note">
-            Large page — showing the first part of the tree.
+            {filtering
+              ? 'Large page — searched only the first part; some matches may be hidden.'
+              : 'Large page — showing the first part of the tree.'}
           </div>
         )}
       </div>

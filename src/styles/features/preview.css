@@ -308,7 +308,12 @@
   grid-area: 2 / -2 / -1 / -1;
   width: auto;
   min-width: 0;
+  /* Bounded by the grid track (the 1fr canvas row), not by content. A grid item
+     defaults to min-height:auto, which would let a tall panel stretch its row —
+     and the iframe sharing that row — past the viewport. min-height:0 lets the
+     panel shrink to its track so its body (.ss-edit-panel__body) scrolls instead. */
   max-height: none;
+  min-height: 0;
   border-radius: 0;
   border-top: none;
   border-right: none;
