@@ -641,14 +641,19 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   }
 
   if (conn.isLoading || conn.isStopped || conn.hasError) {
-    // The agent handoff only makes sense for real dev servers (static projects
-    // have no server log to diagnose) and when a Claude terminal is wired up.
-    const handleFixWithAgent =
-      onSendToClaude && !isStaticProject
-        ? () => {
-            const logs = stripAnsi(devServerOutput).split('\n').slice(-200).join('\n').trim();
-            const prompt =
-              `My dev server isn't coming up — Ship Studio is waiting on ` +
+    // Keep the agent handoff available as the always-present recovery whenever a
+    // Claude terminal is wired up — for static projects too (a different prompt,
+    // since they have no server log to attach).
+    const handleFixWithAgent = onSendToClaude
+      ? () => {
+          const logs = isStaticProject
+            ? ''
+            : stripAnsi(devServerOutput).split('\n').slice(-200).join('\n').trim();
+          const prompt = isStaticProject
+            ? `My site preview isn't loading. Ship Studio is serving this project as static ` +
+              `files on http://localhost:${port} but nothing shows up. Please check the project ` +
+              `has an index.html at its root (and any files it references) so the preview renders.`
+            : `My dev server isn't coming up — Ship Studio is waiting on ` +
               `http://localhost:${port} but it never responds.\n\n` +
               (logs
                 ? `Recent dev-server output:\n\n\`\`\`\n${logs}\n\`\`\`\n\n`
@@ -656,10 +661,13 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
               `Please work out why it won't start — a busy port, a crash, a missing ` +
               `dependency, or a wrong or missing dev script — and fix it so it serves on ` +
               `port ${port}.`;
-            onSendToClaude(prompt);
-            void trackEvent('preview_fix_with_agent', { has_logs: !!logs });
-          }
-        : undefined;
+          onSendToClaude(prompt);
+          void trackEvent('preview_fix_with_agent', {
+            has_logs: !!logs,
+            is_static: isStaticProject,
+          });
+        }
+      : undefined;
 
     return (
       <DevServerStatus

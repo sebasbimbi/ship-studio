@@ -173,10 +173,11 @@ export function ProjectList({
   }, []);
 
   // Search and sort state
-  // NOTE: search filtering now flows through the Cmd+K palette; the
-  // state is kept here only because downstream grid/folder filters still
-  // key off an empty string. It's effectively a constant for now.
-  const [searchQuery] = useState('');
+  // NOTE: search filtering now flows through the Cmd+K palette; this is kept
+  // only because downstream grid/folder filters still key off a query string.
+  // It's a constant for now (no setter), so it's a plain const rather than
+  // dead useState.
+  const searchQuery: string = '';
   const [sortBy, setSortBy] = useState<SortOption>('last_opened');
 
   const loadProjects = async () => {
@@ -603,6 +604,7 @@ export function ProjectList({
           onDeleteFolder={(folder) => setDeleteFolderConfirm(folder)}
           pinnedSet={pinnedSet}
           onTogglePin={onTogglePin}
+          onCreateProject={onCreateProject}
         />
 
         <AgentsPanel />
