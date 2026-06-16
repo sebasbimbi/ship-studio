@@ -8,6 +8,9 @@
   --create-grid-gap: 10px;
   --create-card-pad-y: 14px;
   --create-card-radius: 10px;
+  /* "Recommended" star — a neutral grey so it reads as a quiet marker and
+     stays distinct from the green selected-state ring/check. */
+  --create-recommended-star: var(--text-muted);
 }
 
 .create-modal-overlay {
@@ -190,23 +193,21 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  flex-wrap: wrap;
+  /* nowrap keeps the "Recommended" tag on the title line; if it wrapped it
+     would add a row to only the recommended card and push that card's
+     description below the others in the row, breaking alignment. */
+  flex-wrap: nowrap;
   font-size: var(--font-size-md);
   font-weight: 600;
   color: var(--text-primary);
 }
 
-/* Neutral chip — deliberately NOT the accent green used for selection, so on
-   the pre-selected default tile "Recommended" reads as a separate signal from
-   the green selected border/check rather than blurring into one. */
-.stack-card-badge {
-  padding: 1px var(--spacing-sm);
-  border-radius: var(--radius-sm);
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
+/* "Recommended" star — a quiet grey marker, deliberately NOT the accent green
+   used for selection, so on the pre-selected default tile it stays a separate
+   signal from the green selected border/check. */
+.stack-card-star {
+  flex-shrink: 0;
+  color: var(--create-recommended-star);
 }
 
 .stack-card-desc {

@@ -152,7 +152,7 @@ export const TEMPLATES: Template[] = [
 
 /** Picker sections, in display order. */
 export const TEMPLATE_GROUPS: { id: TemplateCategory; label: string }[] = [
-  { id: 'web', label: 'Websites' },
+  { id: 'web', label: 'Websites & web apps' },
   { id: 'mobile', label: 'Mobile apps' },
   { id: 'other', label: 'Other' },
 ];
