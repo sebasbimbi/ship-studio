@@ -102,8 +102,13 @@ export function PublishBranchDropdown({
   // failure — it's an optional enhancement, never a constructed URL (the backend
   // returns null when there's nothing real).
   useEffect(() => {
-    if (!isOpen || !isMainBranch || !githubRepo) return;
+    if (!isMainBranch || !githubRepo) {
+      setVercelDomain(null);
+      return;
+    }
+    if (!isOpen) return;
     let cancelled = false;
+    setVercelDomain(null);
     void getVercelProductionDomain(projectPath, githubRepo)
       .then((d) => {
         if (!cancelled) setVercelDomain(d);

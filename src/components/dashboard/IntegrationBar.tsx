@@ -218,6 +218,7 @@ export function IntegrationBar({ onGitHubConnect }: IntegrationBarProps) {
 
   const runUninstall = useCallback(
     async ({ itemId, agentId, name }: UninstallConfirm) => {
+      if (busy) return;
       setConfirmUninstall(null);
       setBusy(itemId);
       try {
@@ -230,7 +231,7 @@ export function IntegrationBar({ onGitHubConnect }: IntegrationBarProps) {
         setBusy(null);
       }
     },
-    [scheduleRefresh, showToast]
+    [busy, scheduleRefresh, showToast]
   );
 
   const readyCount = setupItems.filter((item) => item.status === 'ready').length;
