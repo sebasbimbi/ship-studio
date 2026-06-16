@@ -106,6 +106,7 @@ interface TerminalProps {
   closeTerminalTab: (id: number) => void;
   focusActiveTerminal: () => void;
   switchTabAgent: (tabId: number, agentId: string) => void;
+  restartTerminalTab: (tabId: number, projectPath?: string) => void;
   getActiveTabAgent: () => AgentConfig;
   /** Side-by-side view: tab ids visible in panes, or null when off. */
   splitPaneTabIds: number[] | null;
@@ -394,6 +395,7 @@ export const WorkspaceView = memo(function WorkspaceView({
     addTerminalTab,
     closeTerminalTab,
     focusActiveTerminal,
+    restartTerminalTab,
     getActiveTabAgent,
     splitPaneTabIds,
     splitPaneSizes,
@@ -711,6 +713,14 @@ export const WorkspaceView = memo(function WorkspaceView({
   }, [showPreviewLogs]);
 
   // Workspace-scoped palette commands (branch + PR flows).
+  // Relaunch the active tab's agent. Only does anything once the process has
+  // exited (the Terminal handle no-ops while it's still running) — gives a
+  // mouse/palette-driven path to the same restart the in-terminal "press
+  // Enter" hint offers, e.g. after toggling Auto-accept on a stopped agent.
+  const handleRestartActiveAgent = useCallback(() => {
+    restartTerminalTab(activeTerminalTab);
+  }, [restartTerminalTab, activeTerminalTab]);
+
   useWorkspaceCommands({
     currentBranch,
     hasUncommittedChanges,
@@ -718,6 +728,7 @@ export const WorkspaceView = memo(function WorkspaceView({
     setWorkspaceTab,
     setShowSubmitReview,
     handleResolveConflicts: () => void handleResolveConflicts(),
+    restartActiveAgent: handleRestartActiveAgent,
   });
 
   // Shopify themes: preview gate state + palette commands.
@@ -1027,6 +1038,7 @@ export const WorkspaceView = memo(function WorkspaceView({
             onGoHome={onGoHome}
             autoAcceptMode={autoAcceptMode}
             handleTerminalExit={handleTerminalExit}
+            restartTerminalTab={restartTerminalTab}
             createTabStatusHandler={createTabStatusHandler}
             handleTabTitleChange={handleTabTitleChange}
           />
@@ -1169,6 +1181,7 @@ export const WorkspaceView = memo(function WorkspaceView({
                               onSkills={skillsModal.open}
                               onMcp={mcpModal.open}
                               onAutoAcceptToggle={handleToolbarAutoAcceptToggle}
+                              onRestartAgent={handleRestartActiveAgent}
                               onHelp={helpModal.open}
                               terminalPlugins={getSlotPlugins('terminal')}
                               pluginProject={pluginProject}
@@ -1307,6 +1320,9 @@ export const WorkspaceView = memo(function WorkspaceView({
                                     sessionName={tab.sessionId}
                                     isActive={isVisible}
                                     shouldResume={tab.shouldResume}
+                                    onRequestRestart={() =>
+                                      restartTerminalTab(tab.id, session.projectPath)
+                                    }
                                   />
                                 </div>
                               );

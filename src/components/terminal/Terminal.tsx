@@ -82,6 +82,10 @@ interface TerminalProps {
   isActive?: boolean;
   /** Whether to resume a previous session with this name */
   shouldResume?: boolean;
+  /** Relaunch this tab's agent after it has exited. The parent mints a
+   *  fresh session and remounts — keeps session-id semantics clean instead
+   *  of reusing an id whose conversation file already exists. */
+  onRequestRestart?: () => void;
 }
 
 /**
@@ -97,6 +101,9 @@ export interface TerminalHandle {
   paste: (data: string) => void;
   /** Kill the PTY process */
   kill: () => void;
+  /** Relaunch the agent in this tab after it has exited (fresh session,
+   *  picking up the current auto-accept setting). No-op while running. */
+  restart: () => void;
   /** Re-fit the terminal to its container (call after display changes) */
   fit: () => void;
 }
@@ -113,6 +120,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     sessionName,
     isActive = true,
     shouldResume,
+    onRequestRestart,
   },
   ref
 ) {
@@ -124,6 +132,10 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   // Track Unlisten handles from the PTY session events so we can unsubscribe
   // them on unmount without killing the backend PTY.
   const ptyDisposablesRef = useRef<Array<{ dispose(): void }>>([]);
+  // True once the agent process has exited and the tab is showing the
+  // "press Enter to restart" prompt. While set, keystrokes don't go to the
+  // (dead) PTY — Enter relaunches the agent instead.
+  const exitedRef = useRef(false);
   const [isReady, setIsReady] = useState(false);
   const [isFocused, setIsFocused] = useState(false); // Start unfocused to show overlay until user clicks
 
@@ -156,13 +168,15 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   const onSpawnRef = useRef(onSpawn);
   const onStatusChangeRef = useRef(onStatusChange);
   const onTitleChangeRef = useRef(onTitleChange);
+  const onRequestRestartRef = useRef(onRequestRestart);
   const lastStatusRef = useRef<AgentStatus>('idle');
   useEffect(() => {
     onExitRef.current = onExit;
     onSpawnRef.current = onSpawn;
     onStatusChangeRef.current = onStatusChange;
     onTitleChangeRef.current = onTitleChange;
-  }, [onExit, onSpawn, onStatusChange, onTitleChange]);
+    onRequestRestartRef.current = onRequestRestart;
+  }, [onExit, onSpawn, onStatusChange, onTitleChange, onRequestRestart]);
 
   // Auto-accept is a spawn-time flag (CLI arg) — it can't be toggled on a
   // live PTY. Keep it in a ref so a later change to the scalar doesn't
@@ -810,14 +824,14 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
               if (isResumeFail()) {
                 retryFreshSession();
               } else {
-                terminalRef.current?.write('\r\n[Process exited]\r\n');
+                offerRestart();
                 onExitRef.current?.(exitCode);
               }
             }, 200);
             return;
           }
 
-          terminalRef.current?.write('\r\n[Process exited]\r\n');
+          offerRestart();
           onExitRef.current?.(exitCode);
         });
         pushDisposable(unlistenExit);
@@ -841,6 +855,13 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
         // Handle terminal input -> PTY. Resolves the session id lazily
         // from the ref so re-attach doesn't need a new listener.
         const inputDisposable = term.onData((data) => {
+          // After the agent exits the PTY is dead — don't pipe keystrokes
+          // into it. Enter relaunches; everything else is ignored so a
+          // stray keypress can't look like it's being swallowed silently.
+          if (exitedRef.current) {
+            if (data.includes('\r')) onRequestRestartRef.current?.();
+            return;
+          }
           const sid = ptyRef.current?.sessionId;
           if (sid) void writePtySession(sid, data);
           // When user sends input to an agent without title-based status detection,
@@ -904,6 +925,17 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
           term.write(`\x1b[33m${agent.installHint}\x1b[0m\r\n`);
         }
       }
+    };
+
+    // Print "[Process exited]" plus an inline hint that the tab can be
+    // relaunched. The actual relaunch is parent-driven (fresh session), so
+    // the user can toggle Auto-accept (--dangerously-skip-permissions) and
+    // then restart into it without closing the tab.
+    const offerRestart = () => {
+      exitedRef.current = true;
+      terminalRef.current?.write(
+        `\r\n\x1b[2m[Process exited] — press \x1b[0m\x1b[1mEnter\x1b[0m\x1b[2m to restart ${agent.displayName}\x1b[0m\r\n`
+      );
     };
 
     // Show a loading message while agent starts up
@@ -990,6 +1022,9 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
         const sid = ptyRef.current?.sessionId;
         if (sid) void killPtySession(sid);
         cleanup();
+      },
+      restart: () => {
+        onRequestRestartRef.current?.();
       },
       fit: () => {
         if (fitAddonRef.current && terminalRef.current && ptyRef.current) {

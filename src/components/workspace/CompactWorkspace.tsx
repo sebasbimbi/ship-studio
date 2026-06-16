@@ -58,6 +58,8 @@ interface CompactWorkspaceProps {
   /** Autonomy-mode flag forwarded to the Terminal children. */
   autoAcceptMode: boolean;
   handleTerminalExit: (code: number | null) => void;
+  /** Relaunch a tab's agent after it exits (parent mints a fresh session). */
+  restartTerminalTab: (tabId: number, projectPath?: string) => void;
   createTabStatusHandler: (
     projectPath: string,
     tabId: number
@@ -107,6 +109,7 @@ export function CompactWorkspace({
   onGoHome,
   autoAcceptMode,
   handleTerminalExit,
+  restartTerminalTab,
   createTabStatusHandler,
   handleTabTitleChange,
 }: CompactWorkspaceProps) {
@@ -231,6 +234,7 @@ export function CompactWorkspace({
                   sessionName={tab.sessionId}
                   isActive={isVisible}
                   shouldResume={tab.shouldResume}
+                  onRequestRestart={() => restartTerminalTab(tab.id, session.projectPath)}
                 />
               </div>
             );

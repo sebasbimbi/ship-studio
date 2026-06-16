@@ -22,6 +22,7 @@ import {
   HelpIcon,
   ChevronIcon,
   SettingsIcon,
+  ResetIcon,
 } from '../icons';
 import { Dropdown, DropdownItem, DropdownDivider } from '../primitives/Dropdown';
 import { PluginSlot } from '../plugins/PluginSlot';
@@ -40,6 +41,8 @@ interface ToolbarDropdownProps {
   onSkills: () => void;
   onMcp: () => void;
   onAutoAcceptToggle: () => void;
+  /** Relaunch the active tab's agent (used after it exits). */
+  onRestartAgent: () => void;
   onHelp: () => void;
   terminalPlugins: LoadedPlugin[];
   pluginProject: PluginProjectData | null;
@@ -54,6 +57,7 @@ export function ToolbarDropdown({
   onSkills,
   onMcp,
   onAutoAcceptToggle,
+  onRestartAgent,
   onHelp,
   terminalPlugins,
   pluginProject,
@@ -105,6 +109,10 @@ export function ToolbarDropdown({
           </span>
         </DropdownItem>
       )}
+      <DropdownDivider />
+      <DropdownItem icon={<ResetIcon size={14} />} onSelect={onRestartAgent}>
+        <span>Restart {agent.displayName}</span>
+      </DropdownItem>
       {terminalPlugins.length > 0 && (
         <>
           <DropdownDivider />

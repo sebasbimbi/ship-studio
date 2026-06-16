@@ -1,5 +1,5 @@
 import { useCommands } from './useCommands';
-import { BranchIcon, PlusIcon } from '../components/icons';
+import { BranchIcon, PlusIcon, ResetIcon } from '../components/icons';
 
 /**
  * Workspace-scoped palette commands (Branches, PR flows).
@@ -18,6 +18,8 @@ export interface UseWorkspaceCommandsParams {
   setWorkspaceTab: (tab: 'preview' | 'code' | 'branches' | 'prs') => void;
   setShowSubmitReview: (branch: string | null) => void;
   handleResolveConflicts: () => void | Promise<void>;
+  /** Relaunch the active terminal tab's agent (used after `/exit`). */
+  restartActiveAgent: () => void;
 }
 
 const PullRequestGlyph = () => (
@@ -63,9 +65,20 @@ export function useWorkspaceCommands({
   setWorkspaceTab,
   setShowSubmitReview,
   handleResolveConflicts,
+  restartActiveAgent,
 }: UseWorkspaceCommandsParams) {
   useCommands(
     () => [
+      {
+        id: 'terminal.restartAgent',
+        title: 'Restart agent terminal',
+        subtitle: 'Relaunch the agent after it exited',
+        icon: <ResetIcon size={14} />,
+        category: 'action',
+        when: 'project',
+        keywords: ['restart', 'relaunch', 'reload', 'agent', 'claude', 'codex', 'exit'],
+        run: () => restartActiveAgent(),
+      },
       {
         id: 'branch.switch',
         title: 'Switch branch…',
@@ -129,6 +142,7 @@ export function useWorkspaceCommands({
       setWorkspaceTab,
       setShowSubmitReview,
       handleResolveConflicts,
+      restartActiveAgent,
     ]
   );
 }
