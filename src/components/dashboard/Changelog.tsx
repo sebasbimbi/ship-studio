@@ -25,6 +25,13 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.8.2', // v0.8.2
+    items: [
+      'Live preview opens reliably on slower dev servers — projects on Next.js 16 / Turbopack that take a while to compile the first page no longer get stuck on "Stopped waiting"; the preview now rides the initial compile and opens once it\'s ready',
+      "The pinned visual editor panel now scrolls — when an element has lots of style controls, the panel's contents scroll instead of running off the bottom of the screen",
+    ],
+  },
+  {
     version: '0.8.1', // v0.8.1
     items: [
       'Start faster — an empty dashboard now greets you with a one-click "Create your first project" instead of a blank screen',
