@@ -30,9 +30,15 @@ const VERCEL_TIMEOUT_SECS: u64 = 15;
 #[derive(Serialize, Clone, Debug, Default, PartialEq)]
 pub struct VercelDomainInfo {
     /// The canonical production custom domain (e.g. "pop.bimbi.co"), if one exists.
+    /// Carried separately from `production_url` so the UI can show the bare host
+    /// as a label while opening the full URL.
     pub custom_domain: Option<String>,
     /// The system `*.vercel.app` URL Vercel returned, used as a fallback display.
     pub system_url: Option<String>,
+    /// The full `https://` address to open: `https://{custom_domain or system_url}`.
+    /// Built here once, authoritatively, so the frontend never constructs a URL
+    /// from a host fragment. `None` only when neither host exists.
+    pub production_url: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -117,9 +123,18 @@ fn select_production_domain(domains: &[DomainEntry]) -> VercelDomainInfo {
         pool.first().map(|d| d.name.clone())
     };
 
+    let custom_domain = pick(true).or_else(|| pick(false));
+    // The address to open: the custom domain if any, else the system url. Built
+    // here so callers receive an explicit `https://` URL, never a host fragment.
+    let production_url = custom_domain
+        .as_deref()
+        .or(system_url.as_deref())
+        .map(|host| format!("https://{host}"));
+
     VercelDomainInfo {
-        custom_domain: pick(true).or_else(|| pick(false)),
+        custom_domain,
         system_url,
+        production_url,
     }
 }
 
@@ -273,6 +288,8 @@ mod tests {
             info.system_url.as_deref(),
             Some("pop-sandy-five.vercel.app")
         );
+        // production_url is the canonical custom domain as a full https URL.
+        assert_eq!(info.production_url.as_deref(), Some("https://pop.bimbi.co"));
     }
 
     #[test]
@@ -300,6 +317,10 @@ mod tests {
         let info = select_production_domain(&domains);
         assert_eq!(info.custom_domain.as_deref(), Some("www.src.org.mx"));
         assert_eq!(info.system_url.as_deref(), Some("src-mx.vercel.app"));
+        assert_eq!(
+            info.production_url.as_deref(),
+            Some("https://www.src.org.mx")
+        );
     }
 
     #[test]
@@ -315,6 +336,11 @@ mod tests {
         assert_eq!(
             info.system_url.as_deref(),
             Some("creatormatch-v2.vercel.app")
+        );
+        // No custom domain: production_url falls back to the system host.
+        assert_eq!(
+            info.production_url.as_deref(),
+            Some("https://creatormatch-v2.vercel.app")
         );
     }
 

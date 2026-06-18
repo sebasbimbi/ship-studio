@@ -11,7 +11,12 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { ProjectGitHubStatus } from '../../lib/github';
 import { publishBranch } from '../../lib/branches';
-import { getVercelProductionDomain, liveSiteHost, type VercelDomainInfo } from '../../lib/vercel';
+import {
+  getVercelProductionDomain,
+  liveSiteHost,
+  liveSiteUrl,
+  type VercelDomainInfo,
+} from '../../lib/vercel';
 import { ChevronIcon, BranchIcon, SuccessIcon, ErrorIcon } from '../icons';
 import { Spinner } from '../primitives/Spinner';
 import { useClickOutside } from '../../hooks/useClickOutside';
@@ -120,28 +125,30 @@ export function PublishBranchDropdown({
   }, [isOpen, isMainBranch, githubRepo, projectPath]);
 
   const liveHost = liveSiteHost(vercelDomain);
-  const liveDomainLink = liveHost ? (
-    <div className="publish-live-domain-row">
-      <span className="publish-live-domain-label">Live at</span>
-      <button
-        type="button"
-        className="publish-live-domain"
-        onClick={() => void openUrl(`https://${liveHost}`)}
-        title={`Open https://${liveHost}`}
-      >
-        {liveHost}
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path
-            d="M7 17 17 7M17 7H8M17 7v9"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
-    </div>
-  ) : null;
+  const liveUrl = liveSiteUrl(vercelDomain);
+  const liveDomainLink =
+    liveHost && liveUrl ? (
+      <div className="publish-live-domain-row">
+        <span className="publish-live-domain-label">Live at</span>
+        <button
+          type="button"
+          className="publish-live-domain"
+          onClick={() => void openUrl(liveUrl)}
+          title={`Open ${liveUrl}`}
+        >
+          {liveHost}
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d="M7 17 17 7M17 7H8M17 7v9"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      </div>
+    ) : null;
 
   // Track previous forceOpen value to detect true→false transitions
   const prevForceOpenRef = useRef<boolean | undefined>(undefined);

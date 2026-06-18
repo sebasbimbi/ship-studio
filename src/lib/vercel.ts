@@ -16,6 +16,12 @@ export interface VercelDomainInfo {
   custom_domain: string | null;
   /** System `*.vercel.app` URL, used as a fallback display, or null. */
   system_url: string | null;
+  /**
+   * Full `https://` address to open (e.g. "https://pop.bimbi.co"), built by the
+   * backend from the canonical host. Consumers open this directly — they never
+   * construct a URL from a host fragment. Null only when no host exists.
+   */
+  production_url: string | null;
 }
 
 /**
@@ -34,7 +40,16 @@ export async function getVercelProductionDomain(
   });
 }
 
-/** The single address to show/open: the custom domain if any, else the system url. */
+/** The bare host to display as a label: the custom domain if any, else the system url. */
 export function liveSiteHost(domain: VercelDomainInfo | null): string | null {
   return domain?.custom_domain ?? domain?.system_url ?? null;
+}
+
+/**
+ * The full `https://` URL to open — surfaced straight from the backend's
+ * `production_url`, never built from a host fragment here. Null when there's no
+ * live site to open.
+ */
+export function liveSiteUrl(domain: VercelDomainInfo | null): string | null {
+  return domain?.production_url ?? null;
 }

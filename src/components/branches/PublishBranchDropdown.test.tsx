@@ -7,19 +7,13 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { liveSiteHost } from '../../lib/vercel';
+import { mockInvokeResponse } from '../../test/setup';
 
-const invokeResults = new Map<string, unknown>();
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn((cmd: string) => Promise.resolve(invokeResults.get(cmd))),
-}));
-
-const openUrlMock = vi.fn<(u: string) => void>();
-vi.mock('@tauri-apps/plugin-opener', () => ({
-  openUrl: (u: string) => {
-    openUrlMock(u);
-  },
-}));
+// @tauri-apps/api/core and @tauri-apps/plugin-opener are mocked centrally in
+// src/test/setup.ts; openUrl is a vi.fn() we read back via vi.mocked below.
+const openUrlMock = vi.mocked(openUrl);
 
 import { PublishBranchDropdown } from './PublishBranchDropdown';
 
@@ -37,27 +31,41 @@ const baseProps = {
   setIsPublishing: vi.fn(),
 };
 
+// The centralized IPC + opener mocks are cleared between tests by the global
+// beforeEach/afterEach in src/test/setup.ts.
 beforeEach(() => {
-  invokeResults.clear();
   openUrlMock.mockClear();
 });
 
 describe('liveSiteHost', () => {
   it('prefers the custom domain, falls back to the system url, else null', () => {
-    expect(liveSiteHost({ custom_domain: 'pop.bimbi.co', system_url: 'x.vercel.app' })).toBe(
-      'pop.bimbi.co'
-    );
-    expect(liveSiteHost({ custom_domain: null, system_url: 'x.vercel.app' })).toBe('x.vercel.app');
-    expect(liveSiteHost({ custom_domain: null, system_url: null })).toBeNull();
+    expect(
+      liveSiteHost({
+        custom_domain: 'pop.bimbi.co',
+        system_url: 'x.vercel.app',
+        production_url: 'https://pop.bimbi.co',
+      })
+    ).toBe('pop.bimbi.co');
+    expect(
+      liveSiteHost({
+        custom_domain: null,
+        system_url: 'x.vercel.app',
+        production_url: 'https://x.vercel.app',
+      })
+    ).toBe('x.vercel.app');
+    expect(
+      liveSiteHost({ custom_domain: null, system_url: null, production_url: null })
+    ).toBeNull();
     expect(liveSiteHost(null)).toBeNull();
   });
 });
 
 describe('PublishBranchDropdown live domain', () => {
   it('shows the Vercel custom domain on the main branch and opens it on click', async () => {
-    invokeResults.set('get_vercel_production_domain', {
+    mockInvokeResponse('get_vercel_production_domain', {
       custom_domain: 'pop.bimbi.co',
       system_url: 'pop-sandy-five.vercel.app',
+      production_url: 'https://pop.bimbi.co',
     });
     render(<PublishBranchDropdown {...baseProps} />);
     fireEvent.click(screen.getByRole('button', { name: /Publish/ }));
@@ -68,9 +76,10 @@ describe('PublishBranchDropdown live domain', () => {
   });
 
   it('does not show a domain on a feature branch', async () => {
-    invokeResults.set('get_vercel_production_domain', {
+    mockInvokeResponse('get_vercel_production_domain', {
       custom_domain: 'pop.bimbi.co',
       system_url: null,
+      production_url: 'https://pop.bimbi.co',
     });
     render(<PublishBranchDropdown {...baseProps} currentBranch="feature/x" />);
     fireEvent.click(screen.getByRole('button', { name: /Sync/ }));
