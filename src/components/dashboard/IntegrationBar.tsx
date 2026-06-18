@@ -33,6 +33,7 @@ import {
   TERMINAL_COMMANDS,
 } from '../../lib/setup';
 import { signOutAgent, uninstallAgent } from '../../lib/agents-management';
+import { useAsyncState } from '../../hooks/useAsyncState';
 import { useOptionalToast } from '../../contexts/ToastContext';
 import { logger } from '../../lib/logger';
 
@@ -84,8 +85,6 @@ interface UninstallConfirm {
 
 export function IntegrationBar({ onGitHubConnect }: IntegrationBarProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [setupItems, setSetupItems] = useState<SetupItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [terminalTask, setTerminalTask] = useState<TerminalTask | null>(null);
   const [confirmUninstall, setConfirmUninstall] = useState<UninstallConfirm | null>(null);
@@ -93,32 +92,33 @@ export function IntegrationBar({ onGitHubConnect }: IntegrationBarProps) {
   const panelRef = useRef<HTMLElement>(null);
   const { showToast } = useOptionalToast();
 
-  // Stable showToast identity so refresh() doesn't re-fire the mount effect when
-  // there's no ToastProvider (useOptionalToast returns a fresh object per render).
-  const showToastRef = useRef(showToast);
-  useEffect(() => {
-    showToastRef.current = showToast;
-  }, [showToast]);
-
-  const refresh = useCallback(async () => {
-    try {
+  // Setup status via the shared async-state hook — gives us the mount guard,
+  // the try/finally loading flag, and a stable `execute` for free. The fetcher
+  // sorts into the canonical row order so `data` is render-ready. A failed load
+  // is logged and surfaces as an empty list (no crash, no spinner stuck on).
+  // Show "Checking…" only until the first load settles — not on the silent
+  // background refreshes that follow an install/connect. Mirrors the prior
+  // behavior, where isLoading was set true once and only flipped to false.
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const { data: setupItems, execute: refresh } = useAsyncState<SetupItem[]>(
+    useCallback(async () => {
       const status = await getFullSetupStatus();
-      const sorted = [...status.items].sort(
+      return [...status.items].sort(
         (a, b) => SETUP_ITEM_ORDER.indexOf(a.id) - SETUP_ITEM_ORDER.indexOf(b.id)
       );
-      setSetupItems(sorted);
-    } catch (error) {
-      logger.error('Failed to load setup status', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      setIsLoading(false);
+    }, []),
+    {
+      initial: [],
+      immediate: true,
+      onSuccess: () => setHasLoaded(true),
+      onError: (error) => {
+        setHasLoaded(true);
+        logger.error('Failed to load setup status', { error: error.message });
+      },
     }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  );
+  const isChecking = !hasLoaded;
+  const items = setupItems ?? [];
 
   // Close the kebab menu on outside click.
   useEffect(() => {
@@ -234,8 +234,8 @@ export function IntegrationBar({ onGitHubConnect }: IntegrationBarProps) {
     [busy, scheduleRefresh, showToast]
   );
 
-  const readyCount = setupItems.filter((item) => item.status === 'ready').length;
-  const totalCount = setupItems.length;
+  const readyCount = items.filter((item) => item.status === 'ready').length;
+  const totalCount = items.length;
   const allConnected = totalCount > 0 && readyCount === totalCount;
 
   const getItemIcon = (itemId: string) => {
@@ -260,13 +260,13 @@ export function IntegrationBar({ onGitHubConnect }: IntegrationBarProps) {
     return item.status === 'not_installed' ? 'Not installed' : 'Not connected';
   };
 
-  const subtitle = isLoading
+  const subtitle = isChecking
     ? 'Checking…'
     : allConnected
       ? 'All integrations connected'
       : `${readyCount}/${totalCount} ready`;
 
-  const statusIcon = isLoading ? (
+  const statusIcon = isChecking ? (
     <Spinner size="sm" />
   ) : allConnected ? (
     <CheckIcon size={14} className="integration-bar-status-icon success" />
@@ -301,7 +301,7 @@ export function IntegrationBar({ onGitHubConnect }: IntegrationBarProps) {
 
       {isExpanded && (
         <div className="dashboard-card-rows">
-          {setupItems.map((item) => {
+          {items.map((item) => {
             const account = isAccountItem(item.id);
             const ready = item.status === 'ready';
             const isBusy = busy === item.id;

@@ -10,26 +10,10 @@
  * plus a couple of behaviors (Disconnect invokes logout; Connect opens a terminal).
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { SetupItem } from '../../lib/setup';
-
-const invokeResults = new Map<string, { value?: unknown; error?: Error }>();
-const invokeCalls: Array<{ cmd: string; args?: unknown }> = [];
-
-function mockInvoke(cmd: string, value: unknown) {
-  invokeResults.set(cmd, { value });
-}
-
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn((cmd: string, args?: unknown) => {
-    invokeCalls.push({ cmd, args });
-    const result = invokeResults.get(cmd);
-    if (result?.error) return Promise.reject(result.error);
-    if (result) return Promise.resolve(result.value);
-    return Promise.resolve(undefined);
-  }),
-}));
+import { mockInvokeResponse } from '../../test/setup';
 
 // Avoid pulling xterm / tauri-pty into jsdom.
 vi.mock('../setup/OnboardingTerminal', () => ({
@@ -55,7 +39,7 @@ function item(overrides: Partial<SetupItem> & Pick<SetupItem, 'id'>): SetupItem 
 }
 
 function setItems(items: SetupItem[]) {
-  mockInvoke('get_full_setup_status', {
+  mockInvokeResponse('get_full_setup_status', {
     allReady: false,
     items,
     optionalAuths: { githubAuthenticated: false },
@@ -71,10 +55,8 @@ async function renderExpanded(items: SetupItem[]) {
   fireEvent.click(screen.getByRole('button', { name: /integrations/i }));
 }
 
-beforeEach(() => {
-  invokeResults.clear();
-  invokeCalls.length = 0;
-});
+// The centralized IPC mock (src/test/setup.ts) is cleared between tests by the
+// global beforeEach/afterEach, so no local reset is needed here.
 
 describe('IntegrationBar action gating', () => {
   it('shows Install for a not-installed tool and Connect for a not-authenticated account', async () => {
@@ -97,6 +79,13 @@ describe('IntegrationBar action gating', () => {
   });
 
   it('shows Reconnect + Disconnect in a ready account kebab, and Disconnect logs out', async () => {
+    // Record the logout call via a function-valued IPC mock.
+    let loggedOut = false;
+    mockInvokeResponse('logout_github', () => {
+      loggedOut = true;
+      return undefined;
+    });
+
     await renderExpanded([
       item({ id: 'gh_auth', friendlyName: 'GitHub Account', status: 'ready', username: 'octocat' }),
     ]);
@@ -109,7 +98,7 @@ describe('IntegrationBar action gating', () => {
     fireEvent.click(within(menu).getByRole('menuitem', { name: 'Disconnect' }));
 
     await waitFor(() => {
-      expect(invokeCalls.some((c) => c.cmd === 'logout_github')).toBe(true);
+      expect(loggedOut).toBe(true);
     });
   });
 

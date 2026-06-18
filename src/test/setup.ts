@@ -53,12 +53,13 @@ export function clearInvokeMocks() {
   invokeErrors.clear();
 }
 
-// Set up Tauri mocks before all tests
-beforeAll(() => {
-  // Mock windows
+// (Re)install the official Tauri IPC mock. `clearMocks()` in afterEach deletes
+// `window.__TAURI_INTERNALS__.invoke`, so registering this only once in
+// beforeAll would leave every test after the first with no IPC handler. We call
+// it from beforeAll *and* beforeEach so every test gets a live mock.
+function installTauriIpcMock() {
   mockWindows('main');
 
-  // Set up IPC mock handler
   mockIPC((cmd, args) => {
     // Check for error first
     const error = invokeErrors.get(cmd);
@@ -115,6 +116,11 @@ beforeAll(() => {
         return undefined;
     }
   });
+}
+
+// Set up Tauri mocks before all tests
+beforeAll(() => {
+  installTauriIpcMock();
 });
 
 // Mock tauri-pty (native module)
@@ -148,6 +154,9 @@ vi.mock('@tauri-apps/plugin-process', () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   clearInvokeMocks();
+  // The prior afterEach's clearMocks() removed the IPC handler — reinstall it
+  // so each test starts with a working invoke mock.
+  installTauriIpcMock();
 });
 
 // Cleanup after each test
