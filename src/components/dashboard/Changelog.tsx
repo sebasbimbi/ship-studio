@@ -25,6 +25,15 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.9.0', // v0.9.0
+    items: [
+      'Custom classes — a Webflow-style class system in the visual editor, native to Tailwind. Select an element, name a class, and its styles become a reusable rule; edit that class once and every element using it updates. Built on Tailwind @apply, so it stays in your source',
+      "Apply, remove, and create — a searchable class picker lets you apply an existing class to an element, detach one, or create a new class from the element's current styles, with full keyboard navigation",
+      'Edits stay scoped — editing a class only touches the element you selected, even when several elements share the same Tailwind classes, and the class control is fully responsive across breakpoints',
+      'Safer by default — creating a class from styles never writes the kind of utility that would break your Tailwind build (markers like group/peer are kept on the element instead)',
+    ],
+  },
+  {
     version: '0.8.2', // v0.8.2
     items: [
       'Live preview opens reliably on slower dev servers — projects on Next.js 16 / Turbopack that take a while to compile the first page no longer get stuck on "Stopped waiting"; the preview now rides the initial compile and opens once it\'s ready',
