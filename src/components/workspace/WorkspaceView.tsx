@@ -895,6 +895,7 @@ export const WorkspaceView = memo(function WorkspaceView({
             setIsPreviewHidden(false);
             setWorkspaceTab('preview');
           }}
+          title="Preview"
         >
           <EyeIcon size={14} />
           <span>Preview</span>
@@ -916,6 +917,7 @@ export const WorkspaceView = memo(function WorkspaceView({
           setIsPreviewHidden(false);
           setWorkspaceTab('code');
         }}
+        title="Code"
       >
         <CodeIcon size={14} />
         <span>Code</span>
@@ -928,6 +930,7 @@ export const WorkspaceView = memo(function WorkspaceView({
               setIsPreviewHidden(false);
               setWorkspaceTab('branches');
             }}
+            title="Branches"
             data-education-id="branches-tab"
           >
             <BranchIcon size={14} />
@@ -939,6 +942,7 @@ export const WorkspaceView = memo(function WorkspaceView({
               setIsPreviewHidden(false);
               setWorkspaceTab('prs');
             }}
+            title="PRs"
             data-education-id="prs-tab"
           >
             <PullRequestIcon size={14} />

@@ -1244,7 +1244,16 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
               sending={redline.sending}
             />
           );
-          return editorPinned ? panel : createPortal(panel, document.body);
+          // Pinned: wrap in a relative "dock" grid cell and absolutely-position
+          // the panel inside it. An absolute panel can't grow its grid track, so
+          // it's forced to the cell's real (bounded) height and its body scrolls
+          // — grid track-sizing was letting the in-flow panel grow past the
+          // viewport in WebKit instead.
+          return editorPinned ? (
+            <div className="ss-edit-panel-dock">{panel}</div>
+          ) : (
+            createPortal(panel, document.body)
+          );
         })()}
     </div>
   );

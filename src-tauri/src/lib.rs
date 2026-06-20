@@ -370,6 +370,8 @@ pub fn run() {
             commands::projects::set_custom_dev_command,
             commands::projects::get_dev_server_port,
             commands::projects::set_dev_server_port,
+            commands::projects::get_force_static_serve,
+            commands::projects::set_force_static_serve,
             commands::projects::get_workspace_subpath,
             commands::projects::set_workspace_subpath,
             commands::projects::check_dependencies_installed,
@@ -386,6 +388,12 @@ pub fn run() {
             // Redline (annotated change requests + /redline command installer)
             commands::redline::write_redline_export,
             commands::redline::install_redline_command,
+            commands::custom_classes::detect_tailwind_setup,
+            commands::custom_classes::list_custom_classes,
+            commands::custom_classes::create_custom_class,
+            commands::custom_classes::update_custom_class,
+            commands::custom_classes::delete_custom_class,
+            commands::custom_classes::classify_apply_tokens,
             commands::projects::get_terminal_state,
             commands::projects::set_terminal_state,
             commands::projects::extract_template_zip,
@@ -459,6 +467,7 @@ pub fn run() {
             commands::settings::set_terminal_gpu_enabled,
             // AI generation
             commands::ai::generate_pr_description,
+            commands::ai::generate_commit_message,
             // Claude integration
             commands::claude::check_claude_cli_status,
             commands::claude::install_claude_cli,

@@ -534,7 +534,7 @@ export function ProjectList({
               className="slack-cta-join"
               onClick={() =>
                 void openUrl(
-                  'https://join.slack.com/t/shipstudiocommunity/shared_invite/zt-3ommmu2w4-jtYZzzc9T~9lsEeKQ4E2AQ'
+                  'https://join.slack.com/t/shipstudiocommunity/shared_invite/zt-41vbyaoo0-_pZWNPyMdvMoF6neuDYw7g'
                 )
               }
             >
