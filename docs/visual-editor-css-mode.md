@@ -51,14 +51,15 @@ A project/page is "CSS-editable" when:
 2. **Styling is external and class-based** — linked stylesheet(s); managed
    styles do not live in inline `style="…"` (inline → read-only + "extract to
    class").
-3. **One authored stylesheet** is the write target for new rules. Default: the
-   page's primary linked stylesheet; configurable later.
+3. **Multi-class elements are fine** — base + modifier/combo classes (BEM,
+   `card card--active`, component + utility) all work; the class bar picks which
+   class's rule you edit. The constraint is on the *class→rule* mapping, not the
+   *element→class* count.
 4. **An editable class resolves to exactly one rule** in the indexed
-   stylesheets. A class defined by multiple rules → read-only + flagged
-   (`Multiple`), never an ambiguous guess.
-5. **Breakpoints are a fixed `@media (min-width: …)` set** matching the
-   existing breakpoint bar, so a responsive edit writes into the correct media
-   block (creating it if absent).
+   stylesheets. A class defined by multiple scattered rules → read-only +
+   flagged (`Multiple`), never an ambiguous guess — consolidate it into one.
+5. **Breakpoints are a fixed `@media (min-width: …)` set**, so a responsive edit
+   writes into the correct media block (creating it if absent).
 
 Anything off-spec → the prep prompt.
 

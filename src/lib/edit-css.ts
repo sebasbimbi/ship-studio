@@ -151,10 +151,10 @@ export function buildCssPrepPrompt(authoredSheets: string[] = []): string {
     `Refactor this project's styling so it can be edited with a visual, click-to-edit CSS editor. ` +
     `Do NOT change how the site looks — this is a structural refactor only.${sheetLine}\n\n` +
     `Apply these conventions:\n` +
-    `1. Style through CSS classes, never inline style="" attributes. Move any inline styles into classes.\n` +
-    `2. Give each styled element ONE semantic class (e.g. .hero-title, .feature-card), named for what it is.\n` +
-    `3. Define each class with exactly ONE rule in an external stylesheet. If a class is currently defined by several rules, merge them into one.\n` +
-    `4. Avoid utility-class soup (many single-purpose classes per element); prefer one meaningful class whose rule holds the styles.\n` +
+    `1. Style through CSS classes, not inline style="" attributes. Move any inline styles onto classes.\n` +
+    `2. Keep styles in the external stylesheets the pages link — not inline <style> blocks or CSS-in-JS.\n` +
+    `3. Elements may carry MULTIPLE classes — base + modifier/combo classes (e.g. BEM, "card card--active") is perfectly fine. Just make sure each class is defined by a SINGLE rule: if the same class is defined by several scattered rules, consolidate its declarations into one.\n` +
+    `4. Give classes meaningful names for what they style.\n` +
     `5. Keep responsive overrides in @media blocks (min-width / max-width), each mirroring the base rule's selector.\n\n` +
     `Work file by file, keep the rendered output visually identical, and tell me which files you changed when done.`
   );

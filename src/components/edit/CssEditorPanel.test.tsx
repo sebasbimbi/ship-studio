@@ -143,7 +143,7 @@ describe('CssEditorPanel', () => {
     expect(screen.getByText(/refactor this project's styling/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Paste' }));
     expect(onSendToClaude).toHaveBeenCalledTimes(1);
-    expect(onSendToClaude.mock.calls[0][0]).toMatch(/one semantic class/i);
+    expect(onSendToClaude.mock.calls[0][0]).toMatch(/multiple classes/i);
   });
 
   it('shows read-only guidance for a multiply-defined class', () => {
