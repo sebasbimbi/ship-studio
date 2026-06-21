@@ -25,12 +25,26 @@
   line-height: 1.5;
 }
 
+/* The editing target ("WHAT you are editing": the resolved selector + file) pins
+   to the top of the scrolling panel body so it's always visible while scrolling
+   the properties below. Full-bleed to the panel edges with its own background and
+   a divider that reads as the line between the state switcher above and the class
+   being edited. The negative `top` cancels the body's top padding so it sticks
+   flush to the panel's top edge — no scrolled content peeks through the padding
+   band above it. */
 .ss-css-context {
+  position: sticky;
+  top: calc(-1 * var(--spacing-md));
+  z-index: 1;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: var(--spacing-sm);
-  margin-bottom: var(--spacing-xs);
+  margin: 0 calc(-1 * var(--spacing-md));
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
 .ss-css-selector {
   font-family: var(--font-mono, monospace);
@@ -565,27 +579,19 @@
 }
 
 /* ── Code view ───────────────────────────────────────────────────── */
+/* The Code view fills the panel body. The body forces `flex: 0 0 auto` on its
+   children (visual-editor.css) so the structured controls keep their natural
+   height; the code editor is the exception — it must grow to fill, otherwise it
+   collapses to the editor's min-height and leaves the lower half of the panel
+   empty. */
+.ss-edit-panel__body > .ss-css-code {
+  flex: 1 1 auto;
+  min-height: 0;
+}
 .ss-css-code {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
-}
-.ss-css-code__area {
-  width: 100%;
-  resize: vertical;
-  min-height: 96px;
-  font-family: var(--font-mono, monospace);
-  font-size: var(--font-size-xs);
-  line-height: 1.6;
-  color: var(--text-primary);
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: var(--spacing-sm);
-}
-.ss-css-code__area:focus {
-  outline: none;
-  border-color: var(--action);
 }
 .ss-css-code__actions {
   display: flex;
