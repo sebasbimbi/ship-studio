@@ -28,8 +28,13 @@
   font-size: var(--font-size-xs);
   line-height: 1.6;
   tab-size: 2;
+  /* The two layers MUST wrap at the SAME points or clicking "on" the text lands
+     at the wrong caret position. A <textarea> only soft-wraps at spaces, so the
+     <pre> must too — `word-break: break-word` broke long tokens mid-word in the
+     highlight but not in the textarea, drifting them apart line by line. */
   white-space: pre-wrap;
-  word-break: break-word;
+  word-break: normal;
+  overflow-wrap: normal;
   overflow: auto;
   box-sizing: border-box;
 }
@@ -54,6 +59,7 @@
   font: inherit;
   white-space: inherit;
   word-break: inherit;
+  overflow-wrap: inherit;
 }
 
 .ss-codeedit__area {
