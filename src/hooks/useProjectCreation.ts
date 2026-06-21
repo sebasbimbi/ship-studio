@@ -78,7 +78,7 @@ export const TEMPLATES: Template[] = [
   {
     id: 'nextjs-basic',
     name: 'Next.js',
-    description: "The most flexible, especially for web apps. A great default if you're not sure.",
+    description: 'The most flexible, especially for web apps. A great default if unsure.',
     repo: 'https://github.com/ship-studio/static-marketing-site-starter',
     category: 'web',
   },
@@ -99,23 +99,21 @@ export const TEMPLATES: Template[] = [
   {
     id: 'sveltekit-basic',
     name: 'SvelteKit',
-    description:
-      'Best for snappy, interactive apps — Svelte compiles away the framework for minimal JS and fast loads.',
+    description: 'Best for snappy, interactive apps with minimal JS and fast loads.',
     repo: 'https://github.com/ship-studio/sveltekit-static-marketing-site-starter',
     category: 'web',
   },
   {
     id: 'nuxt-basic',
     name: 'Nuxt',
-    description:
-      'Best for Vue teams building full-stack apps, with server rendering and data fetching built in.',
+    description: 'Best for Vue teams building full-stack apps with server rendering.',
     repo: 'https://github.com/ship-studio/nuxt-static-marketing-site-starter',
     category: 'web',
   },
   {
     id: 'html-basic',
     name: 'HTML/CSS/JS',
-    description: 'A plain website with no framework or build step.',
+    description: 'A plain site with no framework or build step — just HTML, CSS, and JS.',
     repo: 'https://github.com/ship-studio/html-starter',
     category: 'web',
     skipInstall: true,
