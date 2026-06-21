@@ -28,7 +28,10 @@ use crate::commands::edit::Location;
 use crate::errors::CommandError;
 use crate::utils::validate_project_path;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
 /// Directories never worth scanning for authored stylesheets.
 const SKIP_DIRS: &[&str] = &[
@@ -47,6 +50,40 @@ const SKIP_DIRS: &[&str] = &[
 /// Skip stylesheets larger than this (bytes) — almost certainly generated /
 /// minified bundles, not hand-authored convention-conforming CSS.
 const MAX_CSS_BYTES: u64 = 2 * 1024 * 1024;
+
+/// How long a discovered-stylesheets snapshot stays fresh. Resolving runs on
+/// every element select / edit; without this, each one re-walks and re-reads
+/// the whole project (laggy on large projects). Writes invalidate the entry so
+/// edits are seen immediately.
+const SHEET_CACHE_TTL: Duration = Duration::from_millis(2000);
+
+#[allow(clippy::type_complexity)]
+static SHEET_CACHE: LazyLock<Mutex<HashMap<PathBuf, (Instant, Vec<(String, String)>)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Discovered `(rel, content)` stylesheets for `root`, cached with a short TTL.
+fn cached_stylesheets(root: &Path) -> Vec<(String, String)> {
+    if let Ok(cache) = SHEET_CACHE.lock() {
+        if let Some((at, sheets)) = cache.get(root) {
+            if at.elapsed() < SHEET_CACHE_TTL {
+                return sheets.clone();
+            }
+        }
+    }
+    let sheets = discover_stylesheets(root);
+    if let Ok(mut cache) = SHEET_CACHE.lock() {
+        cache.insert(root.to_path_buf(), (Instant::now(), sheets.clone()));
+    }
+    sheets
+}
+
+/// Drop the cached snapshot for `root` after a write, so the next resolve reads
+/// the just-saved CSS.
+fn invalidate_sheet_cache(root: &Path) {
+    if let Ok(mut cache) = SHEET_CACHE.lock() {
+        cache.remove(root);
+    }
+}
 
 // ───────────────────────────── Types ─────────────────────────────
 
@@ -824,7 +861,7 @@ pub fn resolve_css_rule(
     breakpoint_min_px: Option<u32>,
 ) -> Result<CssResolution, CommandError> {
     let root = validate_project_path(&project_path)?;
-    let sheets = discover_stylesheets(&root);
+    let sheets = cached_stylesheets(&root);
     Ok(resolve_in_sheets(&sheets, &signature, breakpoint_min_px))
 }
 
@@ -853,6 +890,7 @@ pub fn set_css_declaration(
     )?;
     if updated != src {
         std::fs::write(&abs, updated).map_err(CommandError::from)?;
+        invalidate_sheet_cache(&root);
     }
     Ok(())
 }
@@ -894,6 +932,7 @@ pub fn create_css_class(
     out.push_str(&rule);
     out.push('\n');
     std::fs::write(&abs, out).map_err(CommandError::from)?;
+    invalidate_sheet_cache(&root);
     Ok(())
 }
 
@@ -903,7 +942,7 @@ pub fn create_css_class(
 #[tracing::instrument(fields(project = %project_path))]
 pub fn list_stylesheets(project_path: String) -> Result<Vec<String>, CommandError> {
     let root = validate_project_path(&project_path)?;
-    Ok(discover_stylesheets(&root)
+    Ok(cached_stylesheets(&root)
         .into_iter()
         .map(|(rel, _)| rel)
         .collect())
@@ -941,7 +980,7 @@ fn class_names_in(selector: &str) -> Vec<String> {
 pub fn list_css_classes(project_path: String) -> Result<Vec<String>, CommandError> {
     let root = validate_project_path(&project_path)?;
     let mut set = std::collections::BTreeSet::new();
-    for (_, content) in discover_stylesheets(&root) {
+    for (_, content) in cached_stylesheets(&root) {
         for rule in index_rules(&content) {
             for c in class_names_in(&rule.selector) {
                 set.insert(c);

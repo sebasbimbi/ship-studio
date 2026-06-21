@@ -80,6 +80,10 @@ export function useCssEditor({ iframeRef, projectPath, enabled, onToast }: Param
   // so the class/state setters and the message handler read fresh values.
   const [targetClass, setTargetClassState] = useState<string | null>(null);
   const [pseudo, setPseudoState] = useState<string | null>(null);
+  // The active breakpoint (min-width px, null = base). Edits target the matching
+  // @media block. Mirrored into a ref so callbacks read it without re-binding.
+  const [breakpointMinPx, setBreakpointMinPxState] = useState<number | null>(null);
+  const breakpointRef = useRef<number | null>(null);
   const targetClassRef = useRef<string | null>(null);
   const pseudoRef = useRef<string | null>(null);
   const selectedSigRef = useRef<ElementSignature | null>(null);
@@ -146,7 +150,11 @@ export function useCssEditor({ iframeRef, projectPath, enabled, onToast }: Param
 
       void (async () => {
         try {
-          const resolution = await resolveCssRule(projectPath, toCssSignature(sig));
+          const resolution = await resolveCssRule(
+            projectPath,
+            toCssSignature(sig),
+            breakpointRef.current
+          );
           if (selTokenRef.current === token) {
             setSelection({ signature: sig, resolution, instanceCount });
           }
@@ -177,7 +185,11 @@ export function useCssEditor({ iframeRef, projectPath, enabled, onToast }: Param
       if (!sig) return;
       const token = ++selTokenRef.current;
       try {
-        const resolution = await resolveCssRule(projectPath, toCssSignature(sig, tClass, ps));
+        const resolution = await resolveCssRule(
+          projectPath,
+          toCssSignature(sig, tClass, ps),
+          breakpointRef.current
+        );
         if (selTokenRef.current === token) {
           setSelection((prev) => (prev ? { ...prev, resolution } : prev));
         }
@@ -204,6 +216,16 @@ export function useCssEditor({ iframeRef, projectPath, enabled, onToast }: Param
       pseudoRef.current = ps;
       setPseudoState(ps);
       void reresolve(targetClassRef.current, ps);
+    },
+    [reresolve]
+  );
+
+  /** Edit which breakpoint (min-width px, null = base) the controls target. */
+  const setBreakpoint = useCallback(
+    (minPx: number | null) => {
+      breakpointRef.current = minPx;
+      setBreakpointMinPxState(minPx);
+      void reresolve(targetClassRef.current, pseudoRef.current);
     },
     [reresolve]
   );
@@ -290,7 +312,7 @@ export function useCssEditor({ iframeRef, projectPath, enabled, onToast }: Param
       post({
         type: 'ss:mutateClass',
         selector: resolvedRule.selector,
-        rules: [{ minPx: resolvedRule.media_min_px ?? 0, decls: { [property]: value } }],
+        rules: [{ minPx: breakpointRef.current ?? 0, decls: { [property]: value } }],
       });
     },
     [post, resolvedRule]
@@ -300,11 +322,18 @@ export function useCssEditor({ iframeRef, projectPath, enabled, onToast }: Param
   const saveDeclaration = useCallback(
     async (property: string, value: string | null) => {
       if (!resolvedRule) return;
-      const { file, selector, media_min_px } = resolvedRule;
+      const { file, selector } = resolvedRule;
       post({ type: 'ss:suppressReload' });
       setSaving(true);
       try {
-        await setCssDeclaration(projectPath, file, selector, property, value, media_min_px);
+        await setCssDeclaration(
+          projectPath,
+          file,
+          selector,
+          property,
+          value,
+          breakpointRef.current
+        );
         // Advance the local declarations so consecutive edits keep working.
         setSelection((prev) => {
           if (prev?.resolution?.status !== 'resolved') return prev;
@@ -334,14 +363,15 @@ export function useCssEditor({ iframeRef, projectPath, enabled, onToast }: Param
     async (changes: { property: string; value: string | null }[]) => {
       const sel = selection;
       if (!resolvedRule || !sel || changes.length === 0) return;
-      const { file, selector, media_min_px } = resolvedRule;
+      const { file, selector } = resolvedRule;
+      const bp = breakpointRef.current;
       post({ type: 'ss:suppressReload' });
       setSaving(true);
       try {
         for (const c of changes) {
-          await setCssDeclaration(projectPath, file, selector, c.property, c.value, media_min_px);
+          await setCssDeclaration(projectPath, file, selector, c.property, c.value, bp);
         }
-        const resolution = await resolveCssRule(projectPath, toCssSignature(sel.signature));
+        const resolution = await resolveCssRule(projectPath, toCssSignature(sel.signature), bp);
         setSelection((prev) => (prev ? { ...prev, resolution } : prev));
         post({ type: 'ss:commit' });
         editsCommittedRef.current += changes.length;
@@ -362,9 +392,10 @@ export function useCssEditor({ iframeRef, projectPath, enabled, onToast }: Param
     async (file: string, selector: string, declarations: CssDeclaration[] = []) => {
       const sel = selection;
       if (!sel) return;
+      const bp = breakpointRef.current;
       try {
-        await createCssClass(projectPath, file, selector, declarations);
-        const resolution = await resolveCssRule(projectPath, toCssSignature(sel.signature));
+        await createCssClass(projectPath, file, selector, declarations, bp);
+        const resolution = await resolveCssRule(projectPath, toCssSignature(sel.signature), bp);
         setSelection({ ...sel, resolution });
         void trackEvent('visual_style_saved', { mode: 'css', created_rule: true });
         onToast?.(`Created ${selector}`, 'success');
@@ -415,6 +446,8 @@ export function useCssEditor({ iframeRef, projectPath, enabled, onToast }: Param
     /** The pseudo-state being edited (null = default), e.g. "hover". */
     pseudo,
     setPseudo,
+    breakpointMinPx,
+    setBreakpoint,
     addClass,
     removeClass,
   };

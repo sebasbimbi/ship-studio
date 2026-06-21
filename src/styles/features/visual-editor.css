@@ -298,11 +298,12 @@
   background: color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 .ss-edit-panel__seg.active {
-  background: var(--action);
-  color: var(--action-text);
+  background: var(--tint-strong);
+  color: var(--text-primary);
+  box-shadow: inset 0 0 0 1px var(--tint);
 }
 .ss-edit-panel__seg.active:hover {
-  background: var(--action);
+  background: var(--tint-strong);
 }
 .ss-edit-panel__seg--icon {
   padding: 0 5px;
@@ -583,8 +584,8 @@
   background: var(--bg-tertiary);
 }
 .ss-enum__item.is-active {
-  color: var(--action-text);
-  background: var(--action);
+  color: var(--text-primary);
+  background: var(--tint-strong);
 }
 
 .ss-edit-panel__slider {

@@ -454,11 +454,12 @@
   color: var(--text-primary);
 }
 .ss-cc-seg__btn.is-active {
-  background: var(--action);
-  color: var(--action-text);
+  background: var(--tint-strong);
+  color: var(--text-primary);
+  box-shadow: inset 0 0 0 1px var(--tint);
 }
 .ss-cc-seg__btn.is-active:hover {
-  color: var(--action-text);
+  color: var(--text-primary);
 }
 .ss-cc-select,
 .ss-cc-input {
