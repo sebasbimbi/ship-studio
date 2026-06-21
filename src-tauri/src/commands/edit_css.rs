@@ -30,25 +30,48 @@ use crate::utils::validate_project_path;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 /// Skip stylesheets larger than this (bytes) — almost certainly generated /
 /// minified bundles, not hand-authored convention-conforming CSS.
 const MAX_CSS_BYTES: u64 = 2 * 1024 * 1024;
 
-/// How long a discovered-stylesheets snapshot stays fresh. Resolving runs on
-/// every element select / edit; without this, each one re-walks and re-reads
-/// the whole project (laggy on large projects). Writes invalidate the entry so
-/// edits are seen immediately.
-const SHEET_CACHE_TTL: Duration = Duration::from_millis(2000);
+/// How long a parsed-stylesheets snapshot stays fresh. Resolving runs on every
+/// element select / edit; without this each one re-walks, re-reads, and re-parses
+/// the whole project. Matches the Tailwind index TTL (`edit::INDEX_TTL`) so the
+/// CSS editor is as snappy. Writes invalidate the entry so edits are seen at once.
+const SHEET_CACHE_TTL: Duration = Duration::from_secs(10);
+
+/// A discovered stylesheet with its rules pre-indexed. Caching the parsed rules
+/// (not just the raw text) means a click resolves against memory — no re-walk,
+/// re-read, or re-parse — the same shape as the Tailwind editor's `Arc`-cached
+/// occurrence index.
+#[derive(Clone)]
+struct SheetIndex {
+    rel: String,
+    content: String,
+    rules: Vec<RuleSpan>,
+}
+
+impl SheetIndex {
+    fn parse(rel: String, content: String) -> Self {
+        let rules = index_rules(&content);
+        Self {
+            rel,
+            content,
+            rules,
+        }
+    }
+}
 
 #[allow(clippy::type_complexity)]
-static SHEET_CACHE: LazyLock<Mutex<HashMap<PathBuf, (Instant, Vec<(String, String)>)>>> =
+static SHEET_CACHE: LazyLock<Mutex<HashMap<PathBuf, (Instant, Arc<Vec<SheetIndex>>)>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// Discovered `(rel, content)` stylesheets for `root`, cached with a short TTL.
-fn cached_stylesheets(root: &Path) -> Vec<(String, String)> {
+/// Parsed, cached stylesheets for `root`. Returns a cheap `Arc` clone on a hit;
+/// only a cold miss walks + parses.
+fn cached_sheets(root: &Path) -> Arc<Vec<SheetIndex>> {
     if let Ok(cache) = SHEET_CACHE.lock() {
         if let Some((at, sheets)) = cache.get(root) {
             if at.elapsed() < SHEET_CACHE_TTL {
@@ -56,7 +79,12 @@ fn cached_stylesheets(root: &Path) -> Vec<(String, String)> {
             }
         }
     }
-    let sheets = discover_stylesheets(root);
+    let sheets = Arc::new(
+        discover_stylesheets(root)
+            .into_iter()
+            .map(|(rel, content)| SheetIndex::parse(rel, content))
+            .collect::<Vec<_>>(),
+    );
     if let Ok(mut cache) = SHEET_CACHE.lock() {
         cache.insert(root.to_path_buf(), (Instant::now(), sheets.clone()));
     }
@@ -703,13 +731,10 @@ fn pick_class(sig: &CssSignature) -> Option<String> {
     toks.last().map(|s| s.to_string())
 }
 
-/// Resolve against already-loaded stylesheets — the testable core of
-/// [`resolve_css_rule`], free of filesystem and path validation.
-fn resolve_in_sheets(
-    sheets: &[(String, String)],
-    sig: &CssSignature,
-    bp: Option<u32>,
-) -> CssResolution {
+/// Resolve against already-indexed stylesheets — the testable core of
+/// [`resolve_css_rule`], free of filesystem and path validation. Filters the
+/// pre-parsed rules (no re-parse), so a click is an in-memory scan.
+fn resolve_in_sheets(sheets: &[SheetIndex], sig: &CssSignature, bp: Option<u32>) -> CssResolution {
     let class = match pick_class(sig) {
         Some(c) => c,
         None => {
@@ -726,11 +751,11 @@ fn resolve_in_sheets(
     };
     let selector = format!(".{class}{}", pseudo_suffix(sig));
 
-    let mut hits: Vec<(&String, &str, RuleSpan)> = Vec::new();
-    for (rel, content) in sheets {
-        for rule in index_rules(content) {
+    let mut hits: Vec<(&str, &str, &RuleSpan)> = Vec::new();
+    for sheet in sheets {
+        for rule in &sheet.rules {
             if selector_has_part(&rule.selector, &selector) && media_matches(&rule.media, bp) {
-                hits.push((rel, content.as_str(), rule));
+                hits.push((sheet.rel.as_str(), sheet.content.as_str(), rule));
             }
         }
     }
@@ -740,7 +765,7 @@ fn resolve_in_sheets(
         1 => {
             let (rel, content, rule) = &hits[0];
             CssResolution::Resolved {
-                file: (*rel).clone(),
+                file: (*rel).to_string(),
                 selector,
                 line: rule.selector_line,
                 media_min_px: rule.media.as_deref().and_then(media_min_px),
@@ -752,7 +777,7 @@ fn resolve_in_sheets(
             locations: hits
                 .iter()
                 .map(|(rel, _, rule)| Location {
-                    file: (*rel).clone(),
+                    file: (*rel).to_string(),
                     line: rule.selector_line,
                     column: 1,
                 })
@@ -941,7 +966,7 @@ pub fn resolve_css_rule(
     breakpoint_min_px: Option<u32>,
 ) -> Result<CssResolution, CommandError> {
     let root = validate_project_path(&project_path)?;
-    let sheets = cached_stylesheets(&root);
+    let sheets = cached_sheets(&root);
     Ok(resolve_in_sheets(&sheets, &signature, breakpoint_min_px))
 }
 
@@ -1027,10 +1052,7 @@ pub fn create_css_class(
 #[tracing::instrument(fields(project = %project_path))]
 pub fn list_stylesheets(project_path: String) -> Result<Vec<String>, CommandError> {
     let root = validate_project_path(&project_path)?;
-    Ok(cached_stylesheets(&root)
-        .into_iter()
-        .map(|(rel, _)| rel)
-        .collect())
+    Ok(cached_sheets(&root).iter().map(|s| s.rel.clone()).collect())
 }
 
 /// Every class name referenced in any rule selector (`.foo .bar:hover` → foo,
@@ -1065,8 +1087,8 @@ fn class_names_in(selector: &str) -> Vec<String> {
 pub fn list_css_classes(project_path: String) -> Result<Vec<String>, CommandError> {
     let root = validate_project_path(&project_path)?;
     let mut set = std::collections::BTreeSet::new();
-    for (_, content) in cached_stylesheets(&root) {
-        for rule in index_rules(&content) {
+    for sheet in cached_sheets(&root).iter() {
+        for rule in &sheet.rules {
             for c in class_names_in(&rule.selector) {
                 set.insert(c);
             }
@@ -1087,6 +1109,13 @@ mod tests {
             has_inline_style: false,
             pseudo: None,
         }
+    }
+
+    /// Build the parsed sheet index `resolve_in_sheets` now takes.
+    fn idx(list: Vec<(String, String)>) -> Vec<SheetIndex> {
+        list.into_iter()
+            .map(|(r, c)| SheetIndex::parse(r, c))
+            .collect()
     }
 
     #[test]
@@ -1168,7 +1197,7 @@ mod tests {
     #[test]
     fn resolves_pseudo_class_rule() {
         let css = ".btn { color: red; }\n.btn:hover { color: blue; }";
-        let sheets = vec![("s.css".to_string(), css.to_string())];
+        let sheets = idx(vec![("s.css".to_string(), css.to_string())]);
         let mut s = sig("btn");
         s.pseudo = Some("hover".into());
         match resolve_in_sheets(&sheets, &s, None) {
@@ -1373,10 +1402,10 @@ mod tests {
 
     #[test]
     fn resolves_single_rule() {
-        let sheets = vec![(
+        let sheets = idx(vec![(
             "styles.css".to_string(),
             ".hero { color: red; }".to_string(),
-        )];
+        )]);
         let res = resolve_in_sheets(&sheets, &sig("hero"), None);
         match res {
             CssResolution::Resolved {
@@ -1396,10 +1425,10 @@ mod tests {
 
     #[test]
     fn resolves_last_class_token_by_default() {
-        let sheets = vec![(
+        let sheets = idx(vec![(
             "s.css".to_string(),
             ".card { color: red; }\n.card-title { font-weight: 700; }".to_string(),
-        )];
+        )]);
         let res = resolve_in_sheets(&sheets, &sig("card card-title"), None);
         match res {
             CssResolution::Resolved { selector, .. } => assert_eq!(selector, ".card-title"),
@@ -1409,10 +1438,10 @@ mod tests {
 
     #[test]
     fn duplicate_rules_resolve_to_multiple() {
-        let sheets = vec![
+        let sheets = idx(vec![
             ("a.css".to_string(), ".hero { color: red; }".to_string()),
             ("b.css".to_string(), ".hero { color: blue; }".to_string()),
-        ];
+        ]);
         let res = resolve_in_sheets(&sheets, &sig("hero"), None);
         match res {
             CssResolution::Multiple { locations, .. } => assert_eq!(locations.len(), 2),
@@ -1422,7 +1451,10 @@ mod tests {
 
     #[test]
     fn missing_rule_resolves_to_not_found() {
-        let sheets = vec![("s.css".to_string(), ".other { color: red; }".to_string())];
+        let sheets = idx(vec![(
+            "s.css".to_string(),
+            ".other { color: red; }".to_string(),
+        )]);
         let res = resolve_in_sheets(&sheets, &sig("hero"), None);
         assert_eq!(
             res,
@@ -1434,7 +1466,7 @@ mod tests {
 
     #[test]
     fn no_class_resolves_to_needs_class_or_inline() {
-        let sheets: Vec<(String, String)> = vec![];
+        let sheets: Vec<SheetIndex> = vec![];
         assert!(matches!(
             resolve_in_sheets(&sheets, &sig(""), None),
             CssResolution::NeedsClass { .. }
@@ -1451,7 +1483,7 @@ mod tests {
     fn breakpoint_resolves_into_matching_media_block() {
         let css =
             ".hero { color: red; }\n@media (min-width: 768px) {\n  .hero { color: green; }\n}";
-        let sheets = vec![("s.css".to_string(), css.to_string())];
+        let sheets = idx(vec![("s.css".to_string(), css.to_string())]);
 
         let base = resolve_in_sheets(&sheets, &sig("hero"), None);
         match base {
