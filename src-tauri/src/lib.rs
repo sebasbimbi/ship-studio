@@ -383,6 +383,8 @@ pub fn run() {
             commands::edit::resolve_image_source,
             commands::edit::apply_src_edit,
             commands::edit::find_component_usage,
+            commands::edit::resolve_element_html,
+            commands::edit::apply_element_html,
             commands::edit::detect_breakpoints,
             commands::edit::is_tailwind_active,
             commands::edit_css::resolve_css_rule,

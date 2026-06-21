@@ -8,7 +8,9 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRightIcon } from '../icons';
+import { ElementHtmlEditor } from './ElementHtmlEditor';
 import type { ElementTreeNode } from '../../hooks/useElementTree';
+import type { ElementSignature } from '../../lib/edit';
 
 interface Props {
   tree: ElementTreeNode | null;
@@ -16,6 +18,9 @@ interface Props {
   selectedId: number | null;
   onSelect: (id: number) => void;
   onHover: (id: number | null) => void;
+  /** The currently-selected element (for the Code/HTML view). */
+  projectPath: string;
+  selectedSignature: ElementSignature | null;
 }
 
 /** Rows at depth < this start expanded so the tree isn't a single chevron. */
@@ -44,8 +49,17 @@ function RowLabel({ node }: { node: ElementTreeNode }) {
   );
 }
 
-export function ElementTreePanel({ tree, truncated, selectedId, onSelect, onHover }: Props) {
+export function ElementTreePanel({
+  tree,
+  truncated,
+  selectedId,
+  onSelect,
+  onHover,
+  projectPath,
+  selectedSignature,
+}: Props) {
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
+  const [view, setView] = useState<'visual' | 'code'>('visual');
   const bodyRef = useRef<HTMLDivElement>(null);
 
   const ancestors = useMemo(() => (tree ? buildAncestors(tree) : null), [tree]);
@@ -138,19 +152,59 @@ export function ElementTreePanel({ tree, truncated, selectedId, onSelect, onHove
     );
   };
 
+  const sigKey = selectedSignature
+    ? `${selectedSignature.tagName}|${selectedSignature.className}|${(selectedSignature.text ?? '').slice(0, 60)}`
+    : '';
+
   return (
     <div className="ss-tree-panel" data-testid="element-tree-panel">
       <div className="ss-tree-panel__header">
         <span className="ss-tree-panel__title">Elements</span>
+        <div className="ss-tree-panel__modes" role="group" aria-label="Elements view">
+          <button
+            type="button"
+            className={`ss-tree-panel__mode${view === 'visual' ? ' is-active' : ''}`}
+            aria-pressed={view === 'visual'}
+            onClick={() => setView('visual')}
+          >
+            Visual
+          </button>
+          <button
+            type="button"
+            className={`ss-tree-panel__mode${view === 'code' ? ' is-active' : ''}`}
+            aria-pressed={view === 'code'}
+            onClick={() => setView('code')}
+          >
+            Code
+          </button>
+        </div>
       </div>
-      <div className="ss-tree-panel__body" ref={bodyRef} onMouseLeave={() => onHover(null)}>
-        {tree ? renderNode(tree, 0) : <div className="ss-tree-panel__empty">Loading elements…</div>}
-        {truncated && (
-          <div className="ss-tree-panel__note">
-            Large page — showing the first part of the tree.
-          </div>
-        )}
-      </div>
+      {view === 'visual' ? (
+        <div className="ss-tree-panel__body" ref={bodyRef} onMouseLeave={() => onHover(null)}>
+          {tree ? (
+            renderNode(tree, 0)
+          ) : (
+            <div className="ss-tree-panel__empty">Loading elements…</div>
+          )}
+          {truncated && (
+            <div className="ss-tree-panel__note">
+              Large page — showing the first part of the tree.
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="ss-tree-panel__body">
+          {selectedSignature ? (
+            <ElementHtmlEditor
+              key={sigKey}
+              projectPath={projectPath}
+              signature={selectedSignature}
+            />
+          ) : (
+            <div className="ss-tree-panel__empty">Select an element to edit its HTML.</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

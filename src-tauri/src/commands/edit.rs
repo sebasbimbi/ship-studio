@@ -2200,9 +2200,265 @@ pub fn find_component_usage(
     })
 }
 
+// ───────────────────────────── Element HTML ─────────────────────────────────
+//
+// "Edit the HTML by hand": map a selected element to the exact span of source
+// markup it came from — its opening `<tag …>` through the matching `</tag>` —
+// so the user can edit that markup as text and we write it straight back.
+// Anchored on the same className resolution as style/text editing (so we pick
+// the right element among duplicates), then expanded to the full element span
+// by a quote/comment-aware tag balancer. Reliable for the well-formed HTML the
+// visual editor targets; ambiguous (`Multi`) or dynamic elements stay read-only.
+
+/// Void HTML elements — no closing tag, so the span is just the opening tag.
+const VOID_ELEMENTS: &[&str] = &[
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source",
+    "track", "wbr",
+];
+
+/// The element's source byte span `[open '<', close '>' + 1)` given a byte
+/// offset known to sit inside its opening tag (e.g. the `class` attribute value).
+fn element_span(src: &str, inside_open_tag: usize) -> Option<(usize, usize)> {
+    let bytes = src.as_bytes();
+    let n = bytes.len();
+    if inside_open_tag >= n {
+        return None;
+    }
+
+    // 1. The '<' that opens this tag (scan back).
+    let mut i = inside_open_tag;
+    while i > 0 && bytes[i] != b'<' {
+        i -= 1;
+    }
+    if bytes[i] != b'<' {
+        return None;
+    }
+    let open_start = i;
+
+    // Tag name.
+    let name_start = open_start + 1;
+    let mut j = name_start;
+    while j < n && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'-') {
+        j += 1;
+    }
+    if j == name_start {
+        return None;
+    }
+    let tag = src[name_start..j].to_ascii_lowercase();
+
+    // 2. End of the opening tag ('>'), honoring quoted attribute values.
+    let close_open = scan_to_gt(bytes, j)?;
+    let open_end = close_open + 1;
+    let self_closing = bytes[close_open.saturating_sub(1)] == b'/';
+    if self_closing || VOID_ELEMENTS.contains(&tag.as_str()) {
+        return Some((open_start, open_end));
+    }
+
+    // 3. Walk forward to the matching close tag, balancing same-name nesting and
+    //    skipping comments.
+    let mut depth = 1i32;
+    let mut p = open_end;
+    while p < n {
+        if p + 4 <= n && &src[p..p + 4] == "<!--" {
+            p = src[p..].find("-->").map(|r| p + r + 3)?;
+            continue;
+        }
+        if bytes[p] == b'<' {
+            if p + 1 < n && bytes[p + 1] == b'/' {
+                // Closing tag.
+                let ns = p + 2;
+                let mut ne = ns;
+                while ne < n && (bytes[ne].is_ascii_alphanumeric() || bytes[ne] == b'-') {
+                    ne += 1;
+                }
+                if src[ns..ne].to_ascii_lowercase() == tag {
+                    depth -= 1;
+                    if depth == 0 {
+                        let gt = scan_to_gt(bytes, ne)?;
+                        return Some((open_start, gt + 1));
+                    }
+                }
+                p = ne;
+                continue;
+            }
+            // Opening tag — bump depth only for a same-name, non-void, non-self-closing one.
+            let ns = p + 1;
+            let mut ne = ns;
+            while ne < n && (bytes[ne].is_ascii_alphanumeric() || bytes[ne] == b'-') {
+                ne += 1;
+            }
+            if ne > ns {
+                let oname = src[ns..ne].to_ascii_lowercase();
+                let gt = scan_to_gt(bytes, ne)?;
+                if oname == tag
+                    && bytes[gt.saturating_sub(1)] != b'/'
+                    && !VOID_ELEMENTS.contains(&oname.as_str())
+                {
+                    depth += 1;
+                }
+                p = gt + 1;
+                continue;
+            }
+        }
+        p += 1;
+    }
+    None
+}
+
+/// First `>` at/after `from` that isn't inside a quoted attribute value.
+fn scan_to_gt(bytes: &[u8], from: usize) -> Option<usize> {
+    let mut k = from;
+    let mut quote = 0u8;
+    while k < bytes.len() {
+        let c = bytes[k];
+        if quote != 0 {
+            if c == quote {
+                quote = 0;
+            }
+        } else if c == b'"' || c == b'\'' {
+            quote = c;
+        } else if c == b'>' {
+            return Some(k);
+        }
+        k += 1;
+    }
+    None
+}
+
+/// The element's source markup and where it lives.
+#[derive(Debug, Serialize)]
+pub struct ElementHtml {
+    pub file: String,
+    pub line: usize,
+    pub html: String,
+}
+
+/// Resolve an element to the source markup span, file, and contents, plus the
+/// byte span — shared by resolve/apply so both derive the span identically.
+fn locate_element(
+    project_path: &str,
+    signature: ElementSignature,
+) -> Result<(String, std::path::PathBuf, String, usize, usize, usize), CommandError> {
+    let resolution = resolve_classname_source(project_path.to_string(), signature)?;
+    let (file, line, class_name) = match resolution {
+        Resolution::Resolved {
+            file,
+            line,
+            class_name,
+            ..
+        } => (file, line, class_name),
+        Resolution::Multi { .. } => {
+            return Err(CommandError::Validation {
+                field: "element".into(),
+                reason: "this element appears in several places — edit it in code".into(),
+            })
+        }
+        Resolution::ReadOnly { reason } => {
+            return Err(CommandError::Validation {
+                field: "element".into(),
+                reason,
+            })
+        }
+    };
+    let root = validate_project_path(project_path)?;
+    let abs = root.join(&file);
+    let src = std::fs::read_to_string(&abs).map_err(CommandError::from)?;
+    let span = find_attr_spans(&src, attrs_for_path(&file))
+        .into_iter()
+        .find(|s| s.line == line && s.value == class_name)
+        .ok_or_else(|| CommandError::Validation {
+            field: "element".into(),
+            reason: "source no longer matches — reselect the element".into(),
+        })?;
+    let (start, end) =
+        element_span(&src, span.value_start).ok_or_else(|| CommandError::Validation {
+            field: "element".into(),
+            reason: "couldn't map this element to its source markup".into(),
+        })?;
+    Ok((file, abs, src, line, start, end))
+}
+
+/// Resolve a clicked element to its source HTML (opening tag → closing tag).
+#[tauri::command]
+#[tracing::instrument(skip(signature), fields(project = %project_path))]
+pub fn resolve_element_html(
+    project_path: String,
+    signature: ElementSignature,
+) -> Result<ElementHtml, CommandError> {
+    let (file, _abs, src, line, start, end) = locate_element(&project_path, signature)?;
+    Ok(ElementHtml {
+        file,
+        line,
+        html: src[start..end].to_string(),
+    })
+}
+
+/// Replace an element's source markup, after verifying it still equals
+/// `old_html` (drift guard — the file may have changed since selection).
+#[tauri::command]
+#[tracing::instrument(skip(signature, old_html, new_html), fields(project = %project_path))]
+pub fn apply_element_html(
+    project_path: String,
+    signature: ElementSignature,
+    old_html: String,
+    new_html: String,
+) -> Result<(), CommandError> {
+    let (_file, abs, src, _line, start, end) = locate_element(&project_path, signature)?;
+    if src[start..end] != old_html {
+        return Err(CommandError::Validation {
+            field: "old_html".into(),
+            reason: "source no longer matches — reselect the element".into(),
+        });
+    }
+    let mut updated = String::with_capacity(src.len() + new_html.len());
+    updated.push_str(&src[..start]);
+    updated.push_str(&new_html);
+    updated.push_str(&src[end..]);
+    std::fs::write(&abs, updated).map_err(CommandError::from)?;
+    let root = validate_project_path(&project_path)?;
+    invalidate_index_cache(&root);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn span_str(src: &str) -> String {
+        let inside = src.find("cls").unwrap();
+        let (s, e) = element_span(src, inside).unwrap();
+        src[s..e].to_string()
+    }
+
+    #[test]
+    fn element_span_simple() {
+        let src = r#"<section class="cls">hi</section>"#;
+        assert_eq!(span_str(src), src);
+    }
+
+    #[test]
+    fn element_span_nested_same_tag() {
+        let src = r#"<div class="cls"><div>inner</div>tail</div>"#;
+        assert_eq!(span_str(src), src);
+    }
+
+    #[test]
+    fn element_span_void_img_has_no_close() {
+        let src = r#"<img class="cls" src="x.png">after"#;
+        assert_eq!(span_str(src), r#"<img class="cls" src="x.png">"#);
+    }
+
+    #[test]
+    fn element_span_self_closing() {
+        let src = r#"<Custom class="cls" />tail"#;
+        assert_eq!(span_str(src), r#"<Custom class="cls" />"#);
+    }
+
+    #[test]
+    fn element_span_skips_comment_and_quoted_gt() {
+        let src = r#"<div class="cls" data-x="a>b"><!-- </div> --><span>x</span></div>"#;
+        assert_eq!(span_str(src), src);
+    }
 
     fn sig(class: &str, tag: &str, ancestors: &[&str]) -> ElementSignature {
         ElementSignature {

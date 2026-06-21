@@ -23,6 +23,7 @@ import { trackEvent } from '../../lib/analytics';
 import { buildCssPrepPrompt } from '../../lib/edit-css';
 import { CssControls, AddProp } from './CssControls';
 import { CssClassBar, CssStateSwitcher, CssBreakpointBar } from './CssClassBar';
+import { CodeOverlayEditor } from './CodeOverlayEditor';
 import { CSS_CATEGORIES, PROP_TO_CATEGORY } from '../../lib/cssControls';
 
 /** Common sections start open; the long-tail ones collapse to keep it scannable. */
@@ -120,13 +121,11 @@ function CodeView({
   const dirty = text !== serialized;
   return (
     <div className="ss-css-code">
-      <textarea
-        className="ss-css-code__area"
+      <CodeOverlayEditor
         value={text}
-        spellCheck={false}
-        rows={Math.max(4, text.split('\n').length + 1)}
-        placeholder={'property: value;'}
-        onChange={(e) => setText(e.target.value)}
+        onChange={setText}
+        lang="css"
+        placeholder="property: value;"
       />
       <div className="ss-css-code__actions">
         <Button variant="ghost" size="sm" disabled={!dirty} onClick={() => setText(serialized)}>

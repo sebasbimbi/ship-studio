@@ -29,11 +29,58 @@
   font-size: var(--font-size-md);
 }
 
+/* Visual / Code toggle in the header. */
+.ss-tree-panel__modes {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+}
+.ss-tree-panel__mode {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    color var(--transition);
+}
+.ss-tree-panel__mode.is-active {
+  background: var(--tint-strong);
+  color: var(--text-primary);
+}
+
 .ss-tree-panel__body {
   flex: 1;
   min-height: 0;
   overflow: auto;
   padding: var(--spacing-xs) 0;
+}
+
+/* Edit-HTML (Code) view. */
+.ss-tree-html {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  height: 100%;
+  padding: var(--spacing-md);
+}
+.ss-tree-html__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-xs);
+}
+.ss-tree-html__error {
+  padding: var(--spacing-md);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  line-height: 1.5;
 }
 
 .ss-tree-row {

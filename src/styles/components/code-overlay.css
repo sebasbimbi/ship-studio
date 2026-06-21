@@ -1,0 +1,71 @@
+/**
+ * Highlighted code editor (`CodeOverlayEditor`): a transparent textarea over a
+ * Shiki-highlighted <pre>. The two layers MUST share identical text metrics so
+ * the colored text sits exactly under the caret.
+ */
+
+.ss-codeedit {
+  position: relative;
+  width: 100%;
+  flex: 1;
+  min-height: 160px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+.ss-codeedit:focus-within {
+  border-color: var(--action);
+}
+
+.ss-codeedit__hl,
+.ss-codeedit__area {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: var(--spacing-sm);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-xs);
+  line-height: 1.6;
+  tab-size: 2;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: auto;
+  box-sizing: border-box;
+}
+
+.ss-codeedit__hl {
+  pointer-events: none;
+  z-index: 0;
+  color: var(--text-secondary);
+}
+/* Shiki renders its own <pre> with a background + padding; flatten it so it
+   lines up with the textarea and the wrapper background shows through. */
+.ss-codeedit__hl pre,
+.ss-codeedit__hl code {
+  margin: 0;
+  padding: 0;
+  background: transparent !important; /* css-ok: override Shiki's inline bg */
+  font: inherit;
+  white-space: inherit;
+  word-break: inherit;
+}
+
+.ss-codeedit__area {
+  z-index: 1;
+  border: none;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--text-primary);
+  resize: none;
+}
+/* Before the first highlight loads, keep the text visible. */
+.ss-codeedit__area.is-plain {
+  color: var(--text-primary);
+}
+.ss-codeedit__area:focus {
+  outline: none;
+}
+.ss-codeedit__area::placeholder {
+  color: var(--text-muted);
+}

@@ -1105,6 +1105,11 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
           selectedId={elementTree.selectedId}
           onSelect={elementTree.selectNode}
           onHover={elementTree.hoverNode}
+          projectPath={projectPath}
+          selectedSignature={
+            (editorMode === 'css' ? cssEditor.selection?.signature : editor.selection?.signature) ??
+            null
+          }
         />
       )}
       {editor.editMode &&
