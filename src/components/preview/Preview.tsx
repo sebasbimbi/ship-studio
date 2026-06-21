@@ -40,6 +40,8 @@ import { BrowserTools } from './BrowserTools';
 import { HealthTabPanel, type HealthTabPanelRef } from '../code/HealthTabPanel';
 import { BrowserDropdown } from './BrowserDropdown';
 import { useVisualEditor } from '../../hooks/useVisualEditor';
+import { useCssEditor } from '../../hooks/useCssEditor';
+import { CssEditorPanel } from '../edit/CssEditorPanel';
 import { useBreakpoints } from '../../hooks/useBreakpoints';
 import { BASE_BREAKPOINT, isTailwindActive, type Breakpoint as TwBreakpoint } from '../../lib/edit';
 import { VisualEditorPanel } from '../edit/VisualEditorPanel';
@@ -521,6 +523,27 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     onToast,
   });
 
+  // CSS-Mode editor — a SEPARATE feature for class-based CSS projects (vanilla
+  // Astro: no Tailwind). Mutually exclusive with the Tailwind editor above:
+  // Astro+Tailwind → `editor`; Astro without Tailwind → `cssEditor`. Same toggle
+  // and selection experience; edits write CSS rules instead of utility classes.
+  const cssEditorEnabled = conn.serverReady && projectType === 'astro' && !tailwindActive;
+  const cssEditor = useCssEditor({
+    iframeRef,
+    projectPath,
+    enabled: cssEditorEnabled,
+    onToast,
+  });
+  // Which editor (if any) the toolbar toggle and panel drive.
+  const editorMode: 'tailwind' | 'css' | null = editorEnabled
+    ? 'tailwind'
+    : cssEditorEnabled
+      ? 'css'
+      : null;
+  const activeEditMode = editor.editMode || cssEditor.editMode;
+  const toggleActiveEditor =
+    editorMode === 'css' ? cssEditor.toggleEditMode : editor.toggleEditMode;
+
   // Element tree (navigator) — left column in fullscreen edit mode, like
   // Webflow's navigator: read-only, select-only. Toggleable from the toolbar;
   // the choice persists cross-project like the editor pin.
@@ -688,7 +711,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   return (
     <div
       className={`preview-container${isFullscreen ? ' preview-container--fullscreen' : ''}${
-        editor.editMode && editorPinned ? ' preview-container--editor-pinned' : ''
+        activeEditMode && editorPinned ? ' preview-container--editor-pinned' : ''
       }${showTree ? ' preview-container--tree' : ''}`}
       data-logs={showLogs ? 'open' : 'closed'}
       style={{
@@ -701,13 +724,13 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
       }}
     >
       <div className="preview-toolbar">
-        {editorEnabled && (
+        {editorMode && (
           <button
             type="button"
-            className={`preview-edit-toggle${editor.editMode ? ' active' : ''}`}
-            onClick={editor.toggleEditMode}
+            className={`preview-edit-toggle${activeEditMode ? ' active' : ''}`}
+            onClick={toggleActiveEditor}
             title="Toggle visual editor"
-            aria-pressed={editor.editMode}
+            aria-pressed={activeEditMode}
           >
             <svg
               width="13"
@@ -724,7 +747,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
             </svg>
             <span>Edit</span>
             <span
-              className={`preview-edit-toggle-switch ${editor.editMode ? 'is-on' : ''}`}
+              className={`preview-edit-toggle-switch ${activeEditMode ? 'is-on' : ''}`}
               aria-hidden
             />
           </button>
@@ -1101,6 +1124,30 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
           // it's forced to the cell's real (bounded) height and its body scrolls
           // — grid track-sizing was letting the in-flow panel grow past the
           // viewport in WebKit instead.
+          return editorPinned ? (
+            <div className="ss-edit-panel-dock">{panel}</div>
+          ) : (
+            createPortal(panel, document.body)
+          );
+        })()}
+      {cssEditor.editMode &&
+        (() => {
+          // Same floating-vs-pinned strategy as the Tailwind panel above.
+          const panel = (
+            <CssEditorPanel
+              selection={cssEditor.selection}
+              authoredSheets={cssEditor.authoredSheets}
+              saving={cssEditor.saving}
+              onPreview={cssEditor.previewDeclaration}
+              onSave={(prop, value) => void cssEditor.saveDeclaration(prop, value)}
+              onCreateRule={(file, selector, decls) =>
+                void cssEditor.createRule(file, selector, decls)
+              }
+              onClose={cssEditor.toggleEditMode}
+              pinned={editorPinned}
+              onTogglePin={toggleEditorPinned}
+            />
+          );
           return editorPinned ? (
             <div className="ss-edit-panel-dock">{panel}</div>
           ) : (

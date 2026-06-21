@@ -1,0 +1,167 @@
+/**
+ * CSS-Mode editor panel body styles (the `CssEditorPanel`). The panel chrome
+ * (`.ss-edit-panel*`) is shared with the Tailwind editor (visual-editor.css);
+ * these rules cover only the CSS-mode-specific body content.
+ */
+
+.ss-css-empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) 0;
+}
+.ss-css-empty__lead {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+.ss-css-empty__hint,
+.ss-css-instances,
+.ss-css-status {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.ss-css-context {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding-bottom: var(--spacing-sm);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--spacing-sm);
+}
+.ss-css-selector {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--accent);
+}
+.ss-css-file {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 55%;
+}
+.ss-css-instances {
+  margin-bottom: var(--spacing-sm);
+}
+
+.ss-css-decls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.ss-css-row {
+  display: grid;
+  grid-template-columns: 38% 1fr auto;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+.ss-css-row__prop {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ss-css-row__value,
+.ss-css-add__prop,
+.ss-css-add__value {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px var(--spacing-xs);
+  min-width: 0;
+  transition: border-color var(--transition);
+}
+.ss-css-row__value:focus,
+.ss-css-add__prop:focus,
+.ss-css-add__value:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.ss-css-row__value.is-invalid {
+  border-color: var(--error, #e5484d); /* css-ok: fallback only; token preferred */
+}
+.ss-css-row__remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--font-size-md);
+  line-height: 1;
+  transition:
+    color var(--transition),
+    background var(--transition);
+}
+.ss-css-row__remove:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+.ss-css-add {
+  display: grid;
+  grid-template-columns: 38% 1fr auto;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-sm);
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid var(--border);
+}
+
+.ss-css-create {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+.ss-css-create__label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+.ss-css-create__label select {
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px var(--spacing-xs);
+}
+
+.ss-css-readonly {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.ss-css-readonly code,
+.ss-css-status code,
+.ss-css-create code {
+  font-family: var(--font-mono, monospace);
+  color: var(--text-secondary);
+}
+.ss-css-locations {
+  margin: var(--spacing-xs) 0 0;
+  padding-left: var(--spacing-md);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
