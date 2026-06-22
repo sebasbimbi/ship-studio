@@ -25,6 +25,12 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.11.2', // v0.11.2
+    items: [
+      "Creating a branch with unsaved work no longer errors out — if you have uncommitted changes, you now get a clear choice: commit them on your current branch first, or stash them aside, then the new branch is created and switched to. Git errors throughout the Branches tab also show a real message now instead of '[object Object]'",
+    ],
+  },
+  {
     version: '0.11.1', // v0.11.1
     items: [
       "GitHub connect fix — fixed a bug where connecting GitHub could get stuck in a loop: you'd authenticate in the browser, GitHub would show connected, but the button stayed grey and kept re-prompting. This hit Windows users especially (and some Macs); your default workspace now finds your existing GitHub login wherever it actually lives",
