@@ -6,6 +6,11 @@ The latest entry is rendered inside the in-app update dialog, so write user-
 facing language — what changed, in plain English — not commit subjects.
 -->
 
+## What's New in v0.11.1
+
+- **GitHub connect fix** - Fixed a loop where connecting GitHub would authenticate in the browser (GitHub showed connected) but the button stayed grey and kept re-prompting. Hit Windows users especially, plus some Macs. Your default workspace now finds your existing GitHub login wherever it actually lives.
+
+
 ## What's New in v0.11.0
 
 - **Visual editing for plain CSS projects** - Point-and-click style editing now works on vanilla HTML/CSS and plain Astro sites, not just Tailwind. Select any element and edit its real CSS rule; the change applies to every element that shares the class.
