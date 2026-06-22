@@ -25,6 +25,12 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.11.1', // v0.11.1
+    items: [
+      "GitHub connect fix — fixed a bug where connecting GitHub could get stuck in a loop: you'd authenticate in the browser, GitHub would show connected, but the button stayed grey and kept re-prompting. This hit Windows users especially (and some Macs); your default workspace now finds your existing GitHub login wherever it actually lives",
+    ],
+  },
+  {
     version: '0.11.0', // v0.11.0
     items: [
       'Visual editing for plain CSS projects — point-and-click style editing now works on vanilla HTML/CSS and plain Astro sites, not just Tailwind. Select any element and edit its real CSS rule; the change applies to every element that shares the class',
