@@ -481,6 +481,11 @@ pub fn run() {
             commands::accounts::get_account_credential_status,
             commands::accounts::set_account_credential,
             commands::accounts::clear_account_credential,
+            commands::accounts::claude_connect_start,
+            commands::accounts::claude_connect_write,
+            commands::accounts::claude_connect_resize,
+            commands::accounts::claude_connect_close,
+            commands::accounts::disconnect_claude_account,
             // Projects folder
             commands::settings::get_projects_root,
             commands::settings::set_projects_root,

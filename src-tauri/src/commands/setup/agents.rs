@@ -4,7 +4,9 @@
 //! installed/auth status, signing out, uninstalling.
 
 use crate::agent::{get_agent_by_id, ALL_AGENTS};
-use crate::commands::accounts::{agent_auth_dir, get_active_account_id};
+use crate::commands::accounts::{
+    agent_auth_dir, get_active_account_id, resolve_claude_identity, ClaudeConnState,
+};
 use crate::commands::claude::find_binary_by_name;
 use crate::errors::CommandError;
 use crate::utils::create_command;
@@ -20,6 +22,13 @@ pub struct AgentStatus {
     pub installed: bool,
     pub version: Option<String>,
     pub authed: bool,
+    /// The signed-in account's email, when known (currently only Claude Code,
+    /// resolved per active workspace). `None` for agents we can't identify.
+    pub auth_email: Option<String>,
+    /// True when the agent was connected but its credential has expired and the
+    /// user must reconnect — drives the red stroke + inline Reconnect on the card.
+    /// Never true for the "never connected" state (that keeps the neutral UI).
+    pub needs_reconnect: bool,
     pub is_default: bool,
     pub install_supported: bool,
     pub uninstall_supported: bool,
@@ -34,6 +43,11 @@ pub async fn get_agents_status() -> Vec<AgentStatus> {
         .default_agent_id
         .unwrap_or_else(|| "claude-code".to_string());
     let active_account_id = get_active_account_id().unwrap_or_else(|_| "default".to_string());
+
+    // Claude's auth can't be inferred from config files (its macOS login is a
+    // global keychain entry that ignores CLAUDE_CONFIG_DIR), so resolve the real
+    // per-workspace identity once up front and fold it into the Claude row below.
+    let claude_identity = resolve_claude_identity(&active_account_id).await;
 
     ALL_AGENTS
         .iter()
@@ -55,14 +69,23 @@ pub async fn get_agents_status() -> Vec<AgentStatus> {
                     })
             });
 
-            let authed = if !installed {
-                false
+            let is_claude = agent.id == "claude-code";
+            let (authed, auth_email, needs_reconnect) = if is_claude {
+                // Real per-workspace identity, not file existence.
+                (
+                    claude_identity.state != ClaudeConnState::NotConnected,
+                    claude_identity.email.clone(),
+                    claude_identity.state == ClaudeConnState::NeedsReconnect,
+                )
+            } else if !installed {
+                (false, None, false)
             } else {
                 let dir = agent_auth_dir(&active_account_id, agent);
-                agent
+                let authed = agent
                     .auth_indicators
                     .iter()
-                    .any(|indicator| dir.join(indicator).exists())
+                    .any(|indicator| dir.join(indicator).exists());
+                (authed, None, false)
             };
 
             #[cfg(windows)]
@@ -82,6 +105,8 @@ pub async fn get_agents_status() -> Vec<AgentStatus> {
                 installed,
                 version,
                 authed,
+                auth_email,
+                needs_reconnect,
                 is_default: agent.id == default_id,
                 install_supported,
                 uninstall_supported,
@@ -311,6 +336,8 @@ mod tests {
             installed: true,
             version: Some("1.2.3".to_string()),
             authed: true,
+            auth_email: Some("user@example.com".to_string()),
+            needs_reconnect: false,
             is_default: true,
             install_supported: true,
             uninstall_supported: true,
@@ -322,5 +349,7 @@ mod tests {
         assert!(json.contains("\"isDefault\":true"));
         assert!(json.contains("\"installSupported\":true"));
         assert!(json.contains("\"uninstallSupported\":true"));
+        assert!(json.contains("\"authEmail\":\"user@example.com\""));
+        assert!(json.contains("\"needsReconnect\":false"));
     }
 }

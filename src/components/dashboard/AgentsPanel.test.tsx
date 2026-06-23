@@ -47,6 +47,27 @@ vi.mock('../setup/OnboardingTerminal', () => ({
   ),
 }));
 
+// Backend-owned connect terminal — stub it so tests can drive the
+// captured/exit signals without an xterm + live PTY.
+vi.mock('./ClaudeConnectTerminal', () => ({
+  ClaudeConnectTerminal: ({
+    onCaptured,
+    onExit,
+  }: {
+    onCaptured: () => void;
+    onExit: (c: number) => void;
+  }) => (
+    <div data-testid="mock-connect-terminal">
+      <button data-testid="connect-captured" onClick={() => onCaptured()}>
+        captured
+      </button>
+      <button data-testid="connect-exit" onClick={() => onExit(0)}>
+        exit
+      </button>
+    </div>
+  ),
+}));
+
 // Strip heavy icon SVGs; only need predictable DOM.
 vi.mock('../icons', () => ({
   CheckIcon: () => <span data-testid="check-icon" />,
@@ -65,6 +86,8 @@ function agent(overrides: Partial<AgentStatus> = {}): AgentStatus {
     installed: true,
     version: '1.2.3',
     authed: true,
+    authEmail: null,
+    needsReconnect: false,
     isDefault: false,
     installSupported: true,
     uninstallSupported: true,
@@ -273,5 +296,115 @@ describe('AgentsPanel', () => {
       expect(screen.getByText(/Install, sign in, or switch/)).toBeInTheDocument()
     );
     expect(screen.queryByText('Claude Code')).not.toBeInTheDocument();
+  });
+
+  // ============ Per-workspace Claude auth (email + reconnect) ============
+
+  it('shows the account email instead of a generic "Signed in"', async () => {
+    mockInvoke('get_agents_status', [
+      agent({ isDefault: true, authEmail: 'circa@circabranding.com' }),
+    ]);
+    render(<AgentsPanel />);
+
+    await waitFor(() => expect(screen.getByText('Claude Code')).toBeInTheDocument());
+    expect(screen.getByText('v1.2.3 · circa@circabranding.com')).toBeInTheDocument();
+  });
+
+  it('renders a red Reconnect button + status when the token needs reconnect', async () => {
+    mockInvoke('get_agents_status', [
+      agent({ authed: true, needsReconnect: true, authEmail: 'circa@circabranding.com' }),
+    ]);
+    const { container } = render(<AgentsPanel />);
+
+    await waitFor(() => expect(screen.getByText('Claude Code')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Reconnect' })).toBeInTheDocument();
+    expect(screen.getByText('circa@circabranding.com · Reconnect needed')).toBeInTheDocument();
+    // The card carries the red stroke class, not the green connected one.
+    expect(container.querySelector('.agents-panel-row.needs-reconnect')).toBeInTheDocument();
+    expect(container.querySelector('.agents-panel-row.is-connected')).not.toBeInTheDocument();
+    // No "Set default" pill while a reconnect is pending.
+    expect(screen.queryByText('Set default')).not.toBeInTheDocument();
+  });
+
+  it('keeps the neutral never-connected UI (no red, plain "Sign in")', async () => {
+    mockInvoke('get_agents_status', [agent({ authed: false, needsReconnect: false })]);
+    const { container } = render(<AgentsPanel />);
+
+    await waitFor(() => expect(screen.getByText('Claude Code')).toBeInTheDocument());
+    expect(screen.getByText('Not signed in')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
+    expect(container.querySelector('.needs-reconnect')).not.toBeInTheDocument();
+    expect(container.querySelector('.is-connected')).not.toBeInTheDocument();
+  });
+
+  it('routes Claude "Sign in" to the connect modal in a non-default workspace', async () => {
+    mockInvoke('get_agents_status', [agent({ authed: false })]);
+    mockInvoke('get_active_account_id', 'circa');
+    mockInvoke('list_accounts', [
+      { id: 'circa', name: 'Circa', color: '#000', isDefault: false, createdAt: 0 },
+    ]);
+    render(<AgentsPanel />);
+
+    await waitFor(() => expect(screen.getByText('Claude Code')).toBeInTheDocument());
+    // Wait for the active workspace to resolve, then click Sign in.
+    await waitFor(() => expect(invokeCalls.some((c) => c.cmd === 'list_accounts')).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    // The connect modal opens at its email phase (no OnboardingTerminal),
+    // naming the workspace.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument()
+    );
+    expect(screen.getByText(/Circa/)).toBeInTheDocument();
+    expect(screen.queryByTestId('mock-terminal')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('mock-connect-terminal')).not.toBeInTheDocument();
+  });
+
+  it('connect flow: Continue opens the PTY terminal; capture closes + refreshes', async () => {
+    mockInvoke('get_agents_status', [agent({ authed: false })]);
+    mockInvoke('get_active_account_id', 'circa');
+    mockInvoke('list_accounts', [
+      { id: 'circa', name: 'Circa', color: '#000', isDefault: false, createdAt: 0 },
+    ]);
+    render(<AgentsPanel />);
+
+    await waitFor(() => expect(screen.getByText('Claude Code')).toBeInTheDocument());
+    await waitFor(() => expect(invokeCalls.some((c) => c.cmd === 'list_accounts')).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    // Email phase → Continue advances to the backend-PTY terminal phase.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument()
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await waitFor(() => expect(screen.getByTestId('mock-connect-terminal')).toBeInTheDocument());
+
+    // Rust signals the token was captured → modal closes and status refreshes.
+    const refreshesBefore = invokeCalls.filter((c) => c.cmd === 'get_agents_status').length;
+    fireEvent.click(screen.getByTestId('connect-captured'));
+    await waitFor(() =>
+      expect(screen.queryByTestId('mock-connect-terminal')).not.toBeInTheDocument()
+    );
+    expect(invokeCalls.filter((c) => c.cmd === 'get_agents_status').length).toBeGreaterThan(
+      refreshesBefore
+    );
+  });
+
+  it('Default workspace Claude "Sign in" still uses the terminal flow', async () => {
+    mockInvoke('get_agents_status', [agent({ authed: false })]);
+    mockInvoke('get_active_account_id', 'default');
+    mockInvoke('list_accounts', [
+      { id: 'default', name: 'Default', color: '#000', isDefault: true, createdAt: 0 },
+    ]);
+    render(<AgentsPanel />);
+
+    await waitFor(() => expect(screen.getByText('Claude Code')).toBeInTheDocument());
+    await waitFor(() => expect(invokeCalls.some((c) => c.cmd === 'list_accounts')).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    // Terminal modal opens; no connect modal.
+    await waitFor(() => expect(screen.getByTestId('mock-terminal')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('mock-connect-terminal')).not.toBeInTheDocument();
   });
 });

@@ -400,3 +400,103 @@ button.dashboard-card-row {
   color: var(--text-muted);
   flex-shrink: 0;
 }
+
+/* ── Auth connection-state strokes ─────────────────────────────────────────
+   Green = connected & valid, red = needs attention (expired/needs reconnect).
+   A never-connected card keeps the plain neutral border (no class). These come
+   after .is-default so connection state wins the border color when both apply;
+   red (needs-reconnect) always trumps green. */
+.agents-panel-row.is-connected {
+  border-color: var(--success);
+}
+
+.agents-panel-row.needs-reconnect {
+  border-color: var(--danger);
+  box-shadow: inset 0 0 0 1px var(--danger);
+}
+
+/* Inline Reconnect button — red-tinted to read as "needs attention" without the
+   full weight of a destructive (delete) action. */
+.agents-reconnect-btn {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.agents-reconnect-btn:hover:not(:disabled) {
+  background: var(--error-light);
+}
+
+/* ── Claude connect modal ──────────────────────────────────────────────── */
+.claude-connect-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  padding: var(--spacing-lg) var(--spacing-xl) var(--spacing-xl);
+}
+
+.claude-connect-body p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-base);
+  line-height: 1.5;
+}
+
+.claude-connect-body strong {
+  color: var(--text-primary);
+}
+
+.claude-connect-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-base);
+  color: var(--text-primary);
+}
+
+.claude-connect-field input {
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+}
+
+.claude-connect-field input:focus {
+  outline: none;
+  border-color: var(--action);
+}
+
+.claude-connect-muted {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.claude-connect-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+}
+
+/* Terminal phase — fills the (terminal-sized) modal: instructions on top, the
+   embedded backend-PTY terminal taking the remaining height. */
+.claude-connect-terminal-phase {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  padding: var(--spacing-lg) var(--spacing-xl) var(--spacing-xl);
+}
+
+.claude-connect-instructions {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-base);
+  line-height: 1.5;
+}
+
+.claude-connect-instructions strong {
+  color: var(--text-primary);
+}
