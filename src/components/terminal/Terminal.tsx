@@ -101,9 +101,10 @@ export interface TerminalHandle {
   paste: (data: string) => void;
   /** Kill the PTY process */
   kill: () => void;
-  /** Relaunch the agent in this tab after it has exited (fresh session,
-   *  picking up the current auto-accept setting). No-op while running. */
-  restart: () => void;
+  /** Whether the agent process has exited and the tab is showing the
+   *  "press Enter to restart" prompt. The parent uses this to no-op a
+   *  restart request while the agent is still running. */
+  isExited: () => boolean;
   /** Re-fit the terminal to its container (call after display changes) */
   fit: () => void;
 }
@@ -1030,9 +1031,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
         if (sid) void killPtySession(sid);
         cleanup();
       },
-      restart: () => {
-        onRequestRestartRef.current?.();
-      },
+      isExited: () => exitedRef.current,
       fit: () => {
         if (fitAddonRef.current && terminalRef.current && ptyRef.current) {
           fitAddonRef.current.fit();

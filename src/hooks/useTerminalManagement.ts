@@ -385,11 +385,18 @@ export function useTerminalManagement(
       const s = statesRef.current.get(path);
       if (!s) return;
 
-      // Kill the (usually exited) PTY, then mint a fresh session id so the
-      // relaunch never collides with the prior conversation's id. Same agent
-      // — only the session changes. Bumping sessionEpoch forces a clean
-      // xterm remount, matching switchTabAgent.
+      // No-op while the agent is still running: restart only recovers a tab
+      // whose process has exited. This guards every entry point (in-terminal
+      // Enter, toolbar, palette) so a stray "Restart" can't kill a live agent
+      // and drop its conversation. A missing ref means nothing is mounted to
+      // kill, so we let the relaunch proceed.
       const ref = terminalRefsMap.current.get(refKey(path, tabId));
+      if (ref && !ref.isExited()) return;
+
+      // Kill the (exited) PTY, then mint a fresh session id so the relaunch
+      // never collides with the prior conversation's id. Same agent — only the
+      // session changes. Bumping sessionEpoch forces a clean xterm remount,
+      // matching switchTabAgent.
       if (ref) ref.kill();
       terminalRefsMap.current.delete(refKey(path, tabId));
 
