@@ -396,36 +396,85 @@ pub fn get_env_vars_for_account(account_id: &str) -> HashMap<String, String> {
     vars
 }
 
-/// Parses `gh auth status` output for the logged-in github.com username.
+/// Parses `gh auth status` output, returning the connected github.com username
+/// or `None` when there is no usable login.
+///
+/// We intentionally key off the printed output, NOT the process exit code:
+/// `gh auth status` exits NON-ZERO whenever *any* configured account has an
+/// invalid token, even when a different account is logged in and active. A user
+/// with a stale second account (`X Failed to log in to github.com account ...`)
+/// was therefore reported as "Not connected" — a grey GitHub button that
+/// re-prompted in a loop. The `✓ Logged in to github.com ...` line is the
+/// source of truth.
+///
+/// When gh reports multiple accounts we prefer the one it marks
+/// `Active account: true`, because every git/gh operation the app runs uses
+/// that account — so its validity, not just "any login exists", determines
+/// whether we're really connected. If the active account's token is invalid we
+/// return `None` even if some other account is valid. When there's no active
+/// marker at all (older single-account gh), any valid login counts.
 ///
 /// `gh` changed the phrasing in ~v2.40: older builds print
 /// `Logged in to github.com as <user>` while newer ones print
 /// `Logged in to github.com account <user>`. We accept both so modern `gh`
 /// installs aren't reported as "Not connected".
-fn parse_gh_auth_status(success: bool, stdout: &str, stderr: &str) -> Option<String> {
-    if !success {
-        return None;
+pub(crate) fn parse_gh_auth_status(stdout: &str, stderr: &str) -> Option<String> {
+    const LOGGED_IN: &str = "Logged in to github.com ";
+    const FAILED: &str = "Failed to log in to github.com ";
+
+    // Extract the username following the connector word ("as" on older gh,
+    // "account" on ~v2.40+) after `marker` within `line`.
+    fn username_after(line: &str, marker: &str) -> Option<String> {
+        let idx = line.find(marker)?;
+        let rest = &line[idx + marker.len()..];
+        let mut words = rest.split_whitespace();
+        match words.next() {
+            Some("as") | Some("account") => {
+                words.next().filter(|u| !u.is_empty()).map(String::from)
+            }
+            _ => None,
+        }
     }
+
+    // One account block in the output. `valid` is the ✓ vs ✗ distinction;
+    // `active` is set when the following `- Active account: true` line is seen.
+    struct Entry {
+        user: String,
+        valid: bool,
+        active: bool,
+    }
+
     let combined = format!("{stdout}{stderr}");
-    const PREFIX: &str = "Logged in to github.com ";
+    let mut entries: Vec<Entry> = Vec::new();
     for line in combined.lines() {
         let trimmed = line.trim();
-        let Some(idx) = trimmed.find(PREFIX) else {
-            continue;
-        };
-        let rest = &trimmed[idx + PREFIX.len()..];
-        let mut words = rest.split_whitespace();
-        // The connector word is "as" (old) or "account" (new); the username
-        // follows it.
-        if matches!(words.next(), Some("as") | Some("account")) {
-            if let Some(username) = words.next() {
-                if !username.is_empty() {
-                    return Some(username.to_string());
-                }
+        // "Failed to log in" does not contain "Logged in" (capital L), so the two
+        // markers never collide — a failed account is never read as a login.
+        if let Some(user) = username_after(trimmed, LOGGED_IN) {
+            entries.push(Entry {
+                user,
+                valid: true,
+                active: false,
+            });
+        } else if let Some(user) = username_after(trimmed, FAILED) {
+            entries.push(Entry {
+                user,
+                valid: false,
+                active: false,
+            });
+        } else if trimmed.contains("Active account: true") {
+            if let Some(last) = entries.last_mut() {
+                last.active = true;
             }
         }
     }
-    None
+
+    // Prefer the account gh treats as active; the app operates as that account.
+    if let Some(active) = entries.iter().find(|e| e.active) {
+        return active.valid.then(|| active.user.clone());
+    }
+    // No active marker (older single-account gh): any valid login counts.
+    entries.into_iter().find(|e| e.valid).map(|e| e.user)
 }
 
 // ============ Tauri commands ============
@@ -617,7 +666,6 @@ pub async fn get_account_credential_status(
     }
     let github_auth_email = match run_with_timeout(gh_cmd, "gh auth status", 10).await {
         Ok(output) => parse_gh_auth_status(
-            output.status.success(),
             &String::from_utf8_lossy(&output.stdout),
             &String::from_utf8_lossy(&output.stderr),
         ),
@@ -730,17 +778,14 @@ mod tests {
 
     #[test]
     fn parse_gh_auth_status_extracts_username() {
-        // Old gh phrasing ("... as <user>").
+        // Old gh phrasing ("... as <user>"), no "Active account" marker.
         let old = "github.com\n  Logged in to github.com as octocat (oauth_token)\n";
-        assert_eq!(
-            parse_gh_auth_status(true, old, ""),
-            Some("octocat".to_string())
-        );
+        assert_eq!(parse_gh_auth_status(old, ""), Some("octocat".to_string()));
 
         // New gh phrasing (~v2.40+: "... account <user>"), with the ✓ glyph.
         let new = "github.com\n  ✓ Logged in to github.com account julianmemberstack (keyring)\n  - Active account: true\n";
         assert_eq!(
-            parse_gh_auth_status(true, new, ""),
+            parse_gh_auth_status(new, ""),
             Some("julianmemberstack".to_string())
         );
     }
@@ -748,9 +793,29 @@ mod tests {
     #[test]
     fn parse_gh_auth_status_returns_none_when_not_logged_in() {
         assert_eq!(
-            parse_gh_auth_status(false, "", "You are not logged into any GitHub hosts."),
+            parse_gh_auth_status("", "You are not logged into any GitHub hosts."),
             None
         );
+    }
+
+    #[test]
+    fn parse_gh_auth_status_finds_active_login_despite_failed_second_account() {
+        // Regression (grey GitHub button / connect loop): `gh auth status` exits
+        // NON-ZERO when any configured account has an invalid token, even though a
+        // different account is logged in and active. We must report the user as
+        // connected by reading the ✓ active login, not the exit code — and the
+        // "X Failed to log in" line must NOT be mistaken for a login.
+        let out = "github.com\n  \u{2713} Logged in to github.com account octocat (keyring)\n  - Active account: true\n  - Token scopes: 'gist', 'read:org', 'repo'\n\n  X Failed to log in to github.com account hubot (keyring)\n  - Active account: false\n  - The token in keyring is invalid.\n";
+        assert_eq!(parse_gh_auth_status(out, ""), Some("octocat".to_string()));
+    }
+
+    #[test]
+    fn parse_gh_auth_status_reports_disconnected_when_active_account_invalid() {
+        // Inverse edge: the *active* account's token is invalid while a different
+        // (non-active) account is still valid. gh operations run as the active
+        // account, so this must report "not connected" rather than a false green.
+        let out = "github.com\n  X Failed to log in to github.com account broken-active (keyring)\n  - Active account: true\n  - The token in keyring is invalid.\n\n  \u{2713} Logged in to github.com account good-inactive (keyring)\n  - Active account: false\n";
+        assert_eq!(parse_gh_auth_status(out, ""), None);
     }
 
     #[test]

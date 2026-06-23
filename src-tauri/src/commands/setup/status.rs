@@ -274,11 +274,23 @@ pub async fn get_full_setup_status() -> FullSetupStatus {
     });
 
     // 5. GitHub Auth
+    //
+    // Parse the output for a valid active login rather than trusting the exit
+    // code: `gh auth status` exits non-zero if any configured account has an
+    // invalid token, even when the active account is fine — which would wrongly
+    // strand the user on the GitHub step of onboarding. See
+    // accounts::parse_gh_auth_status.
     let gh_auth = if gh_path.is_some() {
         get_gh_command()
             .args(["auth", "status"])
             .output()
-            .map(|o| o.status.success())
+            .map(|o| {
+                crate::commands::accounts::parse_gh_auth_status(
+                    &String::from_utf8_lossy(&o.stdout),
+                    &String::from_utf8_lossy(&o.stderr),
+                )
+                .is_some()
+            })
             .unwrap_or(false)
     } else {
         false
