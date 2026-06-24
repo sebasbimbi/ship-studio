@@ -38,6 +38,7 @@ pub mod snapshots;
 pub mod static_server;
 pub mod support;
 pub mod templates;
+pub mod vercel;
 pub mod window;
 
 // Re-export all commands for easy access in lib.rs
