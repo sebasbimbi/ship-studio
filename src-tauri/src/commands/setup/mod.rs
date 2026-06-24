@@ -71,13 +71,15 @@ const ALL_ITEMS: &[&str] = &[
     "codex_auth",
     "opencode",
     "opencode_auth",
+    "cursor",
+    "cursor_auth",
     "vercel",
     "vercel_auth",
 ];
 
 /// Tool items (not auth)
 const TOOL_ITEMS: &[&str] = &[
-    "homebrew", "node", "git", "gh", "claude", "codex", "opencode", "vercel",
+    "homebrew", "node", "git", "gh", "claude", "codex", "opencode", "cursor", "vercel",
 ];
 
 // ============ App State Persistence (shared helpers) ============
@@ -85,13 +87,43 @@ const TOOL_ITEMS: &[&str] = &[
 /// Read the persisted app state
 pub fn read_app_state() -> AppState {
     let path = state::get_app_state_path();
-    if path.exists() {
-        std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
-    } else {
-        AppState::default()
+    if !path.exists() {
+        return AppState::default();
+    }
+
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!("Failed to read app state file: {e}");
+            return AppState::default();
+        }
+    };
+
+    match serde_json::from_str::<AppState>(&raw) {
+        Ok(state) => state,
+        Err(e) => {
+            // Log the parse failure so it's visible in ~/Library/Logs/ShipStudio/
+            // rather than silently resetting all data (including saved Workspaces).
+            tracing::error!("Failed to parse app state — keeping defaults. Error: {e}. Raw: {raw}");
+            // Attempt a best-effort partial recovery: pull the accounts array out
+            // of the raw JSON even if other fields fail to parse. This prevents
+            // a one-time schema evolution from wiping all workspaces.
+            if let Ok(raw_value) = serde_json::from_str::<serde_json::Value>(&raw) {
+                let mut state = AppState::default();
+                if let Some(accounts_val) = raw_value.get("accounts") {
+                    if let Ok(accounts) =
+                        serde_json::from_value::<Vec<crate::types::Account>>(accounts_val.clone())
+                    {
+                        state.accounts = accounts;
+                    }
+                }
+                if let Some(id) = raw_value.get("activeAccountId").and_then(|v| v.as_str()) {
+                    state.active_account_id = Some(id.to_string());
+                }
+                return state;
+            }
+            AppState::default()
+        }
     }
 }
 
@@ -108,7 +140,17 @@ pub fn write_app_state(state: &AppState) -> Result<(), String> {
     let json = serde_json::to_string_pretty(state)
         .map_err(|e| format!("Failed to serialize app state: {e}"))?;
 
-    std::fs::write(&path, json).map_err(|e| format!("Failed to write app state: {e}"))
+    // Atomic write: write to a temp file in the same directory, then rename over
+    // the real file. `rename` is atomic on the same filesystem, so a reader can
+    // never observe a half-written file and — critically — if the process is
+    // killed mid-write (e.g. a dev-server relaunch, a crash, or the OS), the
+    // real `app_state.json` is left intact rather than truncated. A truncated
+    // state file is unparseable and silently resets to defaults, which is how a
+    // freshly-created Workspace could vanish on the next launch.
+    let tmp_path = path.with_extension("json.tmp");
+    std::fs::write(&tmp_path, &json)
+        .map_err(|e| format!("Failed to write app state temp file: {e}"))?;
+    std::fs::rename(&tmp_path, &path).map_err(|e| format!("Failed to persist app state: {e}"))
 }
 
 // ============ Mock Mode ============
@@ -156,7 +198,7 @@ fn get_scenario_items(scenario: &str) -> Vec<&'static str> {
         // Vercel installed and authed (for testing hosting step)
         "vercel-ready" => vec!["vercel", "vercel_auth"],
 
-        // Only Codex installed (no Claude, no Opencode)
+        // Only Codex installed (no Claude, no Opencode, no Cursor)
         "codex-only" => ALL_ITEMS
             .iter()
             .filter(|&&item| {
@@ -164,15 +206,22 @@ fn get_scenario_items(scenario: &str) -> Vec<&'static str> {
                     && item != "claude_auth"
                     && item != "opencode"
                     && item != "opencode_auth"
+                    && item != "cursor"
+                    && item != "cursor_auth"
             })
             .copied()
             .collect(),
 
-        // Only Opencode installed (no Claude, no Codex)
+        // Only Opencode installed (no Claude, no Codex, no Cursor)
         "opencode-only" => ALL_ITEMS
             .iter()
             .filter(|&&item| {
-                item != "claude" && item != "claude_auth" && item != "codex" && item != "codex_auth"
+                item != "claude"
+                    && item != "claude_auth"
+                    && item != "codex"
+                    && item != "codex_auth"
+                    && item != "cursor"
+                    && item != "cursor_auth"
             })
             .copied()
             .collect(),
@@ -321,22 +370,25 @@ mod tests {
     }
 
     #[test]
-    fn all_items_contains_13_items_including_all_agents_and_vercel() {
-        assert_eq!(ALL_ITEMS.len(), 13);
+    fn all_items_contains_15_items_including_all_agents_and_vercel() {
+        assert_eq!(ALL_ITEMS.len(), 15);
         assert!(ALL_ITEMS.contains(&"codex"));
         assert!(ALL_ITEMS.contains(&"codex_auth"));
         assert!(ALL_ITEMS.contains(&"opencode"));
         assert!(ALL_ITEMS.contains(&"opencode_auth"));
+        assert!(ALL_ITEMS.contains(&"cursor"));
+        assert!(ALL_ITEMS.contains(&"cursor_auth"));
         assert!(ALL_ITEMS.contains(&"vercel"));
         assert!(ALL_ITEMS.contains(&"vercel_auth"));
     }
 
     #[test]
-    fn tool_items_contains_8_items_including_all_agents_and_vercel() {
-        assert_eq!(TOOL_ITEMS.len(), 8);
+    fn tool_items_contains_9_items_including_all_agents_and_vercel() {
+        assert_eq!(TOOL_ITEMS.len(), 9);
         assert!(TOOL_ITEMS.contains(&"codex"));
         assert!(TOOL_ITEMS.contains(&"claude"));
         assert!(TOOL_ITEMS.contains(&"opencode"));
+        assert!(TOOL_ITEMS.contains(&"cursor"));
         assert!(TOOL_ITEMS.contains(&"vercel"));
     }
 

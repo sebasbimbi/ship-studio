@@ -91,6 +91,7 @@ Fired from `useIntegrationStatus` once GitHub auth resolves with a username.
 | `browser_tools_cleared` | `tab` |
 | `browser_tools_dom_refreshed` | — |
 | `browser_tools_sent_to_agent` | `tab`, `entry_count` (null for elements), `had_data`, `char_count` |
+| `terminal_tab_restarted` | — (relaunched an exited agent tab with a fresh session; fired from the in-terminal Enter prompt, toolbar, or palette) |
 | `code_file_opened` | `file_extension` |
 | `code_tree_refreshed` | — |
 | `code_entry_moved` | — |
@@ -99,6 +100,20 @@ Fired from `useIntegrationStatus` once GitHub auth resolves with a username.
 | `code_snippet_sent_to_agent` | `file_extension`, `language`, `line_count`, `char_count`, `had_question` |
 | `code_snippet_copied` | `file_extension`, `line_count` |
 | `search_performed` (`code_files`) | Debounced |
+| `visual_edit_started` | — (edit mode toggled on; the visual-editor adoption metric) |
+| `visual_edit_stopped` | `duration_ms`, `edits_committed` (edits persisted to source during the session) |
+| `visual_element_selected` | `tag` (HTML tag), `instance_count`, `leaf_text` — `className` is deliberately never sent |
+| `visual_style_saved` | `is_autosave`, `is_multi` (one event per element class write committed to source) |
+| `visual_text_saved` | — (inline text edit written to source) |
+| `visual_image_saved` | — (image `src` replaced in source) |
+| `visual_prep_started` | `mode` (`css`) — opened the "Prepare for visual editing" agent prompt |
+| `visual_view_switched` | `mode` (`css`), `view` (`visual`/`code`) — toggled the structured controls vs raw-CSS view |
+| `visual_class_added` / `visual_class_removed` | `mode` (`css`) — added/removed a class on the element via the class bar |
+
+The CSS visual editor (a separate feature from the Tailwind one) tags its
+events with `mode: 'css'`; the Tailwind editor omits `mode` (treat absent as
+`tailwind`). On `visual_style_saved`, CSS mode adds one of `removed` (cleared a
+property), `bulk` (count, from the Code view's save), or `created_rule`.
 | `custom_class_created` | `token_count` (utilities folded into `@apply`), `kept_count` (non-utility tokens left on the element) |
 | `custom_class_applied` | — |
 | `custom_class_unapplied` | — |
@@ -140,6 +155,15 @@ The modal id is baked into the event name (`modal_<id>_opened` / `modal_<id>_clo
 | `modal_<id>_closed` | `modal_id`, `duration_ms`, optional `reason` (`'provider_unmount'` on app teardown) | `modal_envEditor_closed`, etc. |
 
 To get an aggregate "any modal opened" count in PostHog, use a regex match on event name (`modal_.*_opened`) or a property filter on `modal_id`.
+
+### Settings
+
+| Event | Properties |
+|---|---|
+| `calendar_visibility_toggled` | `visible` |
+| `terminal_gpu_toggled` | `enabled` |
+| `projects_root_changed` | `is_custom` (false when reset to the default `~/ShipStudio`) |
+| `projects_moved` | `moved_count`, `skipped_count` (after moving projects into a newly-chosen folder) |
 
 ### Plugins / Skills / MCP
 

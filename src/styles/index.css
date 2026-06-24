@@ -6,6 +6,7 @@
 /* Components (primitives) */
 @import './components/modal.css';
 @import './components/command-palette.css';
+@import './components/code-overlay.css';
 
 /* Features */
 @import './features/setup.css';
@@ -27,6 +28,7 @@
 @import './features/visual-editor-image.css';
 @import './features/redline-panel.css';
 @import './features/visual-editor-classes.css';
+@import './features/visual-editor-css-mode.css';
 @import './features/element-tree.css';
 @import './features/device-mirror.css';
 @import './features/browser-tools.css';

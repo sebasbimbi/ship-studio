@@ -3,7 +3,7 @@
 //! This module contains shared utility functions used across the Ship Studio backend.
 
 use std::process::Command;
-use std::sync::{LazyLock, Mutex};
+use std::sync::{LazyLock, Mutex, RwLock};
 use std::time::Instant;
 
 /// Creates a `Command` that won't spawn a visible console window on Windows.
@@ -446,18 +446,155 @@ pub fn find_executable(cmd: &str) -> Option<std::path::PathBuf> {
     None
 }
 
-/// Validates that a project path is inside the ~/ShipStudio directory
-/// or is a registered external project.
-/// Prevents path traversal attacks where frontend could pass arbitrary paths.
+/// Caches the resolved projects root so path validation (called by most
+/// commands) doesn't read `app_state.json` on every invocation. Invalidated by
+/// [`invalidate_projects_root_cache`] when the setting changes.
+static PROJECTS_ROOT_CACHE: RwLock<Option<std::path::PathBuf>> = RwLock::new(None);
+
+/// The built-in default projects root, `~/ShipStudio`.
+///
+/// This always remains a valid location even when the user configures a custom
+/// root, so projects already living in `~/ShipStudio` keep opening.
+pub fn default_projects_root() -> Result<std::path::PathBuf, String> {
+    let home = dirs::home_dir().ok_or("Could not find home directory")?;
+    Ok(home.join("ShipStudio"))
+}
+
+/// The directory Ship Studio uses to list and create projects.
+///
+/// Resolves the user-configured root from persisted app state (cached), falling
+/// back to `~/ShipStudio`. A configured path that no longer exists on disk falls
+/// back to the default, so the app never points at a dead directory.
+pub fn projects_root() -> Result<std::path::PathBuf, String> {
+    if let Some(cached) = PROJECTS_ROOT_CACHE
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+    {
+        return Ok(cached);
+    }
+    let resolved = resolve_projects_root_uncached()?;
+    *PROJECTS_ROOT_CACHE
+        .write()
+        .unwrap_or_else(|e| e.into_inner()) = Some(resolved.clone());
+    Ok(resolved)
+}
+
+fn resolve_projects_root_uncached() -> Result<std::path::PathBuf, String> {
+    use crate::commands::accounts::DEFAULT_ACCOUNT_ID;
+    // The projects folder is per-workspace: resolve the *active* workspace's
+    // folder. Switching workspaces changes which folder the dashboard scans (the
+    // cache is invalidated on switch).
+    let default = default_projects_root()?;
+    let state = crate::commands::setup::read_app_state();
+    let active_id = state
+        .active_account_id
+        .as_deref()
+        .unwrap_or(DEFAULT_ACCOUNT_ID);
+    Ok(account_root_in(&state, active_id, &default))
+}
+
+/// The effective projects folder for one workspace: its own configured folder
+/// if set and still present on disk; for the Default workspace the legacy
+/// top-level `projects_root` is honored next (backward compat with the global
+/// setting that predated per-workspace folders); otherwise `~/ShipStudio`.
+fn account_root_in(
+    state: &crate::types::AppState,
+    account_id: &str,
+    default: &std::path::Path,
+) -> std::path::PathBuf {
+    use crate::commands::accounts::DEFAULT_ACCOUNT_ID;
+    let existing_dir = |s: &str| -> Option<std::path::PathBuf> {
+        let t = s.trim();
+        if t.is_empty() {
+            return None;
+        }
+        let pb = std::path::PathBuf::from(t);
+        pb.is_dir().then_some(pb)
+    };
+    if let Some(acc) = state.accounts.iter().find(|a| a.id == account_id) {
+        if let Some(pb) = acc.projects_root.as_deref().and_then(existing_dir) {
+            return pb;
+        }
+    }
+    if account_id == DEFAULT_ACCOUNT_ID {
+        if let Some(pb) = state.projects_root.as_deref().and_then(existing_dir) {
+            return pb;
+        }
+    }
+    default.to_path_buf()
+}
+
+/// The projects folder for a *specific* workspace (not necessarily the active
+/// one). Used when moving a project into another workspace's folder.
+pub fn projects_root_for_account(account_id: &str) -> std::path::PathBuf {
+    let default = default_projects_root().unwrap_or_default();
+    let state = crate::commands::setup::read_app_state();
+    account_root_in(&state, account_id, &default)
+}
+
+/// Drop the cached projects root. Call after persisting a new value so the next
+/// `projects_root()` re-reads from app state.
+pub fn invalidate_projects_root_cache() {
+    *PROJECTS_ROOT_CACHE
+        .write()
+        .unwrap_or_else(|e| e.into_inner()) = None;
+}
+
+/// The set of root directories a project path is allowed to live under: the
+/// configured root plus the built-in default (kept for backward compatibility).
+/// Each is canonicalized where it exists so symlinked roots still match the
+/// canonicalized candidate in the containment checks below.
+pub(crate) fn allowed_project_roots() -> Vec<std::path::PathBuf> {
+    let mut roots: Vec<std::path::PathBuf> = Vec::new();
+    let default = default_projects_root().ok();
+    let state = crate::commands::setup::read_app_state();
+
+    // Every workspace's folder. A project can belong to any workspace, and you
+    // can work projects from several workspaces at once, so a path under *any*
+    // workspace's folder must validate — not just the active one's.
+    if let Some(d) = &default {
+        for acc in &state.accounts {
+            roots.push(account_root_in(&state, &acc.id, d));
+        }
+    }
+    // Active workspace (covers the no-accounts edge case), legacy global root,
+    // and the built-in default.
+    if let Ok(r) = projects_root() {
+        roots.push(r);
+    }
+    if let Some(p) = state.projects_root.as_deref() {
+        if !p.trim().is_empty() {
+            roots.push(std::path::PathBuf::from(p.trim()));
+        }
+    }
+    if let Some(d) = default {
+        roots.push(d);
+    }
+
+    // Canonicalize (so symlinked roots match the canonicalized candidate) + dedup.
+    let mut out: Vec<std::path::PathBuf> = Vec::new();
+    for r in roots {
+        let c = dunce::canonicalize(&r).unwrap_or(r);
+        if !out.contains(&c) {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Validates that a project path is inside an allowed projects root (the
+/// configured root or the default `~/ShipStudio`) or is a registered external
+/// project. Prevents path traversal where the frontend could pass arbitrary paths.
 pub fn validate_project_path(project_path: &str) -> Result<std::path::PathBuf, String> {
     let path = std::path::Path::new(project_path);
     let canonical = dunce::canonicalize(path).map_err(|e| format!("Invalid path: {e}"))?;
 
-    let home = dirs::home_dir().ok_or("Could not find home directory")?;
-    let shipstudio_dir = home.join("ShipStudio");
-
-    // Allow paths inside ~/ShipStudio
-    if canonical.starts_with(&shipstudio_dir) {
+    // Allow paths inside any allowed projects root
+    if allowed_project_roots()
+        .iter()
+        .any(|root| canonical.starts_with(root))
+    {
         return Ok(canonical);
     }
 
@@ -467,7 +604,7 @@ pub fn validate_project_path(project_path: &str) -> Result<std::path::PathBuf, S
     }
 
     Err(format!(
-        "Security error: path '{project_path}' is outside ShipStudio directory"
+        "Security error: path '{project_path}' is outside the projects directory"
     ))
 }
 
@@ -498,15 +635,14 @@ pub fn validate_project_file_path(file_path: &str) -> Result<std::path::PathBuf,
     // containment check below can't be defeated lexically.
     let canonical_parent = dunce::canonicalize(parent).map_err(|e| format!("Invalid path: {e}"))?;
 
-    let home = dirs::home_dir().ok_or("Could not find home directory")?;
-    let shipstudio_dir = home.join("ShipStudio");
-
-    let allowed = canonical_parent.starts_with(&shipstudio_dir)
+    let allowed = allowed_project_roots()
+        .iter()
+        .any(|root| canonical_parent.starts_with(root))
         || crate::commands::external_projects::is_registered_external_path(&canonical_parent)?;
 
     if !allowed {
         return Err(format!(
-            "Security error: path '{file_path}' is outside ShipStudio directory"
+            "Security error: path '{file_path}' is outside the projects directory"
         ));
     }
 

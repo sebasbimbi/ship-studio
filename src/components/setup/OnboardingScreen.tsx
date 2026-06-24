@@ -42,11 +42,13 @@ import {
   findFirstIncompleteStep,
   getReadyAgentPairs,
   isAtLeastOneAgentReady,
+  AGENT_DOC_LINKS,
 } from '../../lib/setup';
 import { ModalFrame } from '../primitives/ModalFrame';
 import { usePolling } from '../../hooks/usePolling';
 import { initDefaultAgent } from '../../lib/agent';
 import { checkGitHubCliStatus } from '../../lib/github';
+import { asCommandError, formatCommandError } from '../../lib/errors';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { SlackIcon } from '../icons';
 
@@ -400,7 +402,10 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
         setActiveItemId(null);
       } catch (err) {
         logger.warn(`Failed to process ${itemId}`);
-        const errorMessage = err instanceof Error ? err.message : String(err);
+        // Tauri commands reject with a structured CommandError object (not an
+        // Error instance), so `String(err)` would render "[object Object]".
+        // Route through the shared helpers to get a real user-facing message.
+        const errorMessage = formatCommandError(asCommandError(err));
         const cleanedMessage = errorMessage.replace(/\[[\w_]+\]\s*/g, '').trim();
 
         if (PKG_MGR_PACKAGES.has(itemId)) {
@@ -661,7 +666,31 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
         <div className="wizard-step-container">
           <div className="wizard-step-header">
             <h2 className="wizard-step-title">{currentStepDef.title}</h2>
-            <p className="wizard-step-subtitle">{currentStepDef.subtitle}</p>
+            <p className="wizard-step-subtitle">
+              {/* Keep the subtitle text in its own node so the agent step can
+                  append a "trouble installing?" hint with official-docs links. */}
+              <span>{currentStepDef.subtitle}</span>
+              {currentStep === 'agent' && (
+                <>
+                  {' — having trouble? Read the official docs ('}
+                  {AGENT_DOC_LINKS.filter((doc) => items.some((i) => i.id === doc.binaryId)).map(
+                    (doc, idx, arr) => (
+                      <span key={doc.binaryId}>
+                        <button
+                          type="button"
+                          className="wizard-step-subtitle-link"
+                          onClick={() => void openUrl(doc.url)}
+                        >
+                          {doc.name}
+                        </button>
+                        {idx < arr.length - 1 ? ', ' : ''}
+                      </span>
+                    )
+                  )}
+                  {'), install it through your terminal, then restart Ship Studio.'}
+                </>
+              )}
+            </p>
           </div>
 
           {currentStep === 'package-manager' && (
@@ -744,6 +773,10 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
                 args={terminalConfig.args}
                 onExit={(exitCode) => void handleTerminalExit(exitCode)}
               />
+              <div className="onboarding-terminal-hint">
+                <strong>If you're asked for a password</strong>, type it and press Enter. It stays
+                hidden as you type — no dots or characters appear — but it is being entered.
+              </div>
             </div>
           </div>
         )}

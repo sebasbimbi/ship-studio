@@ -83,6 +83,10 @@ interface TerminalProps {
   isActive?: boolean;
   /** Whether to resume a previous session with this name */
   shouldResume?: boolean;
+  /** Relaunch this tab's agent after it has exited. The parent mints a
+   *  fresh session and remounts — keeps session-id semantics clean instead
+   *  of reusing an id whose conversation file already exists. */
+  onRequestRestart?: () => void;
 }
 
 /**
@@ -98,6 +102,10 @@ export interface TerminalHandle {
   paste: (data: string) => void;
   /** Kill the PTY process */
   kill: () => void;
+  /** Whether the agent process has exited and the tab is showing the
+   *  "press Enter to restart" prompt. The parent uses this to no-op a
+   *  restart request while the agent is still running. */
+  isExited: () => boolean;
   /** Re-fit the terminal to its container (call after display changes) */
   fit: () => void;
 }
@@ -114,6 +122,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     sessionName,
     isActive = true,
     shouldResume,
+    onRequestRestart,
   },
   ref
 ) {
@@ -125,6 +134,13 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   // Track Unlisten handles from the PTY session events so we can unsubscribe
   // them on unmount without killing the backend PTY.
   const ptyDisposablesRef = useRef<Array<{ dispose(): void }>>([]);
+  // True once the agent process has exited and the tab is showing the
+  // "press Enter to restart" prompt. While set, keystrokes don't go to the
+  // (dead) PTY — Enter relaunches the agent instead.
+  const exitedRef = useRef(false);
+  // Guards a held Enter from dispatching multiple restarts before the tab
+  // remounts: only the first Enter after exit relaunches, the rest are swallowed.
+  const restartRequestedRef = useRef(false);
   const [isReady, setIsReady] = useState(false);
   const [isFocused, setIsFocused] = useState(false); // Start unfocused to show overlay until user clicks
 
@@ -157,13 +173,15 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   const onSpawnRef = useRef(onSpawn);
   const onStatusChangeRef = useRef(onStatusChange);
   const onTitleChangeRef = useRef(onTitleChange);
+  const onRequestRestartRef = useRef(onRequestRestart);
   const lastStatusRef = useRef<AgentStatus>('idle');
   useEffect(() => {
     onExitRef.current = onExit;
     onSpawnRef.current = onSpawn;
     onStatusChangeRef.current = onStatusChange;
     onTitleChangeRef.current = onTitleChange;
-  }, [onExit, onSpawn, onStatusChange, onTitleChange]);
+    onRequestRestartRef.current = onRequestRestart;
+  }, [onExit, onSpawn, onStatusChange, onTitleChange, onRequestRestart]);
 
   // Auto-accept is a spawn-time flag (CLI arg) — it can't be toggled on a
   // live PTY. Keep it in a ref so a later change to the scalar doesn't
@@ -588,6 +606,13 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
             SHELL: '/bin/zsh',
           };
         }
+        // Per-workspace isolation vars (CLAUDE_CONFIG_DIR, GH_CONFIG_DIR,
+        // CODEX_HOME, XDG_DATA_HOME) and credential tokens are injected
+        // SERVER-SIDE by `pty_session_open` from this project's workspace, so
+        // secret token values never have to cross into the webview's JS. Nothing
+        // to fetch or merge here — just pass `projectPath` (below) and the
+        // backend resolves the right Workspace env.
+
         // The PTY merges this env over the app's own, so npm/pnpm "invocation
         // directory" vars leak through when Ship Studio runs under `pnpm tauri
         // dev`. Tools the agent runs (e.g. `shopify theme dev`) trust INIT_CWD
@@ -814,28 +839,49 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
               if (isResumeFail()) {
                 retryFreshSession();
               } else {
-                terminalRef.current?.write('\r\n[Process exited]\r\n');
+                offerRestart();
                 onExitRef.current?.(exitCode);
               }
             }, 200);
             return;
           }
 
-          terminalRef.current?.write('\r\n[Process exited]\r\n');
+          offerRestart();
           onExitRef.current?.(exitCode);
         });
         pushDisposable(unlistenExit);
 
+        // Dismiss the first-run hint on the user's first real keystroke — and
+        // broadcast so sibling terminals (split panes / tabs) clear theirs too.
+        // We gate on onKey (genuine keyboard input) rather than onData, because
+        // onData also fires for xterm's automatic replies to the program's
+        // terminal-capability queries (Device Attributes / cursor-position
+        // reports an agent's TUI sends on startup). Using onData would dismiss
+        // the hint a frame after it appears — before the user could read it.
+        const firstKeyDisposable = term.onKey(() => {
+          if (firstInputDoneRef.current) return;
+          firstInputDoneRef.current = true;
+          localStorage.setItem(FIRST_AGENT_INPUT_KEY, '1');
+          setShowFirstRunHint(false);
+          window.dispatchEvent(new Event(FIRST_AGENT_INPUT_EVENT));
+        });
+        ptyDisposablesRef.current.push(firstKeyDisposable);
+
         // Handle terminal input -> PTY. Resolves the session id lazily
         // from the ref so re-attach doesn't need a new listener.
         const inputDisposable = term.onData((data) => {
-          // Dismiss the first-run hint the moment the user types anything — and
-          // broadcast so sibling terminals (split panes / tabs) clear theirs too.
-          if (!firstInputDoneRef.current) {
-            firstInputDoneRef.current = true;
-            localStorage.setItem(FIRST_AGENT_INPUT_KEY, '1');
-            setShowFirstRunHint(false);
-            window.dispatchEvent(new Event(FIRST_AGENT_INPUT_EVENT));
+          // After the agent exits the PTY is dead — don't pipe keystrokes
+          // into it. Enter relaunches; everything else is ignored so a
+          // stray keypress can't look like it's being swallowed silently.
+          // (First-run hint dismissal lives in the dedicated term.onKey
+          // handler above — gating on onKey rather than onData avoids
+          // dismissing the hint on xterm's automatic capability-query replies.)
+          if (exitedRef.current) {
+            if (data.includes('\r') && !restartRequestedRef.current) {
+              restartRequestedRef.current = true;
+              onRequestRestartRef.current?.();
+            }
+            return;
           }
           const sid = ptyRef.current?.sessionId;
           if (sid) void writePtySession(sid, data);
@@ -900,6 +946,18 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
           term.write(`\x1b[33m${agent.installHint}\x1b[0m\r\n`);
         }
       }
+    };
+
+    // Print "[Process exited]" plus an inline hint that the tab can be
+    // relaunched. The actual relaunch is parent-driven (fresh session), so
+    // the user can toggle Auto-accept (--dangerously-skip-permissions) and
+    // then restart into it without closing the tab.
+    const offerRestart = () => {
+      exitedRef.current = true;
+      restartRequestedRef.current = false;
+      terminalRef.current?.write(
+        `\r\n\x1b[2m[Process exited] — press \x1b[0m\x1b[1mEnter\x1b[0m\x1b[2m to restart ${agent.displayName}\x1b[0m\r\n`
+      );
     };
 
     // Show a loading message while agent starts up
@@ -987,6 +1045,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
         if (sid) void killPtySession(sid);
         cleanup();
       },
+      isExited: () => exitedRef.current,
       fit: () => {
         if (fitAddonRef.current && terminalRef.current && ptyRef.current) {
           fitAddonRef.current.fit();
@@ -1050,10 +1109,10 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
       {isReady && showFirstRunHint && (
         <div className="terminal-firstrun-hint">
           <div className="terminal-firstrun-hint-card" role="note">
-            <strong>This is your AI builder</strong>
+            <strong>This is your agent</strong>
             <span>
-              Type what you want to build in plain English (like "make me a landing page for a
-              coffee shop"), then press Enter.
+              Whether you use Claude Code, Codex, Opencode, or something else, your agent runs right
+              here. Tell it what you want to build in plain English, then press Enter.
             </span>
           </div>
         </div>

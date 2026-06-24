@@ -23,6 +23,7 @@ import { listen } from '@tauri-apps/api/event';
 import { logger } from '../../lib/logger';
 import { setTerminalState } from '../../lib/project';
 import { Terminal } from '../terminal/Terminal';
+import { StaleEnvBanner } from '../terminal/StaleEnvBanner';
 import { DevServerLogs } from '../terminal/DevServerLogs';
 import { Preview } from '../preview/Preview';
 import type { PreviewHandle, InspectTab } from '../preview/Preview';
@@ -109,6 +110,7 @@ interface TerminalProps {
   closeTerminalTab: (id: number) => void;
   focusActiveTerminal: () => void;
   switchTabAgent: (tabId: number, agentId: string) => void;
+  restartTerminalTab: (tabId: number, projectPath?: string) => void;
   getActiveTabAgent: () => AgentConfig;
   /** Side-by-side view: tab ids visible in panes, or null when off. */
   splitPaneTabIds: number[] | null;
@@ -348,6 +350,8 @@ export interface WorkspaceViewProps {
   onGoHome: () => void;
   /** Open the project picker modal. */
   onOpenProjectPicker: () => void;
+  /** Open the "Switch Workspace" picker from the sidebar footer. */
+  onSwitchAccount: () => void;
   /** Predicate: is a dev server currently tracked for the given project path?
    *  Used by the sidebar to populate background projects' Commands section. */
   isProjectDevServerRunning: (projectPath: string) => boolean;
@@ -376,6 +380,7 @@ export const WorkspaceView = memo(function WorkspaceView({
   onCloseProject,
   onSelectProjectTab,
   onGoHome,
+  onSwitchAccount,
   onOpenProjectPicker,
   isProjectDevServerRunning,
 }: WorkspaceViewProps) {
@@ -394,6 +399,7 @@ export const WorkspaceView = memo(function WorkspaceView({
     addTerminalTab,
     closeTerminalTab,
     focusActiveTerminal,
+    restartTerminalTab,
     getActiveTabAgent,
     splitPaneTabIds,
     splitPaneSizes,
@@ -1028,6 +1034,7 @@ export const WorkspaceView = memo(function WorkspaceView({
             onGoHome={onGoHome}
             autoAcceptMode={autoAcceptMode}
             handleTerminalExit={handleTerminalExit}
+            restartTerminalTab={restartTerminalTab}
             createTabStatusHandler={createTabStatusHandler}
             handleTabTitleChange={handleTabTitleChange}
           />
@@ -1080,6 +1087,7 @@ export const WorkspaceView = memo(function WorkspaceView({
                 isWebProject && devServerPort > 0 ? `http://localhost:${devServerPort}` : undefined
               }
               isProjectDevServerRunning={isProjectDevServerRunning}
+              onSwitchAccount={onSwitchAccount}
             />
             <div className="workspace-main">
               {header.toolbar}
@@ -1182,6 +1190,7 @@ export const WorkspaceView = memo(function WorkspaceView({
                             />
                           </div>
                         </div>
+                        <StaleEnvBanner projectPath={currentProject.path} />
                         <div
                           className={`terminal-content${isSplitActive ? ' split' : ''}`}
                           data-education-id="claude-terminal"
@@ -1312,6 +1321,9 @@ export const WorkspaceView = memo(function WorkspaceView({
                                     sessionName={tab.sessionId}
                                     isActive={isVisible}
                                     shouldResume={tab.shouldResume}
+                                    onRequestRestart={() =>
+                                      restartTerminalTab(tab.id, session.projectPath)
+                                    }
                                   />
                                 </div>
                               );
@@ -1422,6 +1434,10 @@ export const WorkspaceView = memo(function WorkspaceView({
                             needsInstall={needsInstall}
                             onRunInstall={onRunInstall}
                             onOpenInCode={openInCode}
+                            canUndo={canUndo}
+                            canRedo={canRedo}
+                            onUndo={() => void undoSnapshot()}
+                            onRedo={() => void redoSnapshot()}
                             previewPlugins={
                               <PluginSlot
                                 name="preview"

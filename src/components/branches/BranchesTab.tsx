@@ -29,10 +29,25 @@ import {
 import { gitPull } from '../../lib/git';
 import { BranchIcon, PlusIcon } from '../icons';
 import { UnsavedChangesModal } from './UnsavedChangesModal';
+import { CreateBranchConflictModal } from './CreateBranchConflictModal';
 import { trackEvent, trackError } from '../../lib/analytics';
 import { ModalFrame } from '../primitives/ModalFrame';
 import { Button } from '../primitives/Button';
 import { useOptionalToast } from '../../contexts/ToastContext';
+import { asCommandError, formatCommandError } from '../../lib/errors';
+
+/** A Tauri-rejected `CommandError` is an object — `String(err)` renders it as
+ *  "[object Object]". Format it to the real human message (the git stderr). */
+function errText(e: unknown): string {
+  return formatCommandError(asCommandError(e));
+}
+
+/** True when a git operation failed because uncommitted changes would be
+ *  clobbered by a checkout — git phrases this as "would be overwritten by
+ *  checkout" / "commit your changes or stash them". */
+function isUncommittedChangesError(e: unknown): boolean {
+  return /overwritten by checkout|commit your changes or stash/i.test(errText(e));
+}
 
 interface BranchesTabProps {
   /** List of all branches */
@@ -80,6 +95,12 @@ export function BranchesTab({
   const [newBranchName, setNewBranchName] = useState('');
   const [isCreatingBranch, setIsCreatingBranch] = useState(false);
   const [prefixUsername, setPrefixUsername] = useState(true);
+  // Set when create fails because uncommitted changes would be overwritten by
+  // the checkout — drives the commit-or-stash modal.
+  const [createConflict, setCreateConflict] = useState<{
+    targetBranch: string;
+    baseBranch: string;
+  } | null>(null);
 
   // Load prefix preference on mount
   useEffect(() => {
@@ -143,7 +164,7 @@ export function BranchesTab({
       }
     } catch (e) {
       trackError('branch_switch', e, 'Workspace');
-      onToast?.(`Failed to switch: ${String(e)}`, 'error');
+      onToast?.(`Failed to switch: ${errText(e)}`, 'error');
     } finally {
       setSwitchingBranch(null);
     }
@@ -162,7 +183,7 @@ export function BranchesTab({
       onRefresh();
     } catch (e) {
       trackError('branch_delete', e, 'Workspace');
-      onToast?.(`Failed to delete: ${String(e)}`, 'error');
+      onToast?.(`Failed to delete: ${errText(e)}`, 'error');
     } finally {
       setDeletingBranch(null);
       setBranchToDelete(null);
@@ -183,7 +204,7 @@ export function BranchesTab({
       onRefresh();
     } catch (e) {
       trackError('branch_revert', e, 'Workspace');
-      onToast?.(`Failed to revert: ${String(e)}`, 'error');
+      onToast?.(`Failed to revert: ${errText(e)}`, 'error');
     } finally {
       setIsReverting(false);
     }
@@ -202,7 +223,18 @@ export function BranchesTab({
 
       // Create from main by default
       const baseBranch = branches.find((b) => b.isDefault)?.name || 'main';
-      await createBranch(projectPath, branchName, baseBranch);
+      try {
+        await createBranch(projectPath, branchName, baseBranch);
+      } catch (e) {
+        // Uncommitted changes would be overwritten by the checkout — hand off to
+        // the commit-or-stash modal instead of failing with a raw git error.
+        if (isUncommittedChangesError(e)) {
+          setCreateConflict({ targetBranch: branchName, baseBranch });
+          setShowNewBranch(false);
+          return;
+        }
+        throw e;
+      }
       void trackEvent('branch_created', { from_branch: baseBranch, $screen_name: 'Workspace' });
 
       // Switch to the new branch
@@ -217,7 +249,7 @@ export function BranchesTab({
       onRefresh();
     } catch (e) {
       trackError('branch_create', e, 'Workspace');
-      onToast?.(`Failed to create branch: ${String(e)}`, 'error');
+      onToast?.(`Failed to create branch: ${errText(e)}`, 'error');
     } finally {
       setIsCreatingBranch(false);
     }
@@ -495,6 +527,26 @@ export function BranchesTab({
             setPendingSwitch(null);
           }}
           onClose={() => setPendingSwitch(null)}
+        />
+      )}
+
+      {createConflict && (
+        <CreateBranchConflictModal
+          projectPath={projectPath}
+          currentBranch={currentBranch}
+          targetBranch={createConflict.targetBranch}
+          baseBranch={createConflict.baseBranch}
+          onCreated={(branchName) => {
+            onBranchSwitch(branchName);
+            void trackEvent('branch_created', {
+              from_branch: createConflict.baseBranch,
+              $screen_name: 'Workspace',
+            });
+            setCreateConflict(null);
+            setNewBranchName('');
+            onRefresh();
+          }}
+          onClose={() => setCreateConflict(null)}
         />
       )}
     </div>

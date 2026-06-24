@@ -25,6 +25,50 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.12.0', // v0.12.0
+    items: [
+      'Cursor CLI agent — Cursor joins Claude Code, Codex, and Opencode as a built-in AI agent. Install it during setup, sign in, run it in your workspace terminal, and pick it as your default agent',
+      'Visual editor now works with Vite — point-and-click style editing works on Vite + React + Tailwind projects, not just Next.js, Astro, and Shopify',
+      'Restart an agent terminal — if your coding agent exits, restart it right in place instead of opening a new tab',
+      'First-run terminal hint — a fresh agent terminal shows a short hint about what to do, until you start typing',
+      'Smoother onboarding — clearer setup wizard copy and more accurate tool detection, plus a fix so Node.js installs reliably during setup on Windows',
+      'Fixes — a macOS 12 launch crash, GitHub showing as disconnected when a second account had an invalid token, and the Cmd+K "port" search now opens Project settings',
+    ],
+  },
+  {
+    version: '0.11.2', // v0.11.2
+    items: [
+      "Creating a branch with unsaved work no longer errors out — if you have uncommitted changes, you now get a clear choice: commit them on your current branch first, or stash them aside, then the new branch is created and switched to. Git errors throughout the Branches tab also show a real message now instead of '[object Object]'",
+    ],
+  },
+  {
+    version: '0.11.1', // v0.11.1
+    items: [
+      "GitHub connect fix — fixed a bug where connecting GitHub could get stuck in a loop: you'd authenticate in the browser, GitHub would show connected, but the button stayed grey and kept re-prompting. This hit Windows users especially (and some Macs); your default workspace now finds your existing GitHub login wherever it actually lives",
+    ],
+  },
+  {
+    version: '0.11.0', // v0.11.0
+    items: [
+      'Visual editing for plain CSS projects — point-and-click style editing now works on vanilla HTML/CSS and plain Astro sites, not just Tailwind. Select any element and edit its real CSS rule; the change applies to every element that shares the class',
+      "Edit by class, state, and breakpoint — choose which of an element's classes you're styling, target states like :hover, and edit responsive @media layers, all from the panel",
+      'Visual or code — flip any rule between the structured controls and a real code editor with syntax highlighting, then save straight back to your stylesheet',
+      'New plain HTML/CSS starter for spinning up a no-framework project',
+      'Faster and safer — element selection is snappier on large projects, and editing no longer crashes on pages that contain emoji or accented text',
+    ],
+  },
+  {
+    version: '0.10.0', // v0.10.0
+    items: [
+      'Workspaces — keep separate Claude, GitHub, and Codex logins for different clients or orgs, fully isolated. Each workspace has its own credentials, so the agent working in one project never sees another client\'s auth. Your existing setup becomes the "Default" workspace and is left completely untouched',
+      "Per-project workspaces — assign any project to a workspace and its terminals, git, pull requests, and AI all use that workspace's logins automatically. Move a project between workspaces right from the dashboard and Ship Studio relocates its files for you",
+      'Credential vault — store a per-workspace Vercel token, Anthropic base URL, and git identity securely in the macOS Keychain; secret values never leave the backend',
+      'Choose your projects folder — point Ship Studio at any folder you like (such as an existing ~/Dev directory) instead of ~/ShipStudio, globally or per workspace, and optionally move your existing projects across',
+      'Windows fixes — the Code tab no longer shows a garbled file list, and "Install Claude Code" now installs from the terminal instead of opening a browser in a new chat. Setup terminals also remind you that a typed password stays hidden even though nothing appears',
+      "Smoother agent setup — the onboarding AI Agent step now links each assistant's official install docs as a fallback if an in-app install gets stuck, plus a small polish pass on the step indicator",
+    ],
+  },
+  {
     version: '0.9.0', // v0.9.0
     items: [
       'Custom classes — a Webflow-style class system in the visual editor, native to Tailwind. Select an element, name a class, and its styles become a reusable rule; edit that class once and every element using it updates. Built on Tailwind @apply, so it stays in your source',

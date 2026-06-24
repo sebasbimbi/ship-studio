@@ -18,23 +18,40 @@
 //! literals resolves to `Multi` — editable as a group (write all) or one at a
 //! time — so the resolver never guesses a single wrong edit target.
 
+use crate::commands::projects::detect_project_type;
 use crate::errors::CommandError;
+use crate::types::ProjectType;
 use crate::utils::validate_project_path;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-/// Source file extensions we index for class literals.
-const SOURCE_EXTS: &[&str] = &["tsx", "jsx", "astro", "liquid"];
+/// Source file extensions we index for class literals, by project shape. `.html`
+/// is editable *source* only for a plain static-HTML project. In a JS-framework
+/// project (Next, Astro, Svelte, …) the real source is `.tsx`/`.astro`/etc. and
+/// any `.html` is an export or fixture (e.g. a Webflow export — easily megabytes
+/// across many files); indexing it on every walk is pure cost and can stall the
+/// resolver, so it's excluded there.
+const SOURCE_EXTS_STATIC: &[&str] = &["tsx", "jsx", "astro", "liquid", "html"];
+const SOURCE_EXTS_FRAMEWORK: &[&str] = &["tsx", "jsx", "astro", "liquid"];
+
+/// The source extensions to index for `root`, including `.html` only for static
+/// HTML projects. Cheap — `detect_project_type` is cached.
+fn source_exts(root: &Path) -> &'static [&'static str] {
+    match detect_project_type(root) {
+        ProjectType::Statichtml => SOURCE_EXTS_STATIC,
+        _ => SOURCE_EXTS_FRAMEWORK,
+    }
+}
 
 /// Class-bearing attribute names to scan, by file extension. React/JSX
 /// (`.tsx`/`.jsx`) authors write `className`; Astro `.astro` templates use the
 /// HTML `class` attribute, while React/Preact islands embedded in `.astro` still
-/// use `className` — so Astro files scan for both. Shopify Liquid templates
-/// are plain HTML and only ever use `class`.
+/// use `className` — so Astro files scan for both. Shopify Liquid and plain
+/// `.html` templates only ever use `class`.
 fn attrs_for_ext(ext: &str) -> &'static [&'static str] {
     match ext {
         "astro" => &["className", "class"],
-        "liquid" => &["class"],
+        "liquid" | "html" => &["class"],
         _ => &["className"],
     }
 }
@@ -303,6 +320,7 @@ fn invalidate_index_cache(root: &Path) {
 /// .next, .git, etc. via the `ignore` walker which also honors .gitignore).
 fn index_occurrences(root: &Path) -> Vec<Occurrence> {
     let mut out = Vec::new();
+    let exts = source_exts(root);
     let walker = ignore::WalkBuilder::new(root)
         .standard_filters(true)
         .build();
@@ -313,7 +331,7 @@ fn index_occurrences(root: &Path) -> Vec<Occurrence> {
             .and_then(|e| e.to_str())
             .map(|e| e.to_ascii_lowercase())
             .unwrap_or_default();
-        if !SOURCE_EXTS.contains(&ext.as_str()) {
+        if !exts.contains(&ext.as_str()) {
             continue;
         }
         let Ok(src) = std::fs::read_to_string(path) else {
@@ -1088,6 +1106,7 @@ fn index_text_cached(root: &Path) -> std::sync::Arc<Vec<TextOccurrence>> {
 /// Index every static text run under `root` (same file walk/filters as the className index).
 fn index_text_occurrences(root: &Path) -> Vec<TextOccurrence> {
     let mut out = Vec::new();
+    let exts = source_exts(root);
     let walker = ignore::WalkBuilder::new(root)
         .standard_filters(true)
         .build();
@@ -1098,7 +1117,7 @@ fn index_text_occurrences(root: &Path) -> Vec<TextOccurrence> {
             .and_then(|e| e.to_str())
             .map(|e| e.to_ascii_lowercase())
             .unwrap_or_default();
-        if !SOURCE_EXTS.contains(&ext.as_str()) {
+        if !exts.contains(&ext.as_str()) {
             continue;
         }
         let Ok(src) = std::fs::read_to_string(path) else {
@@ -1481,6 +1500,7 @@ struct SrcOccurrence {
 /// enough that a cache isn't worth the invalidation surface.
 fn index_src_occurrences(root: &Path) -> Vec<SrcOccurrence> {
     let mut out = Vec::new();
+    let exts = source_exts(root);
     let walker = ignore::WalkBuilder::new(root)
         .standard_filters(true)
         .build();
@@ -1491,7 +1511,7 @@ fn index_src_occurrences(root: &Path) -> Vec<SrcOccurrence> {
             .and_then(|e| e.to_str())
             .map(|e| e.to_ascii_lowercase())
             .unwrap_or_default();
-        if !SOURCE_EXTS.contains(&ext.as_str()) {
+        if !exts.contains(&ext.as_str()) {
             continue;
         }
         let Ok(src) = std::fs::read_to_string(path) else {
@@ -1933,6 +1953,33 @@ fn tailwind_active_at(root: &Path) -> bool {
     false
 }
 
+/// Whether the project depends on React. The visual editor resolves a clicked
+/// element back to a `className` literal in `.tsx`/`.jsx` source, so a Vite
+/// project only earns the editor when it's React-flavored: Vue (`.vue`) and
+/// Svelte (`.svelte`) keep their class strings in files the resolver never
+/// indexes, so enabling them would surface an edit button that can't write back.
+/// Meta-frameworks (Next.js) are gated by project type instead and don't need
+/// this. React Native is detected before Vite, so a `ProjectType::Vite` project
+/// matching here is genuinely a React web app.
+#[tauri::command]
+#[tracing::instrument(fields(project = %project_path))]
+pub fn project_uses_react(project_path: String) -> Result<bool, CommandError> {
+    let root = validate_project_path(&project_path)?;
+    Ok(project_uses_react_at(&root))
+}
+
+/// Core of [`project_uses_react`], split out (no path validation) for unit testing.
+fn project_uses_react_at(root: &Path) -> bool {
+    let Ok(contents) = std::fs::read_to_string(root.join("package.json")) else {
+        return false;
+    };
+    // Match the `"react":` dependency key specifically. This excludes substrings
+    // like `"react-dom":`, `"@types/react":`, and `"@vitejs/plugin-react":` (none
+    // contain the exact quote-`react`-quote-colon sequence), so a Vue/Svelte Vite
+    // project that merely has a react-adjacent devDep won't be mistaken for React.
+    contents.contains("\"react\":")
+}
+
 #[tauri::command]
 #[tracing::instrument(fields(project = %project_path))]
 pub fn detect_breakpoints(project_path: String) -> Result<Vec<Breakpoint>, CommandError> {
@@ -2153,6 +2200,7 @@ pub fn find_component_usage(
 
     let mut sites = Vec::new();
     if let Some(name) = &component {
+        let exts = source_exts(&root);
         for entry in ignore::WalkBuilder::new(&root)
             .standard_filters(true)
             .build()
@@ -2162,7 +2210,7 @@ pub fn find_component_usage(
             let is_src = path
                 .extension()
                 .and_then(|e| e.to_str())
-                .map(|e| SOURCE_EXTS.contains(&e))
+                .map(|e| exts.contains(&e))
                 .unwrap_or(false);
             if !is_src {
                 continue;
@@ -2200,9 +2248,303 @@ pub fn find_component_usage(
     })
 }
 
+// ───────────────────────────── Element HTML ─────────────────────────────────
+//
+// "Edit the HTML by hand": map a selected element to the exact span of source
+// markup it came from — its opening `<tag …>` through the matching `</tag>` —
+// so the user can edit that markup as text and we write it straight back.
+// Anchored on the same className resolution as style/text editing (so we pick
+// the right element among duplicates), then expanded to the full element span
+// by a quote/comment-aware tag balancer. Reliable for the well-formed HTML the
+// visual editor targets; ambiguous (`Multi`) or dynamic elements stay read-only.
+
+/// Void HTML elements — no closing tag, so the span is just the opening tag.
+const VOID_ELEMENTS: &[&str] = &[
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source",
+    "track", "wbr",
+];
+
+/// The element's source byte span `[open '<', close '>' + 1)` given a byte
+/// offset known to sit inside its opening tag (e.g. the `class` attribute value).
+fn element_span(src: &str, inside_open_tag: usize) -> Option<(usize, usize)> {
+    let bytes = src.as_bytes();
+    let n = bytes.len();
+    if inside_open_tag >= n {
+        return None;
+    }
+
+    // 1. The '<' that opens this tag (scan back).
+    let mut i = inside_open_tag;
+    while i > 0 && bytes[i] != b'<' {
+        i -= 1;
+    }
+    if bytes[i] != b'<' {
+        return None;
+    }
+    let open_start = i;
+
+    // Tag name.
+    let name_start = open_start + 1;
+    let mut j = name_start;
+    while j < n && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'-') {
+        j += 1;
+    }
+    if j == name_start {
+        return None;
+    }
+    let tag = src[name_start..j].to_ascii_lowercase();
+
+    // 2. End of the opening tag ('>'), honoring quoted attribute values.
+    let close_open = scan_to_gt(bytes, j)?;
+    let open_end = close_open + 1;
+    let self_closing = bytes[close_open.saturating_sub(1)] == b'/';
+    if self_closing || VOID_ELEMENTS.contains(&tag.as_str()) {
+        return Some((open_start, open_end));
+    }
+
+    // 3. Walk forward to the matching close tag, balancing same-name nesting and
+    //    skipping comments.
+    let mut depth = 1i32;
+    let mut p = open_end;
+    while p < n {
+        // Byte comparison, NOT `&src[p..p+4]`: `p` advances byte-by-byte over
+        // arbitrary text, so a `&str` slice here panics the moment it lands mid
+        // multi-byte UTF-8 char (curly quotes, emoji, accents in element text).
+        // `p` is only a char boundary once `bytes[p] == b'<'`, which the slices
+        // below all sit behind — this probe runs at every position.
+        if p + 4 <= n && &bytes[p..p + 4] == b"<!--" {
+            p = src[p..].find("-->").map(|r| p + r + 3)?;
+            continue;
+        }
+        if bytes[p] == b'<' {
+            if p + 1 < n && bytes[p + 1] == b'/' {
+                // Closing tag.
+                let ns = p + 2;
+                let mut ne = ns;
+                while ne < n && (bytes[ne].is_ascii_alphanumeric() || bytes[ne] == b'-') {
+                    ne += 1;
+                }
+                if src[ns..ne].to_ascii_lowercase() == tag {
+                    depth -= 1;
+                    if depth == 0 {
+                        let gt = scan_to_gt(bytes, ne)?;
+                        return Some((open_start, gt + 1));
+                    }
+                }
+                p = ne;
+                continue;
+            }
+            // Opening tag — bump depth only for a same-name, non-void, non-self-closing one.
+            let ns = p + 1;
+            let mut ne = ns;
+            while ne < n && (bytes[ne].is_ascii_alphanumeric() || bytes[ne] == b'-') {
+                ne += 1;
+            }
+            if ne > ns {
+                let oname = src[ns..ne].to_ascii_lowercase();
+                let gt = scan_to_gt(bytes, ne)?;
+                let self_closing = bytes[gt.saturating_sub(1)] == b'/';
+                // `<script>`/`<style>` hold raw text where `<` is not a tag (e.g.
+                // `if (a < b)`); skip their whole body so it can't be misread as
+                // markup or unbalance the depth count.
+                if !self_closing && (oname == "script" || oname == "style") {
+                    let close = format!("</{oname}");
+                    if let Some(rel) = src[gt + 1..].to_ascii_lowercase().find(&close) {
+                        p = scan_to_gt(bytes, gt + 1 + rel)? + 1;
+                        continue;
+                    }
+                    return None;
+                }
+                if oname == tag && !self_closing && !VOID_ELEMENTS.contains(&oname.as_str()) {
+                    depth += 1;
+                }
+                p = gt + 1;
+                continue;
+            }
+        }
+        p += 1;
+    }
+    None
+}
+
+/// First `>` at/after `from` that isn't inside a quoted attribute value.
+fn scan_to_gt(bytes: &[u8], from: usize) -> Option<usize> {
+    let mut k = from;
+    let mut quote = 0u8;
+    while k < bytes.len() {
+        let c = bytes[k];
+        if quote != 0 {
+            if c == quote {
+                quote = 0;
+            }
+        } else if c == b'"' || c == b'\'' {
+            quote = c;
+        } else if c == b'>' {
+            return Some(k);
+        }
+        k += 1;
+    }
+    None
+}
+
+/// The element's source markup and where it lives.
+#[derive(Debug, Serialize)]
+pub struct ElementHtml {
+    pub file: String,
+    pub line: usize,
+    pub html: String,
+}
+
+/// Resolve an element to the source markup span, file, and contents, plus the
+/// byte span — shared by resolve/apply so both derive the span identically.
+fn locate_element(
+    project_path: &str,
+    signature: ElementSignature,
+) -> Result<(String, std::path::PathBuf, String, usize, usize, usize), CommandError> {
+    let resolution = resolve_classname_source(project_path.to_string(), signature)?;
+    let (file, line, class_name) = match resolution {
+        Resolution::Resolved {
+            file,
+            line,
+            class_name,
+            ..
+        } => (file, line, class_name),
+        Resolution::Multi { .. } => {
+            return Err(CommandError::Validation {
+                field: "element".into(),
+                reason: "This element appears in several identical places, so editing its markup here could change the wrong one. Ask your agent to edit it instead.".into(),
+            })
+        }
+        // The class resolver couldn't anchor this element to source (its classes
+        // are dynamic/generated, or it has none). The markup editor is
+        // class-anchored, so phrase it for *markup*, not the class-string reason.
+        Resolution::ReadOnly { .. } => {
+            return Err(CommandError::Validation {
+                field: "element".into(),
+                reason: "This element can't be matched to its source markup (it has no static class to anchor on). Edit it with your agent instead.".into(),
+            })
+        }
+    };
+    let root = validate_project_path(project_path)?;
+    let abs = root.join(&file);
+    let src = std::fs::read_to_string(&abs).map_err(CommandError::from)?;
+    let span = find_attr_spans(&src, attrs_for_path(&file))
+        .into_iter()
+        .find(|s| s.line == line && s.value == class_name)
+        .ok_or_else(|| CommandError::Validation {
+            field: "element".into(),
+            reason: "source no longer matches — reselect the element".into(),
+        })?;
+    let (start, end) =
+        element_span(&src, span.value_start).ok_or_else(|| CommandError::Validation {
+            field: "element".into(),
+            reason: "couldn't map this element to its source markup".into(),
+        })?;
+    Ok((file, abs, src, line, start, end))
+}
+
+/// Resolve a clicked element to its source HTML (opening tag → closing tag).
+#[tauri::command]
+#[tracing::instrument(skip(signature), fields(project = %project_path))]
+pub fn resolve_element_html(
+    project_path: String,
+    signature: ElementSignature,
+) -> Result<ElementHtml, CommandError> {
+    let (file, _abs, src, line, start, end) = locate_element(&project_path, signature)?;
+    Ok(ElementHtml {
+        file,
+        line,
+        html: src[start..end].to_string(),
+    })
+}
+
+/// Replace an element's source markup, after verifying it still equals
+/// `old_html` (drift guard — the file may have changed since selection).
+#[tauri::command]
+#[tracing::instrument(skip(signature, old_html, new_html), fields(project = %project_path))]
+pub fn apply_element_html(
+    project_path: String,
+    signature: ElementSignature,
+    old_html: String,
+    new_html: String,
+) -> Result<(), CommandError> {
+    let (_file, abs, src, _line, start, end) = locate_element(&project_path, signature)?;
+    if src[start..end] != old_html {
+        return Err(CommandError::Validation {
+            field: "old_html".into(),
+            reason: "source no longer matches — reselect the element".into(),
+        });
+    }
+    let mut updated = String::with_capacity(src.len() + new_html.len());
+    updated.push_str(&src[..start]);
+    updated.push_str(&new_html);
+    updated.push_str(&src[end..]);
+    std::fs::write(&abs, updated).map_err(CommandError::from)?;
+    let root = validate_project_path(&project_path)?;
+    invalidate_index_cache(&root);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn span_str(src: &str) -> String {
+        let inside = src.find("cls").unwrap();
+        let (s, e) = element_span(src, inside).unwrap();
+        src[s..e].to_string()
+    }
+
+    #[test]
+    fn element_span_simple() {
+        let src = r#"<section class="cls">hi</section>"#;
+        assert_eq!(span_str(src), src);
+    }
+
+    #[test]
+    fn element_span_nested_same_tag() {
+        let src = r#"<div class="cls"><div>inner</div>tail</div>"#;
+        assert_eq!(span_str(src), src);
+    }
+
+    #[test]
+    fn element_span_void_img_has_no_close() {
+        let src = r#"<img class="cls" src="x.png">after"#;
+        assert_eq!(span_str(src), r#"<img class="cls" src="x.png">"#);
+    }
+
+    #[test]
+    fn element_span_self_closing() {
+        let src = r#"<Custom class="cls" />tail"#;
+        assert_eq!(span_str(src), r#"<Custom class="cls" />"#);
+    }
+
+    #[test]
+    fn element_span_skips_comment_and_quoted_gt() {
+        let src = r#"<div class="cls" data-x="a>b"><!-- </div> --><span>x</span></div>"#;
+        assert_eq!(span_str(src), src);
+    }
+
+    #[test]
+    fn element_span_handles_multibyte_utf8_text() {
+        // Regression: the forward walk advances byte-by-byte, so a `&str` slice
+        // in the comment probe used to panic ("byte index is not a char
+        // boundary") the moment it stepped into a multi-byte char in element
+        // text (curly quotes, emoji, accents). Must walk past it cleanly.
+        let src = "<p class=\"cls\">“Café” — déjà vu 🚀 done</p>tail";
+        assert_eq!(
+            span_str(src),
+            "<p class=\"cls\">“Café” — déjà vu 🚀 done</p>"
+        );
+    }
+
+    #[test]
+    fn element_span_skips_script_raw_text() {
+        // The `<` in `a < b` and the literal `</div>` string inside the script
+        // must not be read as markup — the outer div's real close wins.
+        let src = r#"<div class="cls"><script>if (a < b) { x("</div>") }</script>done</div>"#;
+        assert_eq!(span_str(src), src);
+    }
 
     fn sig(class: &str, tag: &str, ancestors: &[&str]) -> ElementSignature {
         ElementSignature {
@@ -2212,6 +2554,28 @@ mod tests {
             ancestor_classes: ancestors.iter().map(|s| s.to_string()).collect(),
             attr_src: None,
         }
+    }
+
+    #[test]
+    fn source_exts_includes_html_only_for_static_projects() {
+        // Framework project (Next): `.html` is an export/fixture, not source.
+        let next = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            next.path().join("package.json"),
+            r#"{"dependencies":{"next":"14.0.0"}}"#,
+        )
+        .unwrap();
+        std::fs::write(next.path().join("export.html"), "<div class=\"x\"></div>").unwrap();
+        assert!(!source_exts(next.path()).contains(&"html"));
+
+        // Plain static-HTML project: `.html` IS the source.
+        let static_site = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            static_site.path().join("index.html"),
+            "<div class=\"x\"></div>",
+        )
+        .unwrap();
+        assert!(source_exts(static_site.path()).contains(&"html"));
     }
 
     #[test]
@@ -2965,6 +3329,39 @@ const items = [];
         std::fs::create_dir_all(&c).unwrap();
         std::fs::write(c.join("tailwind.config.js"), "module.exports = {{}}").unwrap();
         assert!(chk(&c), "tailwind.config.js present → active");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn project_uses_react_matches_only_the_react_dependency() {
+        let dir = std::env::temp_dir().join(format!("ss-react-{}", std::process::id()));
+        let chk = project_uses_react_at;
+
+        // No package.json at all → not React.
+        let none = dir.join("none");
+        std::fs::create_dir_all(&none).unwrap();
+        assert!(!chk(&none), "no package.json → not react");
+
+        // A React Vite app declares the `react` dependency.
+        let react = dir.join("react");
+        std::fs::create_dir_all(&react).unwrap();
+        std::fs::write(
+            react.join("package.json"),
+            r#"{ "dependencies": { "react": "^18.2.0", "react-dom": "^18.2.0" } }"#,
+        )
+        .unwrap();
+        assert!(chk(&react), "react dependency present → react");
+
+        // A Vue Vite app has react-adjacent devDeps but no `react` dependency.
+        let vue = dir.join("vue");
+        std::fs::create_dir_all(&vue).unwrap();
+        std::fs::write(
+            vue.join("package.json"),
+            r#"{ "dependencies": { "vue": "^3.4.0" }, "devDependencies": { "@types/react": "^18.0.0" } }"#,
+        )
+        .unwrap();
+        assert!(!chk(&vue), "vue app with @types/react devDep → not react");
 
         std::fs::remove_dir_all(&dir).ok();
     }

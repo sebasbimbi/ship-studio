@@ -171,6 +171,23 @@
 .page-list {
   max-height: 240px;
   overflow-y: auto;
+  /* Custom, theme-matched scrollbar — never the device's white default. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.page-list::-webkit-scrollbar {
+  width: 10px;
+}
+.page-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.page-list::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+  border: 2px solid var(--bg-secondary);
+}
+.page-list::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }
 
 .page-list-empty {
@@ -294,6 +311,15 @@
 
 .preview-container--tree.preview-container--editor-pinned {
   grid-template-columns: var(--tree-panel-w) minmax(0, 1fr) var(--editor-panel-w);
+}
+
+/* Code (markup-edit) view of the Elements panel: widen the left track so the
+   HTML editor has room and lines don't wrap after every few characters. */
+.preview-container--tree.preview-container--tree-code {
+  grid-template-columns: var(--tree-code-w) minmax(0, 1fr);
+}
+.preview-container--tree.preview-container--tree-code.preview-container--editor-pinned {
+  grid-template-columns: var(--tree-code-w) minmax(0, 1fr) var(--editor-panel-w);
 }
 
 .preview-container--editor-pinned .preview-toolbar,

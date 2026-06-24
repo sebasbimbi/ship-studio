@@ -287,7 +287,9 @@
 .wizard-indicator-dot.completed {
   background: var(--setup-wizard-green);
   border-color: var(--setup-wizard-green);
-  color: var(--text-bright);
+  /* Dark glyph on the green dot — matches the current step's number,
+     instead of a white check that reads as a different style. */
+  color: var(--action-text);
 }
 
 .wizard-indicator-dot.past {
@@ -360,6 +362,29 @@
 .wizard-step-subtitle {
   font-size: var(--font-size-lg);
   color: var(--text-secondary);
+}
+
+/* Inline doc links in the agent step subtitle ("having trouble? Read the
+   official docs (Claude Code, Codex, opencode)…"). */
+.wizard-step-subtitle-link {
+  padding: 0;
+  background: none;
+  border: none;
+  /* Match the subtitle's muted tone — these are a quiet fallback, not a CTA.
+     Slightly understated underline; only brighten on hover. */
+  font: inherit;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--border);
+  text-underline-offset: 2px;
+  transition: color var(--transition);
+}
+
+.wizard-step-subtitle-link:hover {
+  color: var(--text-secondary);
+  text-decoration-color: currentColor;
 }
 
 .wizard-step-items {
@@ -892,6 +917,20 @@
 .onboarding-terminal-container {
   height: 350px;
   background: var(--bg-primary);
+}
+
+.onboarding-terminal-hint {
+  padding: 10px 16px;
+  background: var(--bg-tertiary);
+  border-top: 1px solid var(--border);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.onboarding-terminal-hint strong {
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 /* ============ Optional Items ============ */

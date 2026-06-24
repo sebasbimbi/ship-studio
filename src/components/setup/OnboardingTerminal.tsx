@@ -222,6 +222,10 @@ export function OnboardingTerminal({ command, args, cwd, onExit }: OnboardingTer
           const systemPaths = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin';
           const fullPath = `${userPaths.join(':')}:${systemPaths}`;
 
+          // Onboarding always runs in the Default workspace, which maps to the
+          // global config dirs the CLIs use by default (~/.claude, ~/.config/gh,
+          // ~/.codex). So there's no Workspace env to inject here — and we
+          // deliberately don't fetch credential tokens into the webview.
           env = {
             PATH: fullPath,
             HOME: homeNormalized.slice(0, -1),

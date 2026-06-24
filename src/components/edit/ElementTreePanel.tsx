@@ -8,8 +8,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRightIcon } from '../icons';
+import { ElementHtmlEditor } from './ElementHtmlEditor';
 import type { ElementTreeNode } from '../../hooks/useElementTree';
 import { filterElementTree, isTreeQueryActive } from '../../lib/elementTreeFilter';
+import type { ElementSignature } from '../../lib/edit';
 
 interface Props {
   tree: ElementTreeNode | null;
@@ -17,6 +19,12 @@ interface Props {
   selectedId: number | null;
   onSelect: (id: number) => void;
   onHover: (id: number | null) => void;
+  /** The currently-selected element (for the Code/HTML view). */
+  projectPath: string;
+  selectedSignature: ElementSignature | null;
+  /** Notified when the Visual/Code view toggles, so the parent can widen the
+   *  panel for editing markup. */
+  onViewChange?: (view: 'visual' | 'code') => void;
 }
 
 /** Rows at depth < this start expanded so the tree isn't a single chevron. */
@@ -45,9 +53,23 @@ function RowLabel({ node }: { node: ElementTreeNode }) {
   );
 }
 
-export function ElementTreePanel({ tree, truncated, selectedId, onSelect, onHover }: Props) {
+export function ElementTreePanel({
+  tree,
+  truncated,
+  selectedId,
+  onSelect,
+  onHover,
+  projectPath,
+  selectedSignature,
+  onViewChange,
+}: Props) {
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
   const [query, setQuery] = useState('');
+  const [view, setView] = useState<'visual' | 'code'>('visual');
+  const selectView = (next: 'visual' | 'code') => {
+    setView(next);
+    onViewChange?.(next);
+  };
   const bodyRef = useRef<HTMLDivElement>(null);
 
   // When a query is active, render a pruned copy of the tree (matches plus their
@@ -239,37 +261,75 @@ export function ElementTreePanel({ tree, truncated, selectedId, onSelect, onHove
     );
   };
 
+  const sigKey = selectedSignature
+    ? `${selectedSignature.tagName}|${selectedSignature.className}|${(selectedSignature.text ?? '').slice(0, 60)}`
+    : '';
+
   return (
     <div className="ss-tree-panel" data-testid="element-tree-panel">
       <div className="ss-tree-panel__header">
         <span className="ss-tree-panel__title">Elements</span>
-        <input
-          type="search"
-          className="ss-tree-panel__search"
-          placeholder="Search…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          aria-label="Search elements"
-        />
-      </div>
-      <div className="ss-tree-panel__body" ref={bodyRef} onMouseLeave={() => onHover(null)}>
-        {!tree && <div className="ss-tree-panel__empty">Loading elements…</div>}
-        {tree && displayTree && renderNode(displayTree, 0)}
-        {tree && !displayTree && (
-          <div className="ss-tree-panel__empty">
-            {truncated
-              ? 'No matches in the loaded part of this large page.'
-              : 'No matching elements'}
-          </div>
+        {view === 'visual' && (
+          <input
+            type="search"
+            className="ss-tree-panel__search"
+            placeholder="Search…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search elements"
+          />
         )}
-        {truncated && displayTree && (
-          <div className="ss-tree-panel__note">
-            {filtering
-              ? 'Large page — searched only the first part; some matches may be hidden.'
-              : 'Large page — showing the first part of the tree.'}
-          </div>
-        )}
+        <div className="ss-tree-panel__modes" role="group" aria-label="Elements view">
+          <button
+            type="button"
+            className={`ss-tree-panel__mode${view === 'visual' ? ' is-active' : ''}`}
+            aria-pressed={view === 'visual'}
+            onClick={() => selectView('visual')}
+          >
+            Visual
+          </button>
+          <button
+            type="button"
+            className={`ss-tree-panel__mode${view === 'code' ? ' is-active' : ''}`}
+            aria-pressed={view === 'code'}
+            onClick={() => selectView('code')}
+          >
+            Code
+          </button>
+        </div>
       </div>
+      {view === 'visual' ? (
+        <div className="ss-tree-panel__body" ref={bodyRef} onMouseLeave={() => onHover(null)}>
+          {!tree && <div className="ss-tree-panel__empty">Loading elements…</div>}
+          {tree && displayTree && renderNode(displayTree, 0)}
+          {tree && !displayTree && (
+            <div className="ss-tree-panel__empty">
+              {truncated
+                ? 'No matches in the loaded part of this large page.'
+                : 'No matching elements'}
+            </div>
+          )}
+          {truncated && displayTree && (
+            <div className="ss-tree-panel__note">
+              {filtering
+                ? 'Large page — searched only the first part; some matches may be hidden.'
+                : 'Large page — showing the first part of the tree.'}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="ss-tree-panel__body ss-tree-panel__body--code">
+          {selectedSignature ? (
+            <ElementHtmlEditor
+              key={sigKey}
+              projectPath={projectPath}
+              signature={selectedSignature}
+            />
+          ) : (
+            <div className="ss-tree-panel__empty">Select an element to edit its HTML.</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

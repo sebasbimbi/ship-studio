@@ -228,7 +228,7 @@ function endText(commit){
    Two views: the formatting buttons, and a link-input view for the href. ── */
 var fmtBar=null,fmtMain=null,fmtLink=null,fmtInput=null,fmtLinkMode=false,savedRange=null;
 var LINK_SVG='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
-function mkFmtBtn(cmd,html,extra){var b=document.createElement('button');b.setAttribute('data-cmd',cmd);b.innerHTML=html;b.style.cssText='all:unset;cursor:pointer;min-width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:5px;color:#e7e7ea;font-size:13px;'+(extra||'');b.onmouseenter=function(){this.style.background='rgba(255,255,255,.12)';};b.onmouseleave=function(){this.style.background='';};return b;}
+function mkFmtBtn(cmd,html,extra){var b=document.createElement('button');b.setAttribute('data-cmd',cmd);b.innerHTML=html;b.style.cssText='all:unset;-webkit-appearance:none;appearance:none;background:transparent;border:none;box-shadow:none;cursor:pointer;min-width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:5px;color:#e7e7ea;font-size:13px;transition:background .1s ease;'+(extra||'');b.onmouseenter=function(){if(this.getAttribute('data-on')!=='1')this.style.background='rgba(255,255,255,.12)';};b.onmouseleave=function(){if(this.getAttribute('data-on')!=='1')this.style.background='';};return b;}
 function ensureFmtBar(){
   if(fmtBar)return fmtBar;
   fmtBar=document.createElement('div');fmtBar.setAttribute('data-ss-overlay','1');
@@ -283,6 +283,9 @@ function updateFmtBar(){
   if(!txtEl.contains(rng.commonAncestorContainer)){hideFmtBar();return;}
   var rect=rng.getBoundingClientRect();if(!rect.width&&!rect.height){hideFmtBar();return;}
   var bar=ensureFmtBar();bar.style.display='flex';
+  /* Reflect active formatting (bold/italic on the current selection) with a
+     stronger highlight than hover, so the toggle state reads clearly. */
+  if(fmtMain){var fbs=fmtMain.querySelectorAll('[data-cmd]');for(var fi=0;fi<fbs.length;fi++){var fb=fbs[fi],fc=fb.getAttribute('data-cmd');if(fc==='bold'||fc==='italic'){var on=false;try{on=document.queryCommandState(fc);}catch(_e){}fb.setAttribute('data-on',on?'1':'0');fb.style.background=on?'rgba(255,255,255,.22)':'';}}}
   var bw=bar.offsetWidth||96,bh=bar.offsetHeight||34;
   var top=rect.top-bh-8;if(top<4)top=rect.bottom+8;
   var left=Math.max(4,Math.min(rect.left+rect.width/2-bw/2,window.innerWidth-bw-4));

@@ -28,6 +28,7 @@ export interface ProjectGridViewProps {
   onRenameProject: (project: DashboardProject) => void;
   onToggleMainBranchWarning: (projectPath: string, hidden: boolean) => void;
   onOpenMoveModal: (project: DashboardProject) => void;
+  onOpenMoveWorkspaceModal: (project: DashboardProject) => void;
   onExportAsTemplate: (projectPath: string) => void;
   onUploadThumbnail: (project: DashboardProject) => void;
   onRemoveExternal: (project: DashboardProject) => void;
@@ -55,6 +56,7 @@ export function ProjectGridView({
   onRenameProject,
   onToggleMainBranchWarning,
   onOpenMoveModal,
+  onOpenMoveWorkspaceModal,
   onExportAsTemplate,
   onUploadThumbnail,
   onRemoveExternal,
@@ -116,6 +118,7 @@ export function ProjectGridView({
           onToggleMainBranchWarning={(hidden) => onToggleMainBranchWarning(project.path, hidden)}
           onRename={project.is_external ? undefined : () => onRenameProject(project)}
           onMoveToFolder={() => onOpenMoveModal(project)}
+          onMoveToWorkspace={() => onOpenMoveWorkspaceModal(project)}
           onExportAsTemplate={() => onExportAsTemplate(project.path)}
           onUploadThumbnail={() => onUploadThumbnail(project)}
           isExternal={project.is_external}

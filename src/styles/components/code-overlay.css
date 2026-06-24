@@ -1,0 +1,26 @@
+/**
+ * Code editor host (`CodeOverlayEditor`) — used by the element HTML editor and
+ * the CSS-mode Code view. A `<div>` that hosts a CodeMirror 6 instance; the
+ * editor itself owns scrolling (both axes), syntax coloring and the caret. This
+ * element is just the bordered box CodeMirror fills.
+ */
+
+.ss-codeedit {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  flex: 1;
+  min-height: 160px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.ss-codeedit:focus-within {
+  border-color: var(--action);
+}
+.ss-codeedit .cm-editor {
+  height: 100%;
+}

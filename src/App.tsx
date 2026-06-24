@@ -41,6 +41,7 @@ import { useNotifications } from './hooks/useNotifications';
 import { useProjectLifecycle } from './hooks/useProjectLifecycle';
 import { useAppSetup } from './hooks/useAppSetup';
 import { ProjectsView } from './components/dashboard/ProjectsView';
+import { AccountSelectScreen } from './components/accounts/AccountSelectScreen';
 import { WorkspaceView } from './components/workspace/WorkspaceView';
 import { WorkspaceSidebar } from './components/workspace/WorkspaceSidebar';
 import { useProjectRail } from './hooks/useProjectRail';
@@ -164,6 +165,7 @@ function AppContents({ initialProjectPath }: AppProps) {
     focusActiveTerminal,
     pasteToActiveTerminal,
     switchTabAgent,
+    restartTerminalTab,
     getActiveTabAgent,
     restoreTerminalTabs,
     ensureProjectSeeded,
@@ -661,6 +663,7 @@ function AppContents({ initialProjectPath }: AppProps) {
       closeTerminalTab,
       focusActiveTerminal,
       switchTabAgent,
+      restartTerminalTab,
       getActiveTabAgent,
       splitPaneTabIds,
       splitPaneSizes,
@@ -683,6 +686,7 @@ function AppContents({ initialProjectPath }: AppProps) {
       closeTerminalTab,
       focusActiveTerminal,
       switchTabAgent,
+      restartTerminalTab,
       getActiveTabAgent,
       splitPaneTabIds,
       splitPaneSizes,
@@ -1056,7 +1060,10 @@ function AppContents({ initialProjectPath }: AppProps) {
       initDefaultAgent(defaultAgent);
       // Persist that setup is complete so future launches are fast
       await markSetupComplete();
-      // Refresh CLI states and go to projects directly (don't re-enter onboarding)
+      // Refresh CLI states and go straight to projects (don't re-enter
+      // onboarding). A first-time user only has the Default workspace, so the
+      // picker would just be a dead-end click — it's reachable later via
+      // "Switch Workspace" once they actually create a second workspace.
       await refreshAllCliStatuses();
       setView('projects');
     };
@@ -1072,9 +1079,35 @@ function AppContents({ initialProjectPath }: AppProps) {
     );
   }
 
+  if (view === 'account-select') {
+    return (
+      <ToastContext.Provider value={toastsProps}>
+        <div className="app">
+          <AccountSelectScreen onContinue={() => setView('projects')} />
+        </div>
+        {toasts.length > 0 && (
+          <div className="toast-container">
+            {toasts.map((t) => (
+              <div key={t.id} className={`toast toast-${t.type}`}>
+                <span className="toast-icon">
+                  {t.type === 'success' ? <SuccessIcon size={16} /> : <InfoIcon size={16} />}
+                </span>
+                <span className="toast-message">{t.message}</span>
+                <button className="toast-close" onClick={() => dismissToast(t.id)}>
+                  <CloseIcon size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {quitConfirmModal}
+      </ToastContext.Provider>
+    );
+  }
+
   if (view === 'projects') {
     return (
-      <>
+      <ToastContext.Provider value={toastsProps}>
         <div className={`projects-with-rail${isCompact ? ' is-compact' : ''}`} key="view-projects">
           {!isCompact && (
             <WorkspaceSidebar
@@ -1102,6 +1135,7 @@ function AppContents({ initialProjectPath }: AppProps) {
               isRestartingDevServer={false}
               devServerRunning={false}
               isProjectDevServerRunning={isServerRunning}
+              onSwitchAccount={() => setView('account-select')}
             />
           )}
           <ProjectsView
@@ -1115,10 +1149,10 @@ function AppContents({ initialProjectPath }: AppProps) {
             onGitHubConnect={handleGitHubConnectFromOverlay}
             showCreateModal={showCreateModal}
             onCloseCreateModal={handleCloseCreateModal}
-            onProjectCreated={handleProjectCreated}
+            onProjectCreated={(path) => void handleProjectCreated(path)}
             importView={importView}
             setImportView={setImportView}
-            onProjectImported={handleProjectImported}
+            onProjectImported={(path) => void handleProjectImported(path)}
             authTerminalConfig={authTerminalConfig}
             closeAuthTerminal={closeAuthTerminal}
             onAuthTerminalExit={handleAuthTerminalExitForProjects}
@@ -1131,6 +1165,7 @@ function AppContents({ initialProjectPath }: AppProps) {
             cleanupStatus={cleanupStatus}
             pinnedSet={pinnedProjects.pinnedSet}
             onTogglePin={(path, pinned) => void handleTogglePin(path, pinned)}
+            onSwitchAccount={() => setView('account-select')}
           />
         </div>
         {/* .projects-with-rail */}
@@ -1160,7 +1195,7 @@ function AppContents({ initialProjectPath }: AppProps) {
           </div>
         )}
         {quitConfirmModal}
-      </>
+      </ToastContext.Provider>
     );
   }
 
@@ -1191,6 +1226,7 @@ function AppContents({ initialProjectPath }: AppProps) {
             isRestartingDevServer={false}
             devServerRunning={false}
             isProjectDevServerRunning={isServerRunning}
+            onSwitchAccount={() => setView('account-select')}
           />
           <div className="project-loading-body">
             {loadingSpinner}
@@ -1237,6 +1273,7 @@ function AppContents({ initialProjectPath }: AppProps) {
         onSelectProjectTab={handleSelectProjectTab}
         onGoHome={handleBackToProjects}
         onOpenProjectPicker={openProjectPicker}
+        onSwitchAccount={() => setView('account-select')}
         isProjectDevServerRunning={isServerRunning}
       />
       {quitConfirmModal}

@@ -80,3 +80,15 @@ export async function gitPull(projectPath: string): Promise<void> {
 export async function commitChanges(projectPath: string, message: string): Promise<boolean> {
   return invoke<boolean>('commit_changes', { projectPath, message });
 }
+
+/**
+ * Stash all current changes (tracked + untracked) so the working tree is clean.
+ * A plain `git stash` set aside for manual restore (`git stash pop`) — not the
+ * metadata-tracked auto-stash that branch switching uses.
+ *
+ * @param projectPath - Absolute path to the project
+ * @returns true if something was stashed, false if the tree was already clean
+ */
+export async function stashChanges(projectPath: string): Promise<boolean> {
+  return invoke<boolean>('stash_changes', { projectPath });
+}

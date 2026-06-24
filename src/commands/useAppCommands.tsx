@@ -421,7 +421,7 @@ export function useAppCommands({
         icon: <SettingsIcon size={14} />,
         category: 'settings',
         when: 'project',
-        keywords: ['configure'],
+        keywords: ['port', 'localhost', '3000', 'configure'],
         run: () => openModal('projectSettings'),
       },
       {
@@ -430,7 +430,7 @@ export function useAppCommands({
         icon: <SettingsIcon size={14} />,
         category: 'settings',
         when: 'project',
-        keywords: ['port', 'server', 'script'],
+        keywords: ['server', 'script', 'command'],
         run: () => openModal('devCommand'),
       },
       {

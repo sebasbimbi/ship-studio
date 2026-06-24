@@ -173,10 +173,12 @@
      the two bars line up. */
   --preview-toolbar-h: 47px;
   /* Element tree (navigator) panel width — the preview's left grid column in
-     fullscreen edit mode. */
+     fullscreen edit mode. The Code (markup-edit) view widens to --tree-code-w
+     so hand-editing HTML isn't cramped. */
   --tree-panel-w: 240px;
+  --tree-code-w: 420px;
   /* Max width for the terminal first-run hint card. */
-  --hint-card-max-w: 360px;
+  --hint-card-max-w: 720px;
   --z-modal-overlay: 1000;
   --z-modal: 1001;
   --z-tooltip: 1100;

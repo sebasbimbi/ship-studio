@@ -42,22 +42,34 @@ echo "Components (.tsx limit 1200):"
 # just the render branch + hook call the orchestrator must own). Bumped again
 # for the terminal-header "Agent is working" indicator (the hook + component
 # live in AgentWorkingIndicator/useActiveAgentStatus; this is just the import +
-# one deeply-nested usage line that prettier wraps).
-check_file src/components/workspace/WorkspaceView.tsx 1580
-check_file src/components/dashboard/ProjectList.tsx 800
+# one deeply-nested usage line that prettier wraps). Bumped again
+# for Workspaces (per-workspace credential isolation): the orchestrators own the
+# active-workspace gating, account-select screen routing, and move-workspace
+# wiring. Extracting a TerminalPanes sub-component from WorkspaceView and an
+# account router from App.tsx remain on the roadmap as follow-ups. Bumped again
+# for the agent-restart wiring (restartTerminalTab threaded to each Terminal +
+# the Agent Settings menu item) — small, on top of the Workspaces baseline.
+check_file src/components/workspace/WorkspaceView.tsx 1600
+check_file src/components/dashboard/ProjectList.tsx 900
 check_file src/components/plugins/PluginManager.tsx 700
 check_file src/components/dashboard/ImportProject.tsx 500
-check_file src/App.tsx 1250
+check_file src/App.tsx 1290
 echo
 echo "CSS (limit 1200 per file):"
 # The visual editor stylesheet carries every control's styling (box model,
 # dropdowns, color picker, collapsible sections, custom-CSS box) and grew with
-# the expanded property coverage. Raised deliberately; splitting it by control
+# the expanded property coverage, plus the neutral active-state primitives now
+# shared with the CSS-mode editor. Raised deliberately; splitting it by control
 # family is on the roadmap.
-check_file src/styles/features/visual-editor.css 1400
+check_file src/styles/features/visual-editor.css 1500
+# preview.css carries the whole live-preview surface (toolbar, page switcher,
+# locale switcher, device mirror, breakpoints, zoom) and crossed 1200 with the
+# custom page-selector scrollbar. Raised deliberately; splitting it by control
+# family is on the roadmap.
+check_file src/styles/features/preview.css 1300
 while IFS= read -r f; do
   check_file "$f" 1200
-done < <(find src/styles -maxdepth 3 -name '*.css' ! -name 'visual-editor.css' 2>/dev/null)
+done < <(find src/styles -maxdepth 3 -name '*.css' ! -name 'visual-editor.css' ! -name 'preview.css' 2>/dev/null)
 echo
 
 if [ $FAIL -ne 0 ]; then

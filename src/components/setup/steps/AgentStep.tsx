@@ -22,6 +22,7 @@ const AGENT_DESCRIPTIONS: Record<string, string> = {
   claude: "Anthropic's coding agent",
   codex: "OpenAI's coding agent",
   opencode: 'Open-source coding agent',
+  cursor: "Cursor's coding agent",
 };
 
 interface AgentStepProps {

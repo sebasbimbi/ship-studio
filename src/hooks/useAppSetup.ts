@@ -83,15 +83,23 @@ export function useAppSetup({
       const defaultAgent = await fetchDefaultAgentId();
       initDefaultAgent(defaultAgent);
 
+      // Always boot straight into the projects view — and, because the active
+      // account is persisted, into the user's last-used workspace. The picker
+      // is never forced at startup; it's reachable on demand via "Switch
+      // Workspace". This keeps launch identical to the pre-Workspaces flow for
+      // the ~80% of users who only ever have the Default workspace, and gives
+      // multi-workspace users Slack-style "open where you left off" behavior.
+      const postSetupView: AppView = 'projects';
+
       // Fast path: if setup was previously completed, try quick check first
       if (!forceFullCheck) {
         const quickCheck = await quickSetupCheck();
         if (quickCheck.setupCompleteCached && quickCheck.allPresent) {
           // Setup was completed before and all binaries still exist
-          // Show projects immediately, verify auth in background
+          // Show projects/account picker immediately, verify auth in background
           // Use functional update to avoid overwriting HMR recovery's 'workspace' view
           setView((currentView) =>
-            currentView === 'loading' || currentView === 'onboarding' ? 'projects' : currentView
+            currentView === 'loading' || currentView === 'onboarding' ? postSetupView : currentView
           );
           void verifySetupInBackground();
           return;
@@ -111,7 +119,7 @@ export function useAppSetup({
         void markSetupComplete();
         // Use functional update to avoid overwriting HMR recovery's 'workspace' view
         setView((currentView) =>
-          currentView === 'loading' || currentView === 'onboarding' ? 'projects' : currentView
+          currentView === 'loading' || currentView === 'onboarding' ? postSetupView : currentView
         );
       } else {
         setView('onboarding');

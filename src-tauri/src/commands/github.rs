@@ -41,7 +41,10 @@ async fn run_command_with_timeout(
     run_with_timeout(tokio_cmd, "gh", timeout_secs).await
 }
 
-/// Returns a Command for gh with extended PATH set
+/// Returns a Command for gh with extended PATH set, scoped to the globally
+/// active workspace. Use this for gh operations with no project context
+/// (e.g. `gh auth status`). For operations that act on a specific project,
+/// prefer [`get_gh_command_for_project`] so the project's workspace auth is used.
 pub fn get_gh_command() -> Command {
     let mut cmd = if let Some(path) = find_executable("gh") {
         create_command(path)
@@ -49,6 +52,25 @@ pub fn get_gh_command() -> Command {
         create_command("gh")
     };
     cmd.env("PATH", get_extended_path());
+    cmd.envs(crate::commands::accounts::get_env_vars_for_active_account());
+    cmd
+}
+
+/// Like [`get_gh_command`], but scoped to the workspace the given project
+/// belongs to (falling back to the active workspace when untagged). This is how
+/// `gh pr create/list/merge/...` use the *project's* GitHub login rather than
+/// whichever workspace is globally active — so a PR opened from a Beta-workspace
+/// project authenticates as Beta even while Acme is the active workspace.
+pub fn get_gh_command_for_project(project_path: &std::path::Path) -> Command {
+    let mut cmd = if let Some(path) = find_executable("gh") {
+        create_command(path)
+    } else {
+        create_command("gh")
+    };
+    cmd.env("PATH", get_extended_path());
+    cmd.envs(crate::commands::accounts::get_env_vars_for_project(
+        project_path,
+    ));
     cmd
 }
 
@@ -82,18 +104,30 @@ pub async fn check_github_cli_status() -> GitHubCliStatus {
         };
     }
 
-    // Check if authenticated (with timeout to prevent hanging)
+    // Check if authenticated (with timeout to prevent hanging).
+    //
+    // We derive "authenticated" by parsing the output for a valid active login,
+    // NOT from the exit code: `gh auth status` exits non-zero whenever any
+    // configured account has an invalid token, even when the active account is
+    // logged in and working. Trusting the exit code reported users with a stale
+    // second account as "not connected" and looped them through the connect flow
+    // (grey GitHub button). See accounts::parse_gh_auth_status.
     let start = std::time::Instant::now();
     let mut auth_cmd = get_gh_command();
     auth_cmd.args(["auth", "status"]);
     let authenticated = match run_command_with_timeout(auth_cmd, GITHUB_CLI_TIMEOUT_SECS).await {
         Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let authed =
+                crate::commands::accounts::parse_gh_auth_status(&stdout, &stderr).is_some();
             debug!(
                 elapsed_ms = start.elapsed().as_millis() as u64,
-                success = output.status.success(),
+                exit_success = output.status.success(),
+                authed,
                 "gh auth status completed"
             );
-            output.status.success()
+            authed
         }
         Err(e) => {
             warn!(elapsed_ms = start.elapsed().as_millis() as u64, error = %e, "gh auth status failed/timed out");
@@ -223,10 +257,12 @@ pub async fn get_project_github_status(project_path: String) -> ProjectGitHubSta
         }
     };
 
-    // Verify repo exists on GitHub using gh CLI (with timeout)
+    // Verify repo exists on GitHub using gh CLI (with timeout). Scope to the
+    // project's workspace so a repo private to that workspace's GitHub login
+    // resolves correctly even when another workspace is globally active.
     let step_start = std::time::Instant::now();
     debug!(github_repo = %github_repo, "Running gh repo view");
-    let mut gh_cmd = get_gh_command();
+    let mut gh_cmd = get_gh_command_for_project(&project);
     gh_cmd
         .args(["repo", "view", &github_repo, "--json", "url"])
         .current_dir(&project);
@@ -295,8 +331,9 @@ pub fn ensure_git_identity(repo_path: &std::path::Path) -> Result<(), CommandErr
         return Ok(());
     }
 
-    // Fetch identity from GitHub CLI
-    let gh_output = get_gh_command()
+    // Fetch identity from GitHub CLI, scoped to this repo's workspace so the
+    // committed author matches the workspace's GitHub login, not the active one.
+    let gh_output = get_gh_command_for_project(repo_path)
         .args(["api", "user", "--jq", r#".login, .name, .email"#])
         .output()
         .map_err(|e| format!("Failed to get GitHub user info: {e}"))?;
@@ -406,8 +443,9 @@ pub async fn push_to_github(options: PushToGitHubOptions) -> Result<String, Comm
         }
     }
 
-    // Create GitHub repo and push
-    let mut gh_cmd = get_gh_command();
+    // Create GitHub repo and push, scoped to the project's workspace so the repo
+    // is created under that workspace's GitHub account, not the active one.
+    let mut gh_cmd = get_gh_command_for_project(&validated_path);
     gh_cmd
         .args([
             "repo", "create", repo_name, visibility, "--source", ".", "--remote", "origin",

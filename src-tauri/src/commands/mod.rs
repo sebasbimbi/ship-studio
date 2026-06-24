@@ -2,6 +2,7 @@
 //!
 //! This module re-exports all Tauri command handlers organized by category.
 
+pub mod accounts;
 pub mod ai;
 pub mod analytics;
 pub mod assets;
@@ -10,6 +11,7 @@ pub mod code;
 pub mod conflicts;
 pub mod custom_classes;
 pub mod edit;
+pub mod edit_css;
 pub mod env;
 pub mod external_projects;
 pub mod folders;
@@ -41,6 +43,7 @@ pub mod vercel;
 pub mod window;
 
 // Re-export all commands for easy access in lib.rs
+pub use accounts::*;
 pub use ai::*;
 pub use analytics::*;
 pub use assets::*;

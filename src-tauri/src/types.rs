@@ -230,6 +230,12 @@ pub struct ProjectMetadata {
     /// connects a store via the preview-pane setup flow.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shopify_store: Option<String>,
+    /// ID of the Workspace (Account) this project belongs to — set the first
+    /// time the project is opened. `None` for projects opened before the
+    /// Workspace picker existed; these are treated as belonging to the
+    /// built-in "Default" account.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<String>,
     /// Keys this app version doesn't know about, preserved verbatim across
     /// read-modify-write cycles — an older build must never silently drop
     /// fields written by a newer one.
@@ -261,6 +267,7 @@ impl Default for ProjectMetadata {
             workspace_subpath: None,
             assets_root: None,
             shopify_store: None,
+            account_id: None,
             extra: serde_json::Map::new(),
         }
     }
@@ -722,8 +729,13 @@ pub struct QuickSetupCheck {
 }
 
 /// Persisted app-level state (stored in app data directory)
+///
+/// `#[serde(default)]` at the container level is load-bearing: when a newer
+/// build adds a field, reading an older `app_state.json` that lacks it must NOT
+/// fail the whole parse (which previously reset every setting, including saved
+/// Workspaces). Any missing field now falls back to its `Default` instead.
 #[derive(Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct AppState {
     /// Whether full setup has been completed at least once
     pub setup_complete: bool,
@@ -752,6 +764,58 @@ pub struct AppState {
     /// macOS beta / GPU-driver combinations).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub terminal_gpu_enabled: Option<bool>,
+    /// Workspaces (org/client accounts) with isolated Claude/GitHub config and credentials
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub accounts: Vec<Account>,
+    /// The currently active workspace/account ID for this session
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_account_id: Option<String>,
+    /// User-configured root directory where projects are listed and created.
+    /// None falls back to the built-in default (`~/ShipStudio`). The default root
+    /// always stays valid even when a custom one is set, so projects already in
+    /// `~/ShipStudio` keep opening.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub projects_root: Option<String>,
+}
+
+// ============ Accounts (Workspaces) ============
+
+/// A "Workspace" in the UI - an isolated org/client context with its own
+/// Claude Code login, GitHub CLI login, and credential vault.
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Account {
+    pub id: String,
+    pub name: String,
+    /// Hex color used for the avatar, e.g. "#6b7280"
+    pub color: String,
+    /// The built-in "Default" account - cannot be deleted
+    pub is_default: bool,
+    /// Unix ms timestamp of creation
+    pub created_at: u64,
+    /// Folder this workspace lists/creates projects in. `None` falls back to the
+    /// built-in default (`~/ShipStudio`), or — for the Default workspace — the
+    /// legacy top-level `AppState.projects_root` for backward compatibility.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub projects_root: Option<String>,
+}
+
+/// Credential/auth status for an account's isolated config, used to populate
+/// the account settings modal without exposing secret values.
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountCredentialStatus {
+    pub claude_auth_email: Option<String>,
+    pub codex_auth_email: Option<String>,
+    pub opencode_auth_email: Option<String>,
+    pub github_auth_email: Option<String>,
+    /// Vercel identity (`vercel whoami`) verified with this workspace's injected
+    /// `VERCEL_TOKEN`. `None` when no token is set or the token is invalid.
+    pub vercel_username: Option<String>,
+    pub has_anthropic_base_url: bool,
+    pub has_vercel_token: bool,
+    pub has_git_name: bool,
+    pub has_git_email: bool,
 }
 
 // ============ Compact Mode ============
@@ -810,5 +874,39 @@ mod metadata_tests {
         assert!(!legacy_json.contains("force_static_serve"));
         let parsed: ProjectMetadata = serde_json::from_str(&legacy_json).unwrap();
         assert_eq!(parsed.force_static_serve, None);
+    }
+}
+
+#[cfg(test)]
+mod app_state_tests {
+    use super::AppState;
+
+    #[test]
+    fn partial_state_preserves_present_fields_and_defaults_missing() {
+        // A state file from a build that didn't yet have `setupComplete` (a
+        // non-Option field) must still parse: missing fields fall back to their
+        // default instead of failing the whole parse and wiping every setting.
+        let json = r##"{
+            "defaultAgentId": "codex",
+            "accounts": [
+                {"id":"abc","name":"Acme","color":"#fff","isDefault":false,"createdAt":1}
+            ],
+            "activeAccountId": "abc"
+        }"##;
+        let parsed: AppState = serde_json::from_str(json).expect("partial state must parse");
+        // Present fields survive.
+        assert_eq!(parsed.default_agent_id.as_deref(), Some("codex"));
+        assert_eq!(parsed.accounts.len(), 1);
+        assert_eq!(parsed.active_account_id.as_deref(), Some("abc"));
+        // Missing non-Option field gets its default rather than erroring.
+        assert!(!parsed.setup_complete);
+    }
+
+    #[test]
+    fn unknown_fields_are_ignored() {
+        // A field removed in a later schema must not break parsing of an older file.
+        let json = r#"{"setupComplete": true, "someRemovedField": 42}"#;
+        let parsed: AppState = serde_json::from_str(json).expect("unknown fields tolerated");
+        assert!(parsed.setup_complete);
     }
 }

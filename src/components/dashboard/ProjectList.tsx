@@ -43,13 +43,14 @@ import {
 } from '../../lib/folders';
 import { DashboardHeader } from './DashboardHeader';
 import { AgentsPanel } from './AgentsPanel';
-import { IntegrationBar } from './IntegrationBar';
+import { MachineToolsPanel } from './MachineToolsPanel';
 import { NewFolderModal } from './NewFolderModal';
 import { ProjectGridView } from './ProjectGridView';
 import { RenameProjectModal } from './RenameProjectModal';
 import { SearchAndSort } from './SearchAndSort';
 import { FolderBreadcrumb } from './FolderBreadcrumb';
 import { MoveFolderModal } from './MoveFolderModal';
+import { MoveWorkspaceModal } from './MoveWorkspaceModal';
 import { SettingsModal } from './SettingsModal';
 import { ModalFrame } from '../primitives/ModalFrame';
 import { Button } from '../primitives/Button';
@@ -62,6 +63,9 @@ import {
   getSlackCtaHidden,
   setSlackCtaHidden as persistSlackCtaHidden,
 } from '../../lib/settings';
+import { moveProjectToAccount, getProjectAccountId } from '../../lib/accounts';
+import { useActiveAccount } from '../../hooks/useActiveAccount';
+import { useOptionalToast } from '../../contexts/ToastContext';
 import { SlackIcon, SettingsIcon, EyeOffIcon, ChevronRightIcon, HistoryIcon } from '../icons';
 
 /** Basic project info for selection callback */
@@ -92,8 +96,6 @@ interface ProjectListProps {
   isGitHubAuthenticated?: boolean;
   /** Callback when user tries to import without GitHub auth */
   onGitHubConnectForImport?: () => void;
-  /** Callback to connect GitHub account */
-  onGitHubConnect?: () => void;
   /** GitHub username for contribution calendar */
   githubUsername?: string | null;
   /** Whether the initial auth check has completed */
@@ -106,6 +108,8 @@ interface ProjectListProps {
   pinnedSet?: ReadonlySet<string>;
   /** Toggle pin state for a project. */
   onTogglePin?: (projectPath: string, pinned: boolean) => void;
+  /** Open the workspace switcher (shown as a chip beside "All Projects"). */
+  onSwitchAccount?: () => void;
 }
 
 export function ProjectList({
@@ -114,13 +118,13 @@ export function ProjectList({
   onImportProject,
   isGitHubAuthenticated = true,
   onGitHubConnectForImport,
-  onGitHubConnect,
   githubUsername,
   isAuthCheckDone = false,
   onLoadingChange,
   cleanupStatus,
   pinnedSet,
   onTogglePin,
+  onSwitchAccount,
 }: ProjectListProps) {
   const [projects, setProjects] = useState<ProjectWithThumbnail[]>([]);
   /** Hidden <input type="file"> reused across cards. The current upload
@@ -131,6 +135,11 @@ export function ProjectList({
   const [folders, setFolders] = useState<FolderInfo[]>([]);
   const [filedPaths, setFiledPaths] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const { showToast } = useOptionalToast();
+  // Drives a reload whenever the active workspace changes (see the load effect).
+  const { activeAccount, accounts } = useActiveAccount();
+  const activeAccountId = activeAccount?.id;
+  const hasMultipleWorkspaces = accounts.length > 1;
   const [deleteConfirm, setDeleteConfirm] = useState<DashboardProject | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [renameTarget, setRenameTarget] = useState<DashboardProject | null>(null);
@@ -149,6 +158,10 @@ export function ProjectList({
   // Move to folder modal state
   const [moveProject, setMoveProject] = useState<DashboardProject | null>(null);
   const [moveProjectFolderId, setMoveProjectFolderId] = useState<string | null>(null);
+
+  // Move to workspace modal state
+  const [moveWorkspaceProject, setMoveWorkspaceProject] = useState<DashboardProject | null>(null);
+  const [moveWorkspaceCurrentId, setMoveWorkspaceCurrentId] = useState<string | null>(null);
 
   // Settings / Changelog modal state
   const [showSettings, setShowSettings] = useState(false);
@@ -180,7 +193,14 @@ export function ProjectList({
   const searchQuery: string = '';
   const [sortBy, setSortBy] = useState<SortOption>('last_opened');
 
-  const loadProjects = async () => {
+  // Monotonic token so a superseded loadAll() (e.g. the list fetched for the
+  // old workspace right before a switch) neither applies its stale results nor
+  // clears the loading state — preventing an empty-state flash mid-switch.
+  // Only loadAll() passes a seq; bare loadProjects() refreshes apply
+  // unconditionally and intentionally don't touch the token or the spinner.
+  const loadSeqRef = useRef(0);
+
+  const loadProjects = async (seq?: number) => {
     try {
       const projectList = await getDashboardProjects();
 
@@ -202,7 +222,11 @@ export function ProjectList({
         })
       );
 
-      setProjects(projectsWithThumbnails);
+      // A seq'd load (from loadAll) is ignored if a newer one superseded it;
+      // a bare refresh (no seq) always applies.
+      if (seq === undefined || seq === loadSeqRef.current) {
+        setProjects(projectsWithThumbnails);
+      }
     } catch (error) {
       logger.error('Failed to load projects', {
         error: error instanceof Error ? error.message : String(error),
@@ -225,9 +249,12 @@ export function ProjectList({
   };
 
   const loadAll = useCallback(async () => {
+    const seq = ++loadSeqRef.current;
     setLoading(true);
-    await Promise.all([loadProjects(), loadFolders()]);
-    setLoading(false);
+    await Promise.all([loadProjects(seq), loadFolders()]);
+    // Only the latest load clears the spinner — a superseded load keeps it up
+    // so the list stays in its loading state until the current fetch resolves.
+    if (seq === loadSeqRef.current) setLoading(false);
   }, []);
 
   // Notify parent when loading state changes
@@ -250,9 +277,14 @@ export function ProjectList({
     }
   }, [currentFolderId]);
 
+  // Load on mount AND whenever the active workspace changes. get_dashboard_projects
+  // is scoped to the active workspace server-side, so a switch changes the result
+  // set. Keying on the resolved active-account id (rather than a fired event) is
+  // deterministic — it reloads even when the switch happened while this list was
+  // unmounted (the picker is a separate view), which an event listener would miss.
   useEffect(() => {
     void loadAll();
-  }, [loadAll]);
+  }, [loadAll, activeAccountId]);
 
   // Get projects to display based on current folder
   const displayedProjects = useMemo(() => {
@@ -455,6 +487,29 @@ export function ProjectList({
     await Promise.all([loadProjects(), loadFolders()]);
   };
 
+  const handleMoveProjectToWorkspace = async (accountId: string) => {
+    if (!moveWorkspaceProject) return;
+    const projectName = moveWorkspaceProject.name;
+    const workspaceName = accounts.find((a) => a.id === accountId)?.name ?? 'workspace';
+    try {
+      await moveProjectToAccount(moveWorkspaceProject.path, accountId);
+      void trackEvent('project_moved_to_workspace', { $screen_name: 'Dashboard' });
+      showToast(`Moved "${projectName}" to ${workspaceName}`, 'success');
+    } catch (err) {
+      showToast(formatCommandError(asCommandError(err)), 'error');
+    } finally {
+      setMoveWorkspaceProject(null);
+      setMoveWorkspaceCurrentId(null);
+      await loadProjects();
+    }
+  };
+
+  const handleOpenMoveWorkspaceModal = async (project: DashboardProject) => {
+    const currentId = await getProjectAccountId(project.path);
+    setMoveWorkspaceCurrentId(currentId);
+    setMoveWorkspaceProject(project);
+  };
+
   const handleOpenMoveModal = async (project: DashboardProject) => {
     // Check if project is currently in a folder
     const paths = await getFiledProjectPaths();
@@ -581,6 +636,23 @@ export function ProjectList({
           sortBy={sortBy}
           onSortChange={setSortBy}
           onNewFolder={() => setShowNewFolderModal(true)}
+          titleAccessory={
+            !currentFolderId && hasMultipleWorkspaces && activeAccount && onSwitchAccount ? (
+              <button
+                type="button"
+                className="dashboard-workspace-chip"
+                onClick={onSwitchAccount}
+                title="Switch workspace"
+              >
+                <span
+                  className="dashboard-workspace-chip-dot"
+                  style={{ backgroundColor: activeAccount.color }}
+                />
+                <span className="dashboard-workspace-chip-name">{activeAccount.name}</span>
+                <ChevronRightIcon size={12} />
+              </button>
+            ) : undefined
+          }
         />
 
         <ProjectGridView
@@ -596,6 +668,7 @@ export function ProjectList({
             void handleToggleMainBranchWarning(path, hidden)
           }
           onOpenMoveModal={(project) => void handleOpenMoveModal(project)}
+          onOpenMoveWorkspaceModal={(project) => void handleOpenMoveWorkspaceModal(project)}
           onExportAsTemplate={(path) => void handleExportAsTemplate(path)}
           onUploadThumbnail={(project) => handleUploadThumbnail(project)}
           onRemoveExternal={(project) => void handleRemoveExternal(project)}
@@ -661,7 +734,7 @@ export function ProjectList({
           </div>
         </section>
 
-        <IntegrationBar onGitHubConnect={onGitHubConnect} />
+        <MachineToolsPanel />
 
         {/* Physical bottom spacer — guarantees the Integrations card never
             butts up against the scroll edge, regardless of how the outer
@@ -708,6 +781,18 @@ export function ProjectList({
           currentFolderId={moveProjectFolderId}
         />
 
+        {/* Move to Workspace Modal */}
+        <MoveWorkspaceModal
+          isOpen={moveWorkspaceProject !== null}
+          onClose={() => {
+            setMoveWorkspaceProject(null);
+            setMoveWorkspaceCurrentId(null);
+          }}
+          onSelect={handleMoveProjectToWorkspace}
+          projectName={moveWorkspaceProject?.name || ''}
+          currentAccountId={moveWorkspaceCurrentId}
+        />
+
         {/* Rename Project Modal */}
         <RenameProjectModal
           isOpen={renameTarget !== null}
@@ -746,6 +831,7 @@ export function ProjectList({
           onClose={() => setShowSettings(false)}
           onCalendarHiddenChange={setCalendarHidden}
           onSlackCtaHiddenChange={setSlackCtaHidden}
+          onProjectsRootChanged={() => void loadProjects()}
         />
 
         {/* What's New Modal */}

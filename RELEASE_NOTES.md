@@ -6,6 +6,44 @@ The latest entry is rendered inside the in-app update dialog, so write user-
 facing language — what changed, in plain English — not commit subjects.
 -->
 
+## What's New in v0.12.0
+
+- **Cursor CLI agent** - Cursor joins Claude Code, Codex, and Opencode as a built-in AI agent. Install it during setup, sign in, run `cursor-agent` in your workspace terminal, and set it as your default agent.
+- **Visual editor now works with Vite** - Point-and-click style editing works on Vite + React + Tailwind projects, not just Next.js, Astro, and Shopify.
+- **Restart an agent terminal** - If your coding agent exits, restart it right in place instead of opening a new tab.
+- **First-run terminal hint** - A fresh agent terminal shows a short hint about what to do, until you start typing.
+- **Smoother onboarding** - Clearer setup wizard copy and more accurate tool detection. On Windows, Node.js now installs reliably during setup.
+- **Fixes** - A macOS 12 launch crash, GitHub showing as disconnected when a second account had an invalid token, and the Cmd+K "port" search now points to Project settings.
+
+
+## What's New in v0.11.2
+
+- **Create a branch with unsaved work** - Creating a branch while you have uncommitted changes no longer errors out. You now get a choice: commit them on your current branch first, or stash them aside — then the new branch is created and switched to.
+- **Clearer Git errors** - Errors in the Branches tab now show the real message instead of "[object Object]".
+
+
+## What's New in v0.11.1
+
+- **GitHub connect fix** - Fixed a loop where connecting GitHub would authenticate in the browser (GitHub showed connected) but the button stayed grey and kept re-prompting. Hit Windows users especially, plus some Macs. Your default workspace now finds your existing GitHub login wherever it actually lives.
+
+
+## What's New in v0.11.0
+
+- **Visual editing for plain CSS projects** - Point-and-click style editing now works on vanilla HTML/CSS and plain Astro sites, not just Tailwind. Select any element and edit its real CSS rule; the change applies to every element that shares the class.
+- **Edit by class, state, and breakpoint** - Choose which of an element's classes you're styling, target states like :hover, and edit responsive @media layers, all from the panel.
+- **Visual or code** - Flip any rule between the structured controls and a real code editor with syntax highlighting, then save straight back to your stylesheet.
+- **New plain HTML/CSS starter** - Spin up a no-framework project in one click.
+- **Faster and safer** - Element selection is snappier on large projects, and editing no longer crashes on pages that contain emoji or accented text.
+
+
+## What's New in v0.10.0
+
+- **Workspaces** - Keep separate Claude, GitHub, and Codex logins for different clients or orgs, fully isolated. Each workspace has its own credentials, so an agent working in one project never sees another's auth. Your existing setup becomes the "Default" workspace, untouched. Assign any project to a workspace — its terminals, git, PRs, and AI all use that workspace's logins automatically — and move projects between workspaces right from the dashboard.
+- **Credential vault** - Store a per-workspace Vercel token, Anthropic base URL, and git identity securely in the macOS Keychain. Secret values never leave the backend.
+- **Choose your projects folder** - Point Ship Studio at any folder (like an existing ~/Dev directory) instead of ~/ShipStudio, globally or per workspace, and optionally move your existing projects across.
+- **Windows fixes** - The Code tab no longer shows a garbled file list, and "Install Claude Code" now installs from the terminal instead of opening a browser. Setup terminals also remind you that a typed password stays hidden even though nothing appears.
+
+
 ## What's New in v0.9.0
 
 - **Custom classes** - A Webflow-style, Tailwind-native class system in the visual editor: create a reusable class from an element's styles, apply or remove classes, and edit a class once to update every element using it.

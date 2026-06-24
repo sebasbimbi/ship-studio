@@ -22,6 +22,41 @@ pub async fn get_stash_info(
     Ok(metadata.stash_info)
 }
 
+/// Stash all current changes (tracked + untracked) so the working tree is clean.
+///
+/// Used by "Stash & create branch": the user has uncommitted changes that would
+/// be clobbered by branching off a different base, and chose to set them aside.
+/// This is a plain `git stash` (NOT the metadata-tracked auto-stash that switch
+/// uses), so the user restores it manually with `git stash pop`. Returns true if
+/// something was stashed, false if the tree was already clean.
+#[tauri::command]
+#[tracing::instrument(fields(project = %project_path))]
+pub async fn stash_changes(project_path: String) -> Result<bool, CommandError> {
+    let validated_path = validate_project_path(&project_path)?;
+
+    let output = create_command("git")
+        .args([
+            "stash",
+            "push",
+            "--include-untracked",
+            "-m",
+            "Ship Studio: set aside before creating a branch",
+        ])
+        .current_dir(&validated_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err((format!("Failed to stash changes: {stderr}")).into());
+    }
+
+    GIT_CACHE.invalidate_status(&project_path);
+    // `git stash` with nothing to save exits 0 and prints "No local changes…".
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(!stdout.contains("No local changes"))
+}
+
 /// Manually apply and clear the auto-stash
 #[tauri::command]
 #[tracing::instrument(fields(project = %project_path))]

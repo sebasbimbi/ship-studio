@@ -2,7 +2,7 @@
 //!
 //! Commands for managing GitHub pull requests.
 
-use crate::commands::github::get_gh_command;
+use crate::commands::github::get_gh_command_for_project;
 use crate::errors::CommandError;
 use crate::external_command::run_with_timeout;
 use crate::types::PullRequestInfo;
@@ -34,7 +34,7 @@ pub async fn list_pull_requests(
 ) -> Result<Vec<PullRequestInfo>, CommandError> {
     let validated_path = validate_project_path(&project_path)?;
 
-    let mut cmd = get_gh_command();
+    let mut cmd = get_gh_command_for_project(&validated_path);
     cmd.args([
         "pr",
         "list",
@@ -97,6 +97,9 @@ pub async fn create_pull_request(
     let mut push_cmd = create_command("git");
     push_cmd
         .args(["push", "-u", "origin", "HEAD"])
+        .envs(crate::commands::accounts::get_env_vars_for_project(
+            &validated_path,
+        ))
         .current_dir(&validated_path);
     let push_output = run_net(push_cmd, "git push").await?;
 
@@ -113,7 +116,7 @@ pub async fn create_pull_request(
         "pr", "create", "--title", &title, "--body", &body_str, "--base", &base,
     ];
 
-    let mut cmd = get_gh_command();
+    let mut cmd = get_gh_command_for_project(&validated_path);
     cmd.args(&args).current_dir(&validated_path);
     let output = run_net(cmd, "gh pr create").await?;
 
@@ -135,7 +138,7 @@ pub async fn create_pull_request(
 pub async fn merge_pull_request(project_path: String, pr_number: i32) -> Result<(), CommandError> {
     let validated_path = validate_project_path(&project_path)?;
 
-    let mut cmd = get_gh_command();
+    let mut cmd = get_gh_command_for_project(&validated_path);
     cmd.args(["pr", "merge", &pr_number.to_string(), "--merge"])
         .current_dir(&validated_path);
     let output = run_net(cmd, "gh pr merge").await?;
@@ -169,7 +172,7 @@ pub async fn checkout_pull_request(
 ) -> Result<String, CommandError> {
     let validated_path = validate_project_path(&project_path)?;
 
-    let mut cmd = get_gh_command();
+    let mut cmd = get_gh_command_for_project(&validated_path);
     cmd.args(["pr", "checkout", &pr_number.to_string()])
         .current_dir(&validated_path);
     let output = run_net(cmd, "gh pr checkout").await?;
@@ -198,7 +201,7 @@ pub async fn checkout_pull_request(
 pub async fn close_pull_request(project_path: String, pr_number: i32) -> Result<(), CommandError> {
     let validated_path = validate_project_path(&project_path)?;
 
-    let mut cmd = get_gh_command();
+    let mut cmd = get_gh_command_for_project(&validated_path);
     cmd.args(["pr", "close", &pr_number.to_string()])
         .current_dir(&validated_path);
     let output = run_net(cmd, "gh pr close").await?;

@@ -39,6 +39,8 @@ function setup(selectedId: number | null) {
       selectedId={selectedId}
       onSelect={onSelect}
       onHover={() => {}}
+      projectPath="/tmp/project"
+      selectedSignature={null}
     />
   );
   return { onSelect };
@@ -105,6 +107,8 @@ describe('ElementTreePanel keyboard navigation', () => {
           selectedId={3}
           onSelect={onSelect}
           onHover={() => {}}
+          projectPath="/tmp/project"
+          selectedSignature={null}
         />
       </>
     );
@@ -125,6 +129,8 @@ describe('ElementTreePanel search', () => {
         selectedId={null}
         onSelect={() => {}}
         onHover={() => {}}
+        projectPath="/tmp/project"
+        selectedSignature={null}
       />
     );
     return screen.getByLabelText('Search elements');
@@ -182,6 +188,8 @@ describe('ElementTreePanel search', () => {
         selectedId={2} // header — NOT a match for the query below, so it gets pruned
         onSelect={onSelect}
         onHover={() => {}}
+        projectPath="/tmp/project"
+        selectedSignature={null}
       />
     );
     fireEvent.change(screen.getByLabelText('Search elements'), { target: { value: 'footer' } });
@@ -198,6 +206,8 @@ describe('ElementTreePanel search', () => {
         selectedId={null}
         onSelect={() => {}}
         onHover={() => {}}
+        projectPath="/tmp/project"
+        selectedSignature={null}
       />
     );
     fireEvent.change(screen.getByLabelText('Search elements'), { target: { value: 'zzz-nope' } });
@@ -214,6 +224,8 @@ describe('ElementTreePanel search', () => {
         selectedId={null}
         onSelect={() => {}}
         onHover={() => {}}
+        projectPath="/tmp/project"
+        selectedSignature={null}
       />
     );
     fireEvent.change(screen.getByLabelText('Search elements'), { target: { value: 'footer' } });

@@ -38,24 +38,34 @@
   padding-top: 32px;
 }
 
-/* Home row — height matches the editor's primary action toolbar so the
- * sidebar's top band lines up with the Learn Mode / workspace header row. */
+/* Top row — wraps the Home button and workspace switcher dot side-by-side.
+ * The row owns the border-bottom so neither child duplicates it. */
+.workspace-sidebar-top-row {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* Home row — height matches the workspace header band so the sidebar's top
+ * lines up with it: the header is a 28px toolbar control + 8px top/bottom
+ * padding = 44px, and the top row adds its own 1px bottom border. */
 .workspace-sidebar-home {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  height: 45px;
+  height: 44px;
   padding: 0 var(--spacing-md);
   background: var(--bg-secondary);
   border: none;
-  border-bottom: 1px solid var(--border);
+  border-bottom: none;
   color: var(--text-primary);
   cursor: pointer;
   font: inherit;
   font-size: var(--font-size-base);
   font-weight: 600;
   text-align: left;
-  flex-shrink: 0;
+  flex: 1;
   border-left: 2px solid transparent;
   transition: background var(--transition-fast);
 }
@@ -861,6 +871,20 @@
 .workspace-sidebar-add-project {
   height: 44px;
   font-size: var(--font-size-base);
+}
+
+/* Workspace switcher — same full-bleed ghost button as "Open project",
+ * stacked directly below it (separated by a hairline). Only rendered when
+ * the user has 2+ workspaces; shows the active workspace's color + name. */
+.workspace-sidebar-footer-divider {
+  height: 1px;
+  background: var(--border);
+}
+
+.workspace-sidebar-ws-switch {
+  height: 44px;
+  font-size: var(--font-size-base);
+  gap: var(--spacing-sm);
 }
 
 .workspace-sidebar-add-icon {
