@@ -86,10 +86,11 @@ export function ElementTreePanel({
   const filtering = isTreeQueryActive(query);
   const displayTree = useMemo(() => filterElementTree(tree, query), [tree, query]);
 
-  const ancestors = useMemo(
-    () => (displayTree ? buildAncestors(displayTree) : null),
-    [displayTree]
-  );
+  // Built from the FULL tree (not displayTree) so a canvas selection the active
+  // query prunes out still has its ancestor chain available to reveal; otherwise
+  // ancestors.get(selectedId) is undefined for the filtered-out node and the
+  // reveal state goes stale once the query clears.
+  const ancestors = useMemo(() => (tree ? buildAncestors(tree) : null), [tree]);
 
   // Flat lookups for keyboard navigation: each node by id, and each node's
   // parent id (null for the root). Built from the displayed (possibly filtered)
@@ -215,6 +216,10 @@ export function ElementTreePanel({
   }, [selectedId, navIndex, onSelect, displayTree, filtering]);
 
   const toggle = (id: number) => {
+    // During search the tree is force-expanded (see collapsedState), so a chevron
+    // click would mutate `collapsed` invisibly and surface as stale state once the
+    // query clears. Ignore toggles while filtering.
+    if (filtering) return;
     setCollapsed((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
