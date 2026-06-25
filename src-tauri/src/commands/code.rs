@@ -214,7 +214,7 @@ const GIT_MOVE_TIMEOUT_SECS: u64 = 30;
 /// allowed and means "the project root". Returns the cleaned, forward-slashed
 /// relative path.
 fn sanitize_rel(rel: &str) -> Result<String, CommandError> {
-    let trimmed = rel.trim().trim_matches('/');
+    let trimmed = rel.trim().trim_end_matches('/');
     if trimmed.is_empty() {
         return Ok(String::new());
     }
@@ -520,7 +520,10 @@ pub async fn move_project_entry(
                 if plan.replace {
                     remove_existing(&plan.dest)?;
                 }
-                std::fs::rename(&source_canon, &plan.dest)?;
+                // Move the entry itself (not the canonicalized target) so a
+                // symlink is relocated rather than its link target. Containment
+                // was already enforced above via `source_canon.starts_with(&root)`.
+                std::fs::rename(&source, &plan.dest)?;
             } else {
                 return Err(CommandError::Process {
                     cmd: "git mv".to_string(),
@@ -533,7 +536,10 @@ pub async fn move_project_entry(
         if plan.replace {
             remove_existing(&plan.dest)?;
         }
-        std::fs::rename(&source_canon, &plan.dest)?;
+        // Move the entry itself (not the canonicalized target) so a symlink is
+        // relocated rather than its link target. Containment was already
+        // enforced above via `source_canon.starts_with(&root)`.
+        std::fs::rename(&source, &plan.dest)?;
     }
 
     Ok(dest_rel)
@@ -902,7 +908,10 @@ mod tests {
         assert_eq!(sanitize_rel("/").unwrap(), "");
         assert_eq!(sanitize_rel("src").unwrap(), "src");
         assert_eq!(sanitize_rel("src/components").unwrap(), "src/components");
-        assert_eq!(sanitize_rel("/src/lib/").unwrap(), "src/lib");
+        // a trailing slash (directory form) is cleaned, but a LEADING slash is
+        // an absolute path and must be rejected (empty first segment).
+        assert_eq!(sanitize_rel("src/lib/").unwrap(), "src/lib");
+        assert!(sanitize_rel("/src/lib/").is_err());
         // dotfiles/dot-dirs are legitimate
         assert_eq!(
             sanitize_rel(".github/workflows").unwrap(),
@@ -912,7 +921,7 @@ mod tests {
         assert!(sanitize_rel("../etc").is_err());
         assert!(sanitize_rel("src/../../etc").is_err());
         assert!(sanitize_rel("a/./b").is_err());
-        assert!(sanitize_rel("/abs/path".trim()).is_ok()); // leading slash trimmed → relative
+        assert!(sanitize_rel("/abs/path").is_err()); // leading slash → absolute, rejected
         assert!(sanitize_rel("a\\b").is_err());
         assert!(sanitize_rel("a//b").is_err());
     }

@@ -272,11 +272,13 @@ export function CodeTab({ projectPath, onSendToAgent, revealTarget }: CodeTabPro
     },
     [performImport]
   );
-  // Mirror the in-tree-move search gate: a filtered view hides siblings, so an
-  // import target would be ambiguous / land somewhere off-screen.
+  // Stay enabled during search. Unlike an in-tree move (which needs sibling
+  // context the filter hides), an OS import hit-tests the cursor against the
+  // actually-rendered rows, so it always lands on a visible target. Disabling it
+  // here while the sidebar still advertises `data-os-drop-zone` would black-hole
+  // the drop: the terminal yields to this zone but nothing would handle it.
   const osImport = useOsImport({
     zone: 'code-files',
-    enabled: !searchQuery.trim(),
     onImport: handleOsImport,
   });
 

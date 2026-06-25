@@ -43,7 +43,12 @@ export function FileTree({
   level = 0,
 }: FileTreeProps) {
   return (
-    <div className="file-tree-nodes" role={level === 0 ? 'tree' : 'group'}>
+    <div
+      className="file-tree-nodes"
+      role={level === 0 ? 'tree' : 'group'}
+      onDragOver={level === 0 && dnd ? dnd.onRootDragOver : undefined}
+      onDrop={level === 0 && dnd ? dnd.onRootDrop : undefined}
+    >
       {nodes.map((node) => (
         <FileTreeItem
           key={node.path}

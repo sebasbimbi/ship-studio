@@ -42,11 +42,16 @@ export function FileTreeContextMenu({ x, y, name, onDelete, onClose }: FileTreeC
     };
     document.addEventListener('pointerdown', onPointerDown, true);
     document.addEventListener('keydown', onKeyDown, true);
+    // Capture phase so a scroll inside the tree container (which doesn't bubble)
+    // still dismisses the fixed-position menu instead of stranding it at stale
+    // viewport coordinates.
+    document.addEventListener('scroll', onClose, true);
     window.addEventListener('blur', onClose);
     window.addEventListener('resize', onClose);
     return () => {
       document.removeEventListener('pointerdown', onPointerDown, true);
       document.removeEventListener('keydown', onKeyDown, true);
+      document.removeEventListener('scroll', onClose, true);
       window.removeEventListener('blur', onClose);
       window.removeEventListener('resize', onClose);
     };
