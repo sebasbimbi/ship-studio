@@ -42,6 +42,7 @@ function buildAncestors(root: ElementTreeNode): Map<number, number[]> {
   return out;
 }
 
+/** One tree row's label: the element's tag, its first class, and any text snippet. */
 function RowLabel({ node }: { node: ElementTreeNode }) {
   const firstClass = node.cls.split(/\s+/)[0] ?? '';
   return (
@@ -53,6 +54,13 @@ function RowLabel({ node }: { node: ElementTreeNode }) {
   );
 }
 
+/**
+ * The visual editor's element-tree panel: a searchable, keyboard-navigable tree
+ * of the previewed page's elements with a Visual/Code view toggle. Typing in the
+ * search box filters to matching nodes plus their ancestor path; Arrow
+ * Up/Down/Left/Right move the selection across siblings, to the parent, and into
+ * the first child.
+ */
 export function ElementTreePanel({
   tree,
   truncated,

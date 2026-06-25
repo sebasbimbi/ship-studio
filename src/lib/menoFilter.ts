@@ -73,6 +73,7 @@ const OPERATOR_KEYS: ReadonlySet<string> = new Set([
   '$empty',
 ]);
 
+/** True for a non-null, non-array object (an object literal / record). */
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
@@ -93,6 +94,7 @@ function isBypass(constraint: unknown): boolean {
   return constraint === '*' || constraint === '' || constraint === null || constraint === undefined;
 }
 
+/** Whether a value counts as empty for the `$empty` operator: null, undefined, '', or []. */
 function isEmptyValue(actual: unknown): boolean {
   return (
     actual === null ||
@@ -116,17 +118,24 @@ function gt(a: unknown, b: unknown): boolean {
   return false;
 }
 
+/** Strict less-than, defined only when both sides share a comparable kind (number or string). */
 function lt(a: unknown, b: unknown): boolean {
   if (typeof a === 'number' && typeof b === 'number') return a < b;
   if (typeof a === 'string' && typeof b === 'string') return a < b;
   return false;
 }
 
+/** Lower-case both sides for case-insensitive string ops; null when either side isn't a string. */
 function caseFold(a: unknown, b: unknown): { actual: string; expected: string } | null {
   if (typeof a !== 'string' || typeof b !== 'string') return null;
   return { actual: a.toLowerCase(), expected: b.toLowerCase() };
 }
 
+/**
+ * Evaluate a single operator against an `actual`/`expected` pair. Only known
+ * operators reach here (admitted by {@link isOperatorObject}); the default arm is
+ * unreachable and returns false.
+ */
 function evalOperator(op: string, actual: unknown, expected: unknown): boolean {
   switch (op) {
     case '$eq':

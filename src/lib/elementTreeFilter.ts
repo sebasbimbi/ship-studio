@@ -35,6 +35,11 @@ function selfMatches(node: ElementTreeNode, loweredQuery: string): boolean {
   );
 }
 
+/**
+ * Recursively keep `node` only when it self-matches or has a surviving
+ * descendant, returning a shallow copy carrying just the kept children. Returns
+ * `null` when the whole subtree is pruned away.
+ */
 function prune(node: ElementTreeNode, loweredQuery: string): ElementTreeNode | null {
   const keptChildren: ElementTreeNode[] = [];
   for (const child of node.children) {
