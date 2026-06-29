@@ -14,7 +14,6 @@
 
 import { useState, useEffect } from 'react';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
-import { exists, readTextFile } from '@tauri-apps/plugin-fs';
 import { trackError } from '../../lib/analytics';
 import {
   getGitHubUsername,
@@ -26,6 +25,7 @@ import {
 } from '../../lib/github';
 import {
   ensureShipStudioDir,
+  projectPathExists,
   spawnPty,
   ensureGitignoreHasShipstudio,
   detectWorkspaces,
@@ -258,7 +258,7 @@ export function ImportProject({ onComplete, onCancel }: ImportProjectProps) {
     let safeName = baseName;
     let counter = 2;
     try {
-      while (await exists(`${shipstudioDir}/${safeName}`)) {
+      while (await projectPathExists(`${shipstudioDir}/${safeName}`)) {
         safeName = `${baseName}-${counter}`;
         counter += 1;
         if (counter > 50) {
@@ -339,12 +339,7 @@ export function ImportProject({ onComplete, onCancel }: ImportProjectProps) {
       // `npm install` exits ENOENT when there's no package.json, killing the
       // import after a successful clone — skip the install step instead, the
       // same way the zip-template path does.
-      let hasPackageJson = true;
-      try {
-        await readTextFile(`${projectPath}/package.json`);
-      } catch {
-        hasPackageJson = false;
-      }
+      const hasPackageJson = await projectPathExists(`${projectPath}/package.json`);
 
       if (hasPackageJson) {
         setCurrentStep('install');
