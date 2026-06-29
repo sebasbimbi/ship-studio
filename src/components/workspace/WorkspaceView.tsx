@@ -736,9 +736,20 @@ export const WorkspaceView = memo(function WorkspaceView({
   const {
     canUndo,
     canRedo,
+    isGitRepo,
     undo: undoSnapshot,
     redo: redoSnapshot,
   } = useSnapshots(currentProject.path, showToast);
+  // Snapshots use `git stash`, so undo/redo need a git repo — say so in the tooltip
+  // when disabled, instead of the usual shortcut hint.
+  const snapTitle = (verb: string, enabled: boolean, hint: string, idle: string) =>
+    !isGitRepo
+      ? `${verb} unavailable — snapshots use git, so this project needs to be a git repo`
+      : enabled
+        ? hint
+        : idle;
+  const undoTitle = snapTitle('Undo', canUndo, 'Undo last change (⌘Z)', 'Nothing to undo yet');
+  const redoTitle = snapTitle('Redo', canRedo, 'Redo (⌘⇧Z)', 'Nothing to redo');
 
   // Cmd+Z / Cmd+Shift+Z. We let native text-undo handle inputs and
   // contentEditable so a user editing a PR title still gets character-level
@@ -1113,7 +1124,7 @@ export const WorkspaceView = memo(function WorkspaceView({
                               className="toolbar-icon-btn"
                               onClick={() => void undoSnapshot()}
                               disabled={!canUndo}
-                              title="Undo last change (⌘Z)"
+                              title={undoTitle}
                               aria-label="Undo"
                             >
                               <UndoIcon size={12} />
@@ -1122,7 +1133,7 @@ export const WorkspaceView = memo(function WorkspaceView({
                               className="toolbar-icon-btn"
                               onClick={() => void redoSnapshot()}
                               disabled={!canRedo}
-                              title="Redo (⌘⇧Z)"
+                              title={redoTitle}
                               aria-label="Redo"
                             >
                               <RedoIcon size={12} />
@@ -1427,6 +1438,8 @@ export const WorkspaceView = memo(function WorkspaceView({
                             onOpenInCode={openInCode}
                             canUndo={canUndo}
                             canRedo={canRedo}
+                            undoTitle={undoTitle}
+                            redoTitle={redoTitle}
                             onUndo={() => void undoSnapshot()}
                             onRedo={() => void redoSnapshot()}
                             previewPlugins={
