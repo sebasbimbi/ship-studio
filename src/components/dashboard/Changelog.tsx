@@ -25,6 +25,14 @@ interface ChangelogEntry {
 // Keep ~15 most recent versions for the sidebar
 const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.13.1', // v0.13.1
+    items: [
+      'Edit code right in the app — the Code tab now has an Edit toggle that turns it into a live editor: type and save with ⌘S, while read-only mode stays for selecting code and sending it to your agent. The toggle is remembered across projects and sessions',
+      "Fixed importing GitHub repositories — picking a repo no longer fails with a 'forbidden path' error; it now clones and imports correctly",
+      'Fixed inline text editing in vanilla-CSS and Astro projects — double-clicking to edit copy in the preview now writes to your source and the change persists',
+    ],
+  },
+  {
     version: '0.13.0', // v0.13.0
     items: [
       'A rebuilt CSS editor for non-Tailwind projects — click any element and see its full cascade as editable cards, like browser devtools, but every change writes straight to your real CSS in cascade order, with overridden properties struck through',
