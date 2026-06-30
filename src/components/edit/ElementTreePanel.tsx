@@ -7,11 +7,12 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRightIcon } from '../icons';
+import { ChevronRightIcon, SearchIcon } from '../icons';
 import { ElementHtmlEditor } from './ElementHtmlEditor';
 import type { ElementTreeNode } from '../../hooks/useElementTree';
 import { filterElementTree, isTreeQueryActive } from '../../lib/elementTreeFilter';
 import type { ElementSignature } from '../../lib/edit';
+import { useCommands } from '../../commands/useCommands';
 
 interface Props {
   tree: ElementTreeNode | null;
@@ -79,6 +80,28 @@ export function ElementTreePanel({
     onViewChange?.(next);
   };
   const bodyRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useCommands(
+    () => [
+      {
+        id: 'elementTree.focusSearch',
+        title: 'Search elements',
+        icon: <SearchIcon size={14} />,
+        category: 'action',
+        when: 'project',
+        keywords: ['find', 'filter', 'tree', 'element', 'search'],
+        run: () => {
+          if (view !== 'visual') {
+            setView('visual');
+            onViewChange?.('visual');
+          }
+          requestAnimationFrame(() => searchRef.current?.focus());
+        },
+      },
+    ],
+    [view, onViewChange]
+  );
 
   // When a query is active, render a pruned copy of the tree (matches plus their
   // ancestor paths) via the borrowed Meno filter; a blank query is identity, so
@@ -284,6 +307,7 @@ export function ElementTreePanel({
         <span className="ss-tree-panel__title">Elements</span>
         {view === 'visual' && (
           <input
+            ref={searchRef}
             type="search"
             className="ss-tree-panel__search"
             placeholder="Search…"
