@@ -6,6 +6,13 @@ The latest entry is rendered inside the in-app update dialog, so write user-
 facing language — what changed, in plain English — not commit subjects.
 -->
 
+## What's New in v0.13.1
+
+- **Edit code in the app** - The Code tab now has an Edit toggle for live editing (⌘S to save); read-only mode stays for selecting code to send to your agent. Remembered across projects and sessions.
+- **Fixed GitHub import** - Importing a repository no longer fails with a "forbidden path" error — it now clones and imports correctly.
+- **Fixed inline text editing** - Double-clicking to edit copy in the preview now writes to source and persists in vanilla-CSS and Astro projects.
+
+
 ## What's New in v0.13.0
 
 - **A rebuilt CSS editor for non-Tailwind projects** - Click any element and see its full cascade as editable cards — like browser devtools, but every change writes straight to your real CSS. Edit every rule that styles the element, in cascade order, with overridden properties shown struck through.

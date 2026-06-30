@@ -163,6 +163,15 @@ export async function deleteProjectEntry(projectPath: string, rel: string): Prom
   await invoke('delete_project_entry', { projectPath, rel });
 }
 
+/** Overwrite a project file with new content (Code tab inline editor). */
+export async function saveProjectFile(
+  projectPath: string,
+  filePath: string,
+  content: string
+): Promise<void> {
+  await invoke('save_project_file', { projectPath, filePath, content });
+}
+
 /** Build a nested tree structure from a flat list of file entries. */
 export function buildFileTree(entries: FileEntry[]): FileTreeNode[] {
   const root: FileTreeNode[] = [];
