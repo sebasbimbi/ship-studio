@@ -296,9 +296,10 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), CommandError> {
             continue;
         } else if file_type.is_dir() {
             copy_dir_recursive(&entry.path(), &target)?;
-        } else {
+        } else if file_type.is_file() {
             std::fs::copy(entry.path(), &target)?;
         }
+        // Skip FIFOs, device files, sockets, etc. — only regular files and dirs.
     }
     Ok(())
 }
@@ -673,6 +674,18 @@ pub async fn import_paths_to_project(
 
         let plan = plan_dest(&dest_dir_canon, &base_name, &on_conflict)?;
         if plan.replace {
+            // Guard: source and destination are the same path — nothing to do
+            // (importing a file into its own parent with on_conflict=replace would
+            // otherwise delete the source before the copy runs).
+            if dunce::canonicalize(&plan.dest).ok().as_deref() == Some(src_canon.as_path()) {
+                outcomes.push(ImportOutcome {
+                    source: src.clone(),
+                    status: "imported".to_string(),
+                    new_rel: Some(to_rel_string(&root, &plan.dest)),
+                    is_dir,
+                });
+                continue;
+            }
             remove_existing(&plan.dest)?;
         }
 

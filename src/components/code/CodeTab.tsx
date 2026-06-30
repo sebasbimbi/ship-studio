@@ -450,7 +450,7 @@ export function CodeTab({ projectPath, onSendToAgent, revealTarget }: CodeTabPro
           className={`code-tab-sidebar-content${
             dnd.dropTargetDir === '' || osImport.dropTargetDir === '' ? ' root-drop-target' : ''
           }`}
-          data-os-drop-zone="code-files"
+          data-os-drop-zone={!searchQuery.trim() ? 'code-files' : undefined}
           onDragOver={dnd.onRootDragOver}
           onDrop={dnd.onRootDrop}
         >
