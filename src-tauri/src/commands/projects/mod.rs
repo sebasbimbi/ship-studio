@@ -207,6 +207,18 @@ fn load_removed_projects_config() -> Result<RemovedProjectsConfig, String> {
         .map_err(|e| format!("Failed to parse removed projects config: {e}"))
 }
 
+/// Loads the removed-projects hide-list for read-only listing paths, failing
+/// OPEN: a corrupt or unreadable registry degrades to "nothing hidden" (and
+/// logs) rather than erroring the whole listing and blanking the dashboard.
+/// Mutation paths keep calling `load_removed_projects_config` directly so they
+/// still surface errors instead of silently overwriting the registry.
+fn load_removed_projects_or_empty() -> RemovedProjectsConfig {
+    load_removed_projects_config().unwrap_or_else(|e| {
+        tracing::warn!("Failed to load removed-projects registry, treating as empty: {e}");
+        RemovedProjectsConfig::default()
+    })
+}
+
 /// Persists the removed-projects registry to disk.
 fn save_removed_projects_config(config: &RemovedProjectsConfig) -> Result<(), String> {
     let config_path = removed_projects_config_path()?;
@@ -288,7 +300,7 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, CommandError> {
     let active_account_id = crate::commands::accounts::get_active_account_id().unwrap_or_default();
     // Live workspace list, read once so the visibility check stays IO-free per project.
     let accounts = crate::commands::setup::read_app_state().accounts;
-    let removed_projects = load_removed_projects_config()?;
+    let removed_projects = load_removed_projects_or_empty();
 
     if !shipstudio_dir.exists() {
         return Ok(Vec::new());
@@ -401,7 +413,7 @@ pub async fn get_dashboard_projects() -> Result<Vec<DashboardProject>, CommandEr
     let active_account_id = crate::commands::accounts::get_active_account_id().unwrap_or_default();
     // Live workspace list, read once so the visibility check stays IO-free per project.
     let accounts = crate::commands::setup::read_app_state().accounts;
-    let removed_projects = load_removed_projects_config()?;
+    let removed_projects = load_removed_projects_or_empty();
 
     if !shipstudio_dir.exists() {
         return Ok(Vec::new());
@@ -719,6 +731,14 @@ pub async fn create_blank_project(project_path: String) -> Result<(), CommandErr
     let gitignore = path.join(".gitignore");
     std::fs::write(&gitignore, ".shipstudio/\n")
         .map_err(|e| format!("Failed to create .gitignore: {e}"))?;
+
+    // A freshly-created project isn't "removed" — clear any stale hide-list entry
+    // left by a previous project at this exact path, so it isn't silently
+    // filtered out of the dashboard. Best-effort: never fail creation over it.
+    let canonical = canonical_or_original(path);
+    if let Err(e) = restore_removed_project(&canonical) {
+        tracing::warn!("Failed to clear removed-projects entry for new project: {e}");
+    }
 
     Ok(())
 }
@@ -1337,5 +1357,21 @@ mod tests {
         let err = load_removed_projects_config().expect_err("invalid registry should fail closed");
 
         assert!(err.contains("Failed to parse removed projects config"));
+    }
+
+    #[test]
+    fn removed_projects_listing_fails_open_on_invalid_json() {
+        let _guard = REMOVED_PROJECTS_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let _override = RemovedProjectsConfigOverride::install();
+        let path = removed_projects_config_path().unwrap();
+        std::fs::write(&path, "{not valid json").unwrap();
+
+        // The read-only listing paths must NOT error on a corrupt hide-list —
+        // they degrade to "nothing hidden" so a single bad file can't blank the
+        // entire dashboard.
+        let config = load_removed_projects_or_empty();
+        assert!(config.projects.is_empty());
     }
 }

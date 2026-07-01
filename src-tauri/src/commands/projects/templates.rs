@@ -203,6 +203,13 @@ pub async fn extract_template_zip(
             .into());
     }
 
+    // A freshly-created project isn't "removed" — clear any stale hide-list entry
+    // for this path so it isn't silently filtered out of the dashboard.
+    let canonical = super::canonical_or_original(&project_path);
+    if let Err(e) = super::restore_removed_project(&canonical) {
+        tracing::warn!("Failed to clear removed-projects entry for new template project: {e}");
+    }
+
     Ok(project_path.to_string_lossy().to_string())
 }
 
