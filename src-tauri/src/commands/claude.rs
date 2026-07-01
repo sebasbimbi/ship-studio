@@ -135,40 +135,60 @@ fn binary_runs(path: &std::path::Path, version_flag: &str) -> bool {
 /// present. `which::which` comes first so we honor whatever the user's shell
 /// would resolve, then we fall through to well-known locations.
 fn candidate_paths_for(binary_name: &str) -> Vec<std::path::PathBuf> {
+    use std::collections::HashSet;
+
     let mut paths: Vec<std::path::PathBuf> = Vec::new();
+    let mut seen: HashSet<std::path::PathBuf> = HashSet::new();
 
     if let Ok(path) = which::which(binary_name) {
-        paths.push(path);
+        push_candidate(&mut paths, &mut seen, path);
     }
+
+    add_extended_path_candidates(&mut paths, &mut seen, binary_name, &get_extended_path());
 
     #[cfg(windows)]
     {
         let exe_name = format!("{binary_name}.exe");
         let cmd_name = format!("{binary_name}.cmd");
         if let Ok(path) = which::which(&exe_name) {
-            paths.push(path);
+            push_candidate(&mut paths, &mut seen, path);
         }
+        if let Ok(path) = which::which(&cmd_name) {
+            push_candidate(&mut paths, &mut seen, path);
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        let exe_name = format!("{binary_name}.exe");
+        let cmd_name = format!("{binary_name}.cmd");
 
         if let Some(home) = dirs::home_dir() {
-            paths.extend([
+            for path in [
                 home.join(format!("AppData\\Local\\Programs\\Claude\\{}", exe_name)),
                 home.join(format!(
                     "AppData\\Local\\Programs\\Claude Code\\{}",
                     exe_name
                 )),
                 home.join(format!(r".local\bin\{}", exe_name)),
-            ]);
+            ] {
+                push_candidate(&mut paths, &mut seen, path);
+            }
         }
 
         if let Ok(app_data) = std::env::var("APPDATA") {
-            paths.extend([
+            for path in [
                 std::path::PathBuf::from(&app_data).join(format!("npm\\{}", cmd_name)),
                 std::path::PathBuf::from(&app_data).join(format!("npm\\{}", exe_name)),
-            ]);
+            ] {
+                push_candidate(&mut paths, &mut seen, path);
+            }
         }
 
         if let Ok(program_files) = std::env::var("ProgramFiles") {
-            paths.push(
+            push_candidate(
+                &mut paths,
+                &mut seen,
                 std::path::PathBuf::from(&program_files).join(format!("Claude\\{}", exe_name)),
             );
         }
@@ -180,7 +200,11 @@ fn candidate_paths_for(binary_name: &str) -> Vec<std::path::PathBuf> {
         {
             if output.status.success() {
                 let prefix = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                paths.push(std::path::PathBuf::from(&prefix).join(&cmd_name));
+                push_candidate(
+                    &mut paths,
+                    &mut seen,
+                    std::path::PathBuf::from(&prefix).join(&cmd_name),
+                );
             }
         }
     }
@@ -188,18 +212,43 @@ fn candidate_paths_for(binary_name: &str) -> Vec<std::path::PathBuf> {
     #[cfg(not(windows))]
     {
         if let Some(home) = dirs::home_dir() {
-            paths.extend([
+            for path in [
                 home.join(format!(".local/bin/{binary_name}")),
                 home.join(format!(".npm-global/bin/{binary_name}")),
-                home.join(".nvm/versions/node")
-                    .join("*")
-                    .join(format!("bin/{binary_name}")),
                 home.join(format!("n/bin/{binary_name}")),
                 home.join(format!(".{binary_name}/bin/{binary_name}")),
                 home.join(format!(".bun/bin/{binary_name}")),
                 std::path::PathBuf::from(format!("/usr/local/bin/{binary_name}")),
                 std::path::PathBuf::from(format!("/opt/homebrew/bin/{binary_name}")),
-            ]);
+            ] {
+                push_candidate(&mut paths, &mut seen, path);
+            }
+
+            // Enumerate *every* installed Node version's bin dir (newest first),
+            // not just the latest. `get_extended_path()` (utils.rs) only adds the
+            // single most-recent NVM version to PATH, so an agent CLI installed
+            // under an older Node would be missed there — we walk them all here.
+            let nvm_versions = home.join(".nvm/versions/node");
+            if let Ok(entries) = std::fs::read_dir(&nvm_versions) {
+                let mut versions: Vec<_> =
+                    entries.flatten().filter(|e| e.path().is_dir()).collect();
+                versions.sort_by_key(|entry| {
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    let parts: Vec<u64> = name
+                        .trim_start_matches('v')
+                        .split('.')
+                        .map(|p| p.parse().unwrap_or(0))
+                        .collect();
+                    std::cmp::Reverse(parts)
+                });
+                for entry in versions {
+                    push_candidate(
+                        &mut paths,
+                        &mut seen,
+                        entry.path().join("bin").join(binary_name),
+                    );
+                }
+            }
 
             // Claude desktop app's bundled CLI (latest version dir wins).
             let claude_app_base = home.join("Library/Application Support/Claude/claude-code");
@@ -217,7 +266,7 @@ fn candidate_paths_for(binary_name: &str) -> Vec<std::path::PathBuf> {
                         std::cmp::Reverse(parts)
                     });
                     for entry in versions {
-                        paths.push(entry.path().join(binary_name));
+                        push_candidate(&mut paths, &mut seen, entry.path().join(binary_name));
                     }
                 }
             }
@@ -229,14 +278,53 @@ fn candidate_paths_for(binary_name: &str) -> Vec<std::path::PathBuf> {
             {
                 if output.status.success() {
                     let prefix = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    paths
-                        .push(std::path::PathBuf::from(&prefix).join(format!("bin/{binary_name}")));
+                    push_candidate(
+                        &mut paths,
+                        &mut seen,
+                        std::path::PathBuf::from(&prefix).join(format!("bin/{binary_name}")),
+                    );
                 }
             }
         }
     }
 
     paths
+}
+
+// Walks every dir in `path_env`, emitting a candidate per dir (with the
+// platform's executable extensions on Windows). This intentionally mirrors the
+// dir-walk in `utils::find_executable`, but unlike that helper — which returns
+// the first hit — we collect the *full* candidate list so the caller's
+// validation/shadowing logic (`find_validated_binary`) can inspect every match.
+fn add_extended_path_candidates(
+    paths: &mut Vec<std::path::PathBuf>,
+    seen: &mut std::collections::HashSet<std::path::PathBuf>,
+    binary_name: &str,
+    path_env: &str,
+) {
+    for dir in std::env::split_paths(path_env) {
+        #[cfg(windows)]
+        for name in [
+            binary_name.to_string(),
+            format!("{binary_name}.exe"),
+            format!("{binary_name}.cmd"),
+        ] {
+            push_candidate(paths, seen, dir.join(name));
+        }
+
+        #[cfg(not(windows))]
+        push_candidate(paths, seen, dir.join(binary_name));
+    }
+}
+
+fn push_candidate(
+    paths: &mut Vec<std::path::PathBuf>,
+    seen: &mut std::collections::HashSet<std::path::PathBuf>,
+    path: std::path::PathBuf,
+) {
+    if seen.insert(path.clone()) {
+        paths.push(path);
+    }
 }
 
 #[tauri::command]
@@ -364,5 +452,33 @@ mod tests {
         // Should include at least one entry — at minimum the built-in fallbacks
         // even on a machine without a `claude` install.
         assert!(!paths.is_empty());
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn add_extended_path_candidates_walks_shell_path_dirs() {
+        let mut paths = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        add_extended_path_candidates(
+            &mut paths,
+            &mut seen,
+            "codex",
+            "/tmp/shipstudio-a:/tmp/shipstudio-b",
+        );
+
+        assert!(paths.contains(&std::path::PathBuf::from("/tmp/shipstudio-a/codex")));
+        assert!(paths.contains(&std::path::PathBuf::from("/tmp/shipstudio-b/codex")));
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn candidate_paths_for_does_not_emit_unexpanded_nvm_glob() {
+        let paths = candidate_paths_for("codex");
+        assert!(
+            paths
+                .iter()
+                .all(|p| !p.to_string_lossy().contains("/.nvm/versions/node/*/")),
+            "candidate paths must contain real NVM directories, not a literal wildcard"
+        );
     }
 }

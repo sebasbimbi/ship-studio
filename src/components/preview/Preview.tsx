@@ -42,8 +42,12 @@ import { BrowserDropdown } from './BrowserDropdown';
 import { useVisualEditor } from '../../hooks/useVisualEditor';
 import { useRedline } from '../../hooks/useRedline';
 import { useRedlineCommands } from '../../commands/useRedlineCommands';
-import { useCssEditor } from '../../hooks/useCssEditor';
-import { CssEditorPanel } from '../edit/CssEditorPanel';
+import { useTextEditing } from '../../hooks/useTextEditing';
+import { useCssCascadeEditor } from '../../hooks/useCssCascadeEditor';
+import { useElementSettings } from '../../hooks/useElementSettings';
+import { useCssVariables } from '../../hooks/useCssVariables';
+import { useCssAnimations } from '../../hooks/useCssAnimations';
+import { CssCascadePanel } from '../edit/CssCascadePanel';
 import { useBreakpoints } from '../../hooks/useBreakpoints';
 import {
   BASE_BREAKPOINT,
@@ -59,6 +63,8 @@ import { CompactIcon, ExpandIcon, PanelLeftIcon, ResetIcon, UndoIcon, RedoIcon }
 import { Button } from '../primitives/Button';
 import { Spinner } from '../primitives/Spinner';
 import { pathLocale, switchPathLocale } from '../../lib/i18n';
+import { useCommands } from '../../commands/useCommands';
+import { logger } from '../../lib/logger';
 import type { ProjectType } from '../../lib/static-server';
 
 // SVG icons for breakpoints
@@ -210,6 +216,8 @@ interface PreviewProps {
   /** Snapshot undo/redo, surfaced in the fullscreen toolbar. */
   canUndo?: boolean;
   canRedo?: boolean;
+  undoTitle?: string;
+  redoTitle?: string;
   onUndo?: () => void;
   onRedo?: () => void;
 }
@@ -280,13 +288,21 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     onOpenInCode,
     canUndo,
     canRedo,
+    undoTitle,
+    redoTitle,
     onUndo,
     onRedo,
   },
   ref
 ) {
   const { showToast } = useOptionalToast();
-  const onToast = (message: string, type?: 'success' | 'error') => showToast(message, type);
+  // Stable identity: this is threaded into many editor hooks as a dependency. An
+  // inline function here would change every render, re-firing their load effects (and
+  // wiping optimistic edits like a just-added keyframe step before it saves).
+  const onToast = useCallback(
+    (message: string, type?: 'success' | 'error') => showToast(message, type),
+    [showToast]
+  );
   // Server connection, health checks, page navigation (extracted to hook)
   const conn = usePreviewConnection({
     port,
@@ -633,17 +649,41 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     hasRequests: redline.requests.length > 0,
   });
 
-  // CSS-Mode editor — a SEPARATE feature for class-based CSS projects (vanilla
-  // Astro: no Tailwind). Mutually exclusive with the Tailwind editor above:
-  // Astro+Tailwind → `editor`; Astro without Tailwind → `cssEditor`. Same toggle
-  // and selection experience; edits write CSS rules instead of utility classes.
+  // Code-first CSS editor — a SEPARATE feature for vanilla-CSS projects (Astro
+  // without Tailwind, or plain HTML/CSS). Mutually exclusive with the Tailwind
+  // editor above: Astro+Tailwind → `editor`; vanilla CSS → `cssEditor`. Same
+  // toggle and selection experience; it surfaces the clicked element's full
+  // cascade and edits the real `.css` source (not utility classes).
   const cssEditorEnabled =
     conn.serverReady &&
     ((projectType === 'astro' && !tailwindActive) || projectType === 'statichtml');
-  const cssEditor = useCssEditor({
+  const cssEditor = useCssCascadeEditor({
     iframeRef,
     projectPath,
     enabled: cssEditorEnabled,
+    onToast,
+  });
+  // Settings tab (element tag/classes/attributes) — shares the cascade selection.
+  const elementSettings = useElementSettings({
+    iframeRef,
+    projectPath,
+    enabled: cssEditorEnabled,
+    signature: cssEditor.selection?.signature ?? null,
+    onToast,
+  });
+  // The CSS panel's active scope (Element / Variables / Animations), lifted so the
+  // Cmd+K palette can open the editor straight to a given scope.
+  const [cssScope, setCssScope] = useState<'element' | 'variables' | 'animations'>('element');
+  // Project-global scopes of the CSS panel: design tokens + animations.
+  const cssVariables = useCssVariables({
+    iframeRef,
+    projectPath,
+    enabled: cssEditor.editMode,
+    onToast,
+  });
+  const cssAnimations = useCssAnimations({
+    projectPath,
+    enabled: cssEditor.editMode,
     onToast,
   });
   // Which editor (if any) the toolbar toggle and panel drive.
@@ -653,8 +693,75 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
       ? 'css'
       : null;
   const activeEditMode = editor.editMode || cssEditor.editMode;
+  // Inline text editing (double-click copy) is shared by both styling editors —
+  // mounted once here, active whenever either editor's edit mode is on, so it
+  // works for vanilla-CSS/Astro projects (cssEditor) as well as Tailwind.
+  const textEditing = useTextEditing({
+    iframeRef,
+    projectPath,
+    enabled: activeEditMode,
+    onToast,
+  });
   const toggleActiveEditor =
     editorMode === 'css' ? cssEditor.toggleEditMode : editor.toggleEditMode;
+
+  // ── Cmd+K commands for the native CSS editor (vanilla-CSS projects only). The panel
+  // is opened by toggling edit mode; the scope state lets a command land straight on
+  // Variables or Animations. Registered only when this editor applies to the project.
+  const cssEditorOn = cssEditor.editMode;
+  const cssToggleEditMode = cssEditor.toggleEditMode;
+  const openCssEditor = useCallback(
+    (scope: 'element' | 'variables' | 'animations') => {
+      try {
+        setCssScope(scope);
+        if (!cssEditorOn) cssToggleEditMode();
+      } catch (err) {
+        onToast('Could not open the CSS editor', 'error');
+        logger.error('[Preview] openCssEditor failed', { error: String(err) });
+      }
+    },
+    [cssEditorOn, cssToggleEditMode, onToast]
+  );
+  useCommands(
+    () =>
+      cssEditorEnabled
+        ? [
+            {
+              id: 'edit.css',
+              title: cssEditorOn ? 'Exit CSS editor' : 'Edit CSS (visual cascade editor)',
+              category: 'action' as const,
+              when: 'project' as const,
+              keywords: ['css', 'style', 'cascade', 'edit', 'visual', 'stylesheet'],
+              run: () => {
+                try {
+                  if (cssEditorOn) cssToggleEditMode();
+                  else openCssEditor('element');
+                } catch (err) {
+                  onToast('Could not toggle the CSS editor', 'error');
+                  logger.error('[Preview] toggle CSS editor failed', { error: String(err) });
+                }
+              },
+            },
+            {
+              id: 'css.variables',
+              title: 'CSS variables (design tokens)',
+              category: 'action' as const,
+              when: 'project' as const,
+              keywords: ['css', 'variable', 'custom property', 'token', 'theme', '--'],
+              run: () => openCssEditor('variables'),
+            },
+            {
+              id: 'css.animations',
+              title: 'CSS animations (@keyframes)',
+              category: 'action' as const,
+              when: 'project' as const,
+              keywords: ['css', 'animation', 'keyframes', 'motion', 'transition'],
+              run: () => openCssEditor('animations'),
+            },
+          ]
+        : [],
+    [cssEditorEnabled, cssEditorOn, cssToggleEditMode, openCssEditor, onToast]
+  );
 
   // Element tree (navigator) — left column in fullscreen edit mode, like
   // Webflow's navigator: read-only, select-only. Toggleable from the toolbar;
@@ -1015,7 +1122,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
             className="preview-fullscreen-btn"
             onClick={onUndo}
             disabled={!canUndo}
-            title="Undo last change (⌘Z)"
+            title={undoTitle ?? 'Undo last change (⌘Z)'}
             aria-label="Undo"
           >
             <UndoIcon size={14} />
@@ -1027,7 +1134,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
             className="preview-fullscreen-btn"
             onClick={onRedo}
             disabled={!canRedo}
-            title="Redo (⌘⇧Z)"
+            title={redoTitle ?? 'Redo (⌘⇧Z)'}
             aria-label="Redo"
           >
             <RedoIcon size={14} />
@@ -1266,10 +1373,10 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
               selection={editor.selection}
               projectPath={projectPath}
               currentClass={editor.currentClass}
-              textResolution={editor.textResolution}
+              textResolution={textEditing.textResolution}
               imageResolution={editor.imageResolution}
               onReplaceImage={editor.replaceImage}
-              textBlockedNonce={editor.textBlockedNonce}
+              textBlockedNonce={textEditing.textBlockedNonce}
               breakpoints={breakpoints}
               activeBreakpoint={activeBreakpoint}
               breakpointTooWide={breakpointTooWide}
@@ -1325,34 +1432,31 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
         (() => {
           // Same floating-vs-pinned strategy as the Tailwind panel above.
           const panel = (
-            <CssEditorPanel
+            <CssCascadePanel
               selection={cssEditor.selection}
-              authoredSheets={cssEditor.authoredSheets}
-              saving={cssEditor.saving}
-              onPreview={cssEditor.previewDeclaration}
-              onSave={(prop, value) => void cssEditor.saveDeclaration(prop, value)}
-              onSaveMany={(changes) => void cssEditor.saveDeclarations(changes)}
-              onCreateRule={(file, selector, decls) =>
-                void cssEditor.createRule(file, selector, decls)
-              }
-              onSendToClaude={onSendToClaude}
-              targetClass={cssEditor.targetClass}
-              pseudo={cssEditor.pseudo}
-              allClasses={cssEditor.allClasses}
-              breakpointMinPx={cssEditor.breakpointMinPx}
-              onSelectClass={cssEditor.setTargetClass}
-              onAddClass={(name) => void cssEditor.addClass(name)}
-              onRemoveClass={(name) => void cssEditor.removeClass(name)}
-              onSetPseudo={cssEditor.setPseudo}
-              onSetBreakpoint={(minPx) => {
-                cssEditor.setBreakpoint(minPx);
-                // Jump the canvas to the breakpoint width so you can see it (Base
-                // applies at all widths — leave the canvas where it is).
-                if (minPx) resize.previewAtWidth(minPx);
-              }}
+              rows={cssEditor.rows}
+              loading={cssEditor.loading}
+              bodies={cssEditor.bodies}
+              overridden={cssEditor.overridden}
+              onChangeBody={cssEditor.setBody}
+              onDeleteRule={(key) => void cssEditor.deleteRule(key)}
+              onWrapRule={(key, at) => void cssEditor.wrapRule(key, at)}
+              onRenameRule={(key, sel) => void cssEditor.renameSelector(key, sel)}
+              onRenameAtRule={(key, m) => void cssEditor.renameAtRule(key, m)}
+              onAddSelector={(sel) => void cssEditor.addSelector(sel)}
+              selectorSuggestions={cssEditor.classSuggestions.map((c) => `.${c}`)}
+              existingSelectors={cssEditor.existingSelectors}
+              variables={cssEditor.variableSuggestions}
+              animations={cssEditor.animationSuggestions}
+              justCreatedKey={cssEditor.justCreatedKey}
+              settings={elementSettings}
+              variablesState={cssVariables}
+              animationsState={cssAnimations}
               onClose={cssEditor.toggleEditMode}
               pinned={editorPinned}
               onTogglePin={toggleEditorPinned}
+              scope={cssScope}
+              onScopeChange={setCssScope}
             />
           );
           return editorPinned ? (

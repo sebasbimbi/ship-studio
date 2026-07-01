@@ -361,6 +361,7 @@ pub fn run() {
             commands::projects::create_blank_project,
             commands::projects::remove_git_history,
             commands::projects::delete_project,
+            commands::projects::remove_project_from_app,
             commands::projects::rename_project,
             commands::projects::clear_project_cache,
             commands::projects::get_auto_accept_mode,
@@ -394,6 +395,15 @@ pub fn run() {
             commands::edit_css::create_css_class,
             commands::edit_css::list_stylesheets,
             commands::edit_css::list_css_classes,
+            commands::edit_css::list_css_selectors,
+            commands::edit_css::get_css_variables,
+            commands::edit_css::list_css_variables,
+            commands::edit_css::locate_css_rules,
+            commands::edit_css::apply_css_rule_text,
+            commands::edit_css::delete_css_rule,
+            commands::edit_css::wrap_css_rule,
+            commands::edit_css::rename_css_selector,
+            commands::edit_css::rename_css_at_rule,
             commands::custom_classes::detect_tailwind_setup,
             commands::custom_classes::list_custom_classes,
             commands::custom_classes::create_custom_class,
@@ -572,6 +582,7 @@ pub fn run() {
             commands::static_server::stop_static_server,
             // Project Type Detection
             commands::projects::detect_project_type_command,
+            commands::projects::project_path_exists,
             // Native Mobile Preview (iOS Simulator via serve-sim)
             commands::mobile::list_booted_simulators,
             commands::mobile::start_mobile_preview,
@@ -637,6 +648,7 @@ pub fn run() {
             // Code Browser
             commands::code::list_project_files,
             commands::code::read_project_file,
+            commands::code::save_project_file,
             // Assets
             commands::assets::get_assets_root,
             commands::assets::set_assets_root,
